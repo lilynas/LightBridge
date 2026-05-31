@@ -433,7 +433,7 @@ const isHomeContentUrl = computed(() => {
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
 // GitHub URL
-const githubUrl = 'https://github.com/WilliamWang1721/LightBridge'
+const githubUrl = 'https://github.com/Wei-Shaw/LightBridge'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)

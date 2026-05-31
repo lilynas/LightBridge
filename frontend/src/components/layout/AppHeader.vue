@@ -128,7 +128,7 @@
 
                 <a
                   v-if="authStore.isAdmin"
-                  href="https://github.com/WilliamWang1721/LightBridge"
+                  href="https://github.com/Wei-Shaw/LightBridge"
                   target="_blank"
                   rel="noopener noreferrer"
                   @click="closeDropdown"
