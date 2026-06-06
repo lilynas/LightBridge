@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/LightBridge/internal/service"
@@ -205,6 +206,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Name:                    a.Name,
 		Notes:                   a.Notes,
 		Platform:                a.Platform,
+		ProviderID:              effectiveAccountProviderID(a),
 		Type:                    a.Type,
 		Credentials:             redactedCreds,
 		CredentialsStatus:       credsStatus,
@@ -360,6 +362,23 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	}
 
 	return out
+}
+
+func effectiveAccountProviderID(a *service.Account) string {
+	if a == nil {
+		return ""
+	}
+	if providerID := strings.TrimSpace(a.ProviderID); providerID != "" {
+		return providerID
+	}
+	if a.Extra != nil {
+		if raw, ok := a.Extra["provider_id"].(string); ok {
+			if providerID := strings.TrimSpace(raw); providerID != "" {
+				return providerID
+			}
+		}
+	}
+	return strings.TrimSpace(a.Platform)
 }
 
 func AccountFromService(a *service.Account) *Account {

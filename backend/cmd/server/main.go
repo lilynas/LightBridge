@@ -142,7 +142,6 @@ func runMainServer() {
 	if cfg.RunMode == config.RunModeSimple {
 		log.Println("⚠️  WARNING: Running in SIMPLE mode - billing and quota checks are DISABLED")
 	}
-
 	buildInfo := handler.BuildInfo{
 		Version:   Version,
 		BuildType: BuildType,

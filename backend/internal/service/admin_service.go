@@ -272,6 +272,7 @@ type CreateAccountInput struct {
 	Name               string
 	Notes              *string
 	Platform           string
+	ProviderID         string
 	Type               string
 	Credentials        map[string]any
 	Extra              map[string]any
@@ -293,6 +294,7 @@ type CreateAccountInput struct {
 type UpdateAccountInput struct {
 	Name                  string
 	Notes                 *string
+	ProviderID            string
 	Type                  string // Account type: oauth, setup-token, apikey
 	Credentials           map[string]any
 	Extra                 map[string]any
@@ -2443,7 +2445,65 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 	return accounts, nil
 }
 
+func normalizeProviderID(providerID string, fallback string) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID != "" {
+		return providerID
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func normalizeAccountProviderID(providerID string, platform string, accountType string, extra map[string]any) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID != "" {
+		return providerID
+	}
+	if extra != nil {
+		if raw, ok := extra["provider_id"].(string); ok {
+			if providerID := strings.TrimSpace(raw); providerID != "" {
+				return providerID
+			}
+		}
+	}
+	if accountInputUsesModuleProvider(platform, accountType, extra) {
+		return ""
+	}
+	return strings.TrimSpace(platform)
+}
+
+func accountInputUsesModuleProvider(platform string, accountType string, extra map[string]any) bool {
+	if strings.TrimSpace(platform) == PlatformModule {
+		return true
+	}
+	if strings.TrimSpace(accountType) == AccountTypeModule {
+		return true
+	}
+	if extra != nil {
+		if raw, ok := extra["module_id"].(string); ok && strings.TrimSpace(raw) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func withProviderIDExtra(extra map[string]any, providerID string) map[string]any {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return extra
+	}
+	if extra == nil {
+		extra = make(map[string]any, 1)
+	}
+	extra["provider_id"] = providerID
+	return extra
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	providerID := normalizeAccountProviderID(input.ProviderID, input.Platform, input.Type, input.Extra)
+	if accountInputUsesModuleProvider(input.Platform, input.Type, input.Extra) && providerID == "" {
+		return nil, errors.New("module provider account requires provider_id")
+	}
+
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
@@ -2471,9 +2531,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
+		ProviderID:  providerID,
 		Type:        input.Type,
 		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Extra:       withProviderIDExtra(input.Extra, providerID),
 		ProxyID:     input.ProxyID,
 		Concurrency: input.Concurrency,
 		Priority:    input.Priority,
@@ -2560,6 +2621,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Type != "" {
 		account.Type = input.Type
 	}
+	if input.ProviderID != "" {
+		account.ProviderID = normalizeProviderID(input.ProviderID, account.Platform)
+		account.Extra = withProviderIDExtra(account.Extra, account.ProviderID)
+	}
 	if input.Notes != nil {
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
@@ -2578,6 +2643,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			}
 		}
 		account.Extra = input.Extra
+		account.Extra = withProviderIDExtra(account.Extra, normalizeProviderID(input.ProviderID, account.ProviderID))
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
 			// 清除 AICredits 限流 key

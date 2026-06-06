@@ -98,7 +98,8 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	ProviderID              string         `json:"provider_id"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account module"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -117,7 +118,8 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	ProviderID              string         `json:"provider_id"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account module"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -537,6 +539,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			Name:                  req.Name,
 			Notes:                 req.Notes,
 			Platform:              req.Platform,
+			ProviderID:            req.ProviderID,
 			Type:                  req.Type,
 			Credentials:           req.Credentials,
 			Extra:                 req.Extra,
@@ -615,6 +618,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Name:                  req.Name,
 		Notes:                 req.Notes,
+		ProviderID:            req.ProviderID,
 		Type:                  req.Type,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
@@ -1333,6 +1337,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Name:                  item.Name,
 				Notes:                 item.Notes,
 				Platform:              item.Platform,
+				ProviderID:            item.ProviderID,
 				Type:                  item.Type,
 				Credentials:           item.Credentials,
 				Extra:                 item.Extra,

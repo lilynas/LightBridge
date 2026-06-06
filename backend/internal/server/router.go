@@ -102,6 +102,7 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	routes.RegisterModuleAssetRoutes(r, cfg.Modules.DataDir)
 
 	// API v1
 	v1 := r.Group("/api/v1")
@@ -109,6 +110,7 @@ func registerRoutes(
 	// 注册各模块路由
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
+	routes.RegisterModuleRoutes(v1, h)
 	routes.RegisterAdminRoutes(v1, h, adminAuth)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)

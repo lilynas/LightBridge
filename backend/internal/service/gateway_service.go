@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/LightBridge/internal/config"
+	"github.com/Wei-Shaw/LightBridge/internal/modules"
 	"github.com/Wei-Shaw/LightBridge/internal/pkg/claude"
 	"github.com/Wei-Shaw/LightBridge/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/LightBridge/internal/pkg/logger"
@@ -619,6 +620,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	providerRegistry      *modules.ProviderRegistry
 }
 
 // NewGatewayService creates a new GatewayService
@@ -2390,12 +2392,37 @@ func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform 
 		return false
 	}
 	if useMixed {
-		if account.Platform == platform {
+		if accountProviderMatches(account, platform) {
 			return true
 		}
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 	}
-	return account.Platform == platform
+	return accountProviderMatches(account, platform)
+}
+
+func accountProviderMatches(account *Account, providerID string) bool {
+	if account == nil {
+		return false
+	}
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return true
+	}
+	if strings.TrimSpace(account.ProviderID) == providerID {
+		return true
+	}
+	if account.Extra != nil {
+		if raw, ok := account.Extra["provider_id"].(string); ok && strings.TrimSpace(raw) == providerID {
+			return true
+		}
+	}
+	if accountUsesModuleProvider(account) {
+		return false
+	}
+	if strings.TrimSpace(account.Platform) == providerID {
+		return true
+	}
+	return false
 }
 
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {
@@ -3079,7 +3106,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && accountProviderMatches(account, platform) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3198,7 +3225,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && accountProviderMatches(account, platform) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -3700,12 +3727,12 @@ func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedSch
 		if acc.Platform == PlatformAntigravity {
 			return !acc.IsMixedSchedulingEnabled()
 		}
-		return acc.Platform != platform
+		return !accountProviderMatches(acc, platform)
 	}
 	if strings.TrimSpace(platform) == "" {
 		return false
 	}
-	return acc.Platform != platform
+	return !accountProviderMatches(acc, platform)
 }
 
 func appendSelectionFailureSampleID(samples []int64, id int64) []int64 {
@@ -4397,6 +4424,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
+	}
+	if result, handled, err := s.forwardModuleProvider(ctx, c, account, parsed, startTime); handled {
+		return result, err
 	}
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
@@ -9768,7 +9798,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	if platform != "" {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
-			if acc.Platform == platform {
+			if accountProviderMatches(&acc, platform) {
 				filtered = append(filtered, acc)
 			}
 		}

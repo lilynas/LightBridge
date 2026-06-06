@@ -97,6 +97,29 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 模块运行时
+		registerModuleRoutes(admin, h)
+	}
+}
+
+func registerModuleRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	modules := admin.Group("/modules")
+	{
+		modules.GET("/installed", h.Admin.Module.ListInstalled)
+		modules.GET("/provider-adapters", h.Admin.Module.ProviderAdapters)
+		modules.GET("/provider-account-forms", h.Admin.Module.ProviderAccountForms)
+		modules.GET("/marketplace", h.Admin.Module.Marketplace)
+		modules.POST("/install", h.Admin.Module.Install)
+		modules.POST("/install-archive", h.Admin.Module.InstallArchive)
+		modules.GET("/:id/permissions", h.Admin.Module.Permissions)
+		modules.POST("/:id/permissions/approve", h.Admin.Module.ApprovePermissions)
+		modules.POST("/:id/upgrade", h.Admin.Module.Upgrade)
+		modules.POST("/:id/rollback", h.Admin.Module.Rollback)
+		modules.POST("/:id/enable", h.Admin.Module.Enable)
+		modules.POST("/:id/disable", h.Admin.Module.Disable)
+		modules.POST("/:id/uninstall", h.Admin.Module.Uninstall)
+		modules.POST("/:id/purge", h.Admin.Module.Purge)
 	}
 }
 

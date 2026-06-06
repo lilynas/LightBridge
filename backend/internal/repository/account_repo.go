@@ -101,6 +101,9 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 	if account.LoadFactor != nil {
 		builder.SetLoadFactor(*account.LoadFactor)
 	}
+	if providerID := strings.TrimSpace(account.ProviderID); providerID != "" {
+		builder.SetProviderID(providerID)
+	}
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
@@ -344,6 +347,11 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	} else {
 		builder.ClearLoadFactor()
 	}
+	if providerID := strings.TrimSpace(account.ProviderID); providerID != "" {
+		builder.SetProviderID(providerID)
+	} else {
+		builder.ClearProviderID()
+	}
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
@@ -468,8 +476,8 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
-	if platform != "" {
-		q = q.Where(dbaccount.PlatformEQ(platform))
+	if platform = strings.TrimSpace(platform); platform != "" {
+		q = q.Where(accountProviderFilter(platform))
 	}
 	if accountType != "" {
 		q = q.Where(dbaccount.TypeEQ(accountType))
@@ -582,6 +590,44 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 }
 
+func accountProviderFilter(providerID string) dbpredicate.Account {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return dbaccount.IDEQ(-1)
+	}
+	return dbaccount.Or(
+		dbaccount.PlatformEQ(providerID),
+		dbaccount.ProviderIDEQ(providerID),
+		dbpredicate.Account(func(s *entsql.Selector) {
+			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, providerID, sqljson.Path("provider_id")))
+		}),
+	)
+}
+
+func accountProvidersFilter(providerIDs []string) dbpredicate.Account {
+	predicates := make([]dbpredicate.Account, 0, len(providerIDs))
+	seen := make(map[string]struct{}, len(providerIDs))
+	for _, providerID := range providerIDs {
+		providerID = strings.TrimSpace(providerID)
+		if providerID == "" {
+			continue
+		}
+		if _, ok := seen[providerID]; ok {
+			continue
+		}
+		seen[providerID] = struct{}{}
+		predicates = append(predicates, accountProviderFilter(providerID))
+	}
+	switch len(predicates) {
+	case 0:
+		return nil
+	case 1:
+		return predicates[0]
+	default:
+		return dbaccount.Or(predicates...)
+	}
+}
+
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
@@ -650,7 +696,7 @@ func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, 
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(
-			dbaccount.PlatformEQ(platform),
+			accountProviderFilter(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 		).
 		Order(dbent.Asc(dbaccount.FieldPriority)).
@@ -953,7 +999,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
-			dbaccount.PlatformEQ(platform),
+			accountProviderFilter(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
@@ -982,12 +1028,16 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 	if len(platforms) == 0 {
 		return nil, nil
 	}
+	providerFilter := accountProvidersFilter(platforms)
+	if providerFilter == nil {
+		return nil, nil
+	}
 	// 仅返回可调度的活跃账号，并过滤处于过载/限流窗口的账号。
 	// 代理与分组信息统一在 accountsToService 中批量加载，避免 N+1 查询。
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
-			dbaccount.PlatformIn(platforms...),
+			providerFilter,
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
@@ -1007,7 +1057,7 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Conte
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
-			dbaccount.PlatformEQ(platform),
+			accountProviderFilter(platform),
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
@@ -1028,10 +1078,14 @@ func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Cont
 	if len(platforms) == 0 {
 		return nil, nil
 	}
+	providerFilter := accountProvidersFilter(platforms)
+	if providerFilter == nil {
+		return nil, nil
+	}
 	now := time.Now()
 	accounts, err := r.client.Account.Query().
 		Where(
-			dbaccount.PlatformIn(platforms...),
+			providerFilter,
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			dbaccount.Not(dbaccount.HasAccountGroups()),
@@ -1515,7 +1569,11 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 		preds = append(preds, dbaccount.StatusEQ(opts.status))
 	}
 	if len(opts.platforms) > 0 {
-		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
+		if providerFilter := accountProvidersFilter(opts.platforms); providerFilter != nil {
+			preds = append(preds, providerFilter)
+		} else {
+			preds = append(preds, dbaccount.IDEQ(-1))
+		}
 	}
 	if opts.schedulable {
 		now := time.Now()
@@ -1747,6 +1805,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		Name:                    m.Name,
 		Notes:                   m.Notes,
 		Platform:                m.Platform,
+		ProviderID:              accountProviderIDFromEnt(m.ProviderID, m.Extra, m.Platform),
 		Type:                    m.Type,
 		Credentials:             copyJSONMap(m.Credentials),
 		Extra:                   copyJSONMap(m.Extra),
@@ -1772,6 +1831,26 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowEnd:        m.SessionWindowEnd,
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
 	}
+}
+
+func accountProviderIDFromEnt(providerID *string, extra map[string]any, fallback string) string {
+	if providerID != nil {
+		if value := strings.TrimSpace(*providerID); value != "" {
+			return value
+		}
+	}
+	return accountProviderIDFromExtra(extra, fallback)
+}
+
+func accountProviderIDFromExtra(extra map[string]any, fallback string) string {
+	if extra != nil {
+		if raw, ok := extra["provider_id"].(string); ok {
+			if providerID := strings.TrimSpace(raw); providerID != "" {
+				return providerID
+			}
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func normalizeJSONMap(in map[string]any) map[string]any {

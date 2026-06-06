@@ -93,6 +93,20 @@ func (_c *AccountCreate) SetPlatform(v string) *AccountCreate {
 	return _c
 }
 
+// SetProviderID sets the "provider_id" field.
+func (_c *AccountCreate) SetProviderID(v string) *AccountCreate {
+	_c.mutation.SetProviderID(v)
+	return _c
+}
+
+// SetNillableProviderID sets the "provider_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableProviderID(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetProviderID(*v)
+	}
+	return _c
+}
+
 // SetType sets the "type" field.
 func (_c *AccountCreate) SetType(v string) *AccountCreate {
 	_c.mutation.SetType(v)
@@ -528,6 +542,11 @@ func (_c *AccountCreate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Account.platform": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.ProviderID(); ok {
+		if err := account.ProviderIDValidator(v); err != nil {
+			return &ValidationError{Name: "provider_id", err: fmt.Errorf(`ent: validator failed for field "Account.provider_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.GetType(); !ok {
 		return &ValidationError{Name: "type", err: errors.New(`ent: missing required field "Account.type"`)}
 	}
@@ -620,6 +639,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(account.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
+	}
+	if value, ok := _c.mutation.ProviderID(); ok {
+		_spec.SetField(account.FieldProviderID, field.TypeString, value)
+		_node.ProviderID = &value
 	}
 	if value, ok := _c.mutation.GetType(); ok {
 		_spec.SetField(account.FieldType, field.TypeString, value)
@@ -879,6 +902,24 @@ func (u *AccountUpsert) SetPlatform(v string) *AccountUpsert {
 // UpdatePlatform sets the "platform" field to the value that was provided on create.
 func (u *AccountUpsert) UpdatePlatform() *AccountUpsert {
 	u.SetExcluded(account.FieldPlatform)
+	return u
+}
+
+// SetProviderID sets the "provider_id" field.
+func (u *AccountUpsert) SetProviderID(v string) *AccountUpsert {
+	u.Set(account.FieldProviderID, v)
+	return u
+}
+
+// UpdateProviderID sets the "provider_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateProviderID() *AccountUpsert {
+	u.SetExcluded(account.FieldProviderID)
+	return u
+}
+
+// ClearProviderID clears the value of the "provider_id" field.
+func (u *AccountUpsert) ClearProviderID() *AccountUpsert {
+	u.SetNull(account.FieldProviderID)
 	return u
 }
 
@@ -1374,6 +1415,27 @@ func (u *AccountUpsertOne) SetPlatform(v string) *AccountUpsertOne {
 func (u *AccountUpsertOne) UpdatePlatform() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetProviderID sets the "provider_id" field.
+func (u *AccountUpsertOne) SetProviderID(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProviderID(v)
+	})
+}
+
+// UpdateProviderID sets the "provider_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateProviderID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProviderID()
+	})
+}
+
+// ClearProviderID clears the value of the "provider_id" field.
+func (u *AccountUpsertOne) ClearProviderID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearProviderID()
 	})
 }
 
@@ -2096,6 +2158,27 @@ func (u *AccountUpsertBulk) SetPlatform(v string) *AccountUpsertBulk {
 func (u *AccountUpsertBulk) UpdatePlatform() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetProviderID sets the "provider_id" field.
+func (u *AccountUpsertBulk) SetProviderID(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetProviderID(v)
+	})
+}
+
+// UpdateProviderID sets the "provider_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateProviderID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateProviderID()
+	})
+}
+
+// ClearProviderID clears the value of the "provider_id" field.
+func (u *AccountUpsertBulk) ClearProviderID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearProviderID()
 	})
 }
 

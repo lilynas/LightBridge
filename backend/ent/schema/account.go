@@ -65,6 +65,12 @@ func (Account) Fields() []ent.Field {
 			MaxLen(50).
 			NotEmpty(),
 
+		// provider_id: 模块化 provider 标识。第一版与 platform 并存，用于逐步替代硬编码平台。
+		field.String("provider_id").
+			MaxLen(128).
+			Optional().
+			Nillable(),
+
 		// type: 认证类型，如 "api_key", "oauth", "cookie" 等
 		// 不同类型决定了 credentials 中存储的数据结构
 		field.String("type").
@@ -219,6 +225,7 @@ func (Account) Edges() []ent.Edge {
 func (Account) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("platform"),            // 按平台筛选
+		index.Fields("provider_id"),         // 按模块化 provider 筛选
 		index.Fields("type"),                // 按认证类型筛选
 		index.Fields("status"),              // 按状态筛选
 		index.Fields("proxy_id"),            // 按代理筛选
@@ -229,6 +236,7 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("rate_limit_reset_at"), // 筛选速率限制解除时间
 		index.Fields("overload_until"),      // 筛选过载账户
 		// 调度热路径复合索引（线上由 SQL 迁移创建部分索引，schema 仅用于模型可读性对齐）
+		index.Fields("provider_id", "priority"),
 		index.Fields("platform", "priority"),
 		index.Fields("priority", "status"),
 		index.Fields("deleted_at"), // 软删除查询优化

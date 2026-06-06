@@ -105,6 +105,26 @@ func (_u *AccountUpdate) SetNillablePlatform(v *string) *AccountUpdate {
 	return _u
 }
 
+// SetProviderID sets the "provider_id" field.
+func (_u *AccountUpdate) SetProviderID(v string) *AccountUpdate {
+	_u.mutation.SetProviderID(v)
+	return _u
+}
+
+// SetNillableProviderID sets the "provider_id" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableProviderID(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetProviderID(*v)
+	}
+	return _u
+}
+
+// ClearProviderID clears the value of the "provider_id" field.
+func (_u *AccountUpdate) ClearProviderID() *AccountUpdate {
+	_u.mutation.ClearProviderID()
+	return _u
+}
+
 // SetType sets the "type" field.
 func (_u *AccountUpdate) SetType(v string) *AccountUpdate {
 	_u.mutation.SetType(v)
@@ -645,6 +665,11 @@ func (_u *AccountUpdate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Account.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ProviderID(); ok {
+		if err := account.ProviderIDValidator(v); err != nil {
+			return &ValidationError{Name: "provider_id", err: fmt.Errorf(`ent: validator failed for field "Account.provider_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.GetType(); ok {
 		if err := account.TypeValidator(v); err != nil {
 			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "Account.type": %w`, err)}
@@ -695,6 +720,12 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(account.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProviderID(); ok {
+		_spec.SetField(account.FieldProviderID, field.TypeString, value)
+	}
+	if _u.mutation.ProviderIDCleared() {
+		_spec.ClearField(account.FieldProviderID, field.TypeString)
 	}
 	if value, ok := _u.mutation.GetType(); ok {
 		_spec.SetField(account.FieldType, field.TypeString, value)
@@ -1029,6 +1060,26 @@ func (_u *AccountUpdateOne) SetNillablePlatform(v *string) *AccountUpdateOne {
 	if v != nil {
 		_u.SetPlatform(*v)
 	}
+	return _u
+}
+
+// SetProviderID sets the "provider_id" field.
+func (_u *AccountUpdateOne) SetProviderID(v string) *AccountUpdateOne {
+	_u.mutation.SetProviderID(v)
+	return _u
+}
+
+// SetNillableProviderID sets the "provider_id" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableProviderID(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetProviderID(*v)
+	}
+	return _u
+}
+
+// ClearProviderID clears the value of the "provider_id" field.
+func (_u *AccountUpdateOne) ClearProviderID() *AccountUpdateOne {
+	_u.mutation.ClearProviderID()
 	return _u
 }
 
@@ -1585,6 +1636,11 @@ func (_u *AccountUpdateOne) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Account.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ProviderID(); ok {
+		if err := account.ProviderIDValidator(v); err != nil {
+			return &ValidationError{Name: "provider_id", err: fmt.Errorf(`ent: validator failed for field "Account.provider_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.GetType(); ok {
 		if err := account.TypeValidator(v); err != nil {
 			return &ValidationError{Name: "type", err: fmt.Errorf(`ent: validator failed for field "Account.type": %w`, err)}
@@ -1652,6 +1708,12 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(account.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProviderID(); ok {
+		_spec.SetField(account.FieldProviderID, field.TypeString, value)
+	}
+	if _u.mutation.ProviderIDCleared() {
+		_spec.ClearField(account.FieldProviderID, field.TypeString)
 	}
 	if value, ok := _u.mutation.GetType(); ok {
 		_spec.SetField(account.FieldType, field.TypeString, value)

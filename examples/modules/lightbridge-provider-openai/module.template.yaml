@@ -1,0 +1,50 @@
+apiVersion: lightbridge.dev/modules/v1alpha1
+id: openai
+name: OpenAI Provider
+type: provider
+version: 0.1.0
+description: OpenAI provider module adapted from the legacy sub2API OpenAI implementation.
+core:
+  compatible: ">=0.1.0 <0.2.0"
+backend:
+  kind: sidecar
+  command: ./backend/{{PLATFORM}}/lightbridge-provider-openai
+  protocol: grpc
+  healthcheck:
+    rpc: HealthCheck
+    timeout: 2s
+frontend:
+  kind: vite-remote-esm
+  entry: ./frontend/remoteEntry.js
+  routes:
+    - path: /admin/providers/openai-module
+      title: OpenAI Provider
+      exposedModule: ./OpenAIProviderSettings
+      requiresAdmin: true
+  menu:
+    - title: OpenAI Provider
+      path: /admin/providers/openai-module
+      group: Providers
+      order: 10
+  accountForms:
+    - providerId: openai
+      providerName: OpenAI Provider
+      exposedModule: ./OpenAIAccountForm
+capabilities:
+  - provider.adapter
+  - ui.admin.route
+  - ui.account.form
+permissions:
+  network:
+    - https://api.openai.com/*
+    - https://chatgpt.com/*
+    - https://auth.openai.com/*
+  secrets:
+    - api_key
+    - access_token
+    - refresh_token
+    - id_token
+  database:
+    - provider_openai_*
+migrations: []
+

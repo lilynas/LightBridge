@@ -35,6 +35,20 @@ func (s *GatewayService) ForwardAsChatCompletions(
 ) (*ForwardResult, error) {
 	startTime := time.Now()
 
+	if accountUsesModuleProvider(account) {
+		if !gjson.ValidBytes(body) {
+			return nil, fmt.Errorf("parse chat completions request: invalid json")
+		}
+		moduleParsed, err := moduleForwardParsedRequest(body, parsed)
+		if err != nil {
+			return nil, fmt.Errorf("parse chat completions request: %w", err)
+		}
+		result, handled, err := s.forwardModuleProvider(ctx, c, account, moduleParsed, startTime)
+		if handled {
+			return result, err
+		}
+	}
+
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &ccReq); err != nil {
@@ -192,6 +206,30 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 
 	return result, handleErr
+}
+
+func moduleForwardParsedRequest(body []byte, parsed *ParsedRequest) (*ParsedRequest, error) {
+	out, err := ParseGatewayRequest(body, "chat_completions")
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = &ParsedRequest{}
+	}
+	if parsed != nil {
+		out.SessionContext = parsed.SessionContext
+		out.GroupID = parsed.GroupID
+		out.OnUpstreamAccepted = parsed.OnUpstreamAccepted
+	}
+	out.Body = body
+	if strings.TrimSpace(out.Protocol) == "" {
+		out.Protocol = "chat_completions"
+	}
+	if strings.TrimSpace(out.Model) == "" {
+		out.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	}
+	out.Stream = gjson.GetBytes(body, "stream").Bool()
+	return out, nil
 }
 
 // extractCCReasoningEffortFromBody reads reasoning effort from a Chat Completions

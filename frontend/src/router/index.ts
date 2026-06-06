@@ -12,6 +12,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveDocumentTitle } from './title'
+import { ensureModuleRoutesRegistered } from './moduleRoutes'
 
 /**
  * Route definitions with lazy loading
@@ -549,6 +550,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/modules',
+    name: 'AdminModules',
+    component: () => import('@/views/admin/ModulesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Modules',
+      titleKey: 'nav.modules'
+    }
+  },
+  {
     path: '/admin/version-control',
     name: 'AdminVersionControl',
     component: () => import('@/views/admin/VersionControlView.vue'),
@@ -817,6 +829,19 @@ router.beforeEach(async (to, _from, next) => {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
     return
+  }
+
+  if (authStore.isAdmin && to.path.startsWith('/admin/')) {
+    try {
+      const hadRoute = to.matched.some((record) => record.name !== 'NotFound')
+      await ensureModuleRoutesRegistered(router)
+      if (!hadRoute && router.resolve(to.fullPath).matched.some((record) => record.name !== 'NotFound')) {
+        next(to.fullPath)
+        return
+      }
+    } catch (error) {
+      console.warn('Failed to register module routes:', error)
+    }
   }
 
 

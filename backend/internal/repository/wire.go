@@ -7,6 +7,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/LightBridge/ent"
 	"github.com/Wei-Shaw/LightBridge/internal/config"
+	"github.com/Wei-Shaw/LightBridge/internal/modules"
 	"github.com/Wei-Shaw/LightBridge/internal/service"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -93,6 +94,8 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
 	NewAffiliateRepository,
+	NewModuleStore,
+	wire.Bind(new(modules.Store), new(*ModuleStore)),
 	NewUserPlatformQuotaRepository,     // T14: user × platform quota
 	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
 

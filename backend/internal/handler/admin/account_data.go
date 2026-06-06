@@ -50,6 +50,7 @@ type DataAccount struct {
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes,omitempty"`
 	Platform           string         `json:"platform"`
+	ProviderID         string         `json:"provider_id,omitempty"`
 	Type               string         `json:"type"`
 	Credentials        map[string]any `json:"credentials"`
 	Extra              map[string]any `json:"extra,omitempty"`
@@ -154,6 +155,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Name:               acc.Name,
 			Notes:              acc.Notes,
 			Platform:           acc.Platform,
+			ProviderID:         acc.ProviderID,
 			Type:               acc.Type,
 			Credentials:        acc.Credentials,
 			Extra:              acc.Extra,
@@ -308,6 +310,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Name:                 item.Name,
 			Notes:                item.Notes,
 			Platform:             item.Platform,
+			ProviderID:           item.ProviderID,
 			Type:                 item.Type,
 			Credentials:          item.Credentials,
 			Extra:                item.Extra,

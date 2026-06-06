@@ -65,6 +65,7 @@ type SessionContext struct {
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
 	Body            []byte          // 原始请求体（保留用于转发）
+	Protocol        string          // 下游入口协议/端点族
 	Model           string          // 请求的模型名称
 	Stream          bool            // 是否为流式请求
 	MetadataUserID  string          // metadata.user_id（用于会话亲和）
@@ -143,7 +144,8 @@ func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
 	jsonStr := *(*string)(unsafe.Pointer(&body))
 
 	parsed := &ParsedRequest{
-		Body: body,
+		Body:     body,
+		Protocol: strings.TrimSpace(protocol),
 	}
 
 	// --- gjson 提取简单字段（避免完整 Unmarshal） ---

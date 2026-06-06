@@ -344,7 +344,15 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <CreateAccountModal
+      :show="showCreate"
+      :proxies="proxies"
+      :groups="groups"
+      :provider-account-forms="providerAccountForms"
+      :default-module-provider-id="defaultModuleProviderId"
+      @close="showCreate = false"
+      @created="reload"
+    />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
@@ -381,9 +389,11 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import modulesAPI, { type ModuleFrontendAccountForm } from '@/api/admin/modules'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -417,11 +427,14 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
+const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const providerAccountForms = ref<ModuleFrontendAccountForm[]>([])
+const defaultModuleProviderId = ref('')
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -483,6 +496,43 @@ const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
 const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
+
+watch(showCreate, (open) => {
+  if (open) {
+    void loadProviderAccountForms()
+  }
+})
+
+watch(
+  () => route.query,
+  () => openCreateFromQuery(),
+  { immediate: true }
+)
+
+async function loadProviderAccountForms() {
+  try {
+    providerAccountForms.value = await modulesAPI.listProviderAccountForms()
+  } catch {
+    providerAccountForms.value = []
+  }
+}
+
+function readQueryString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : ''
+  }
+  return typeof value === 'string' ? value : ''
+}
+
+function openCreateFromQuery() {
+  const createMode = readQueryString(route.query.create)
+  const providerId = readQueryString(route.query.module_provider_id) || readQueryString(route.query.provider_id)
+  if (createMode !== 'module-account' && !providerId) {
+    return
+  }
+  defaultModuleProviderId.value = providerId
+  showCreate.value = true
+}
 const statsAcc = ref<Account | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)

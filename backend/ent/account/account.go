@@ -27,6 +27,8 @@ const (
 	FieldNotes = "notes"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
+	// FieldProviderID holds the string denoting the provider_id field in the database.
+	FieldProviderID = "provider_id"
 	// FieldType holds the string denoting the type field in the database.
 	FieldType = "type"
 	// FieldCredentials holds the string denoting the credentials field in the database.
@@ -118,6 +120,7 @@ var Columns = []string{
 	FieldName,
 	FieldNotes,
 	FieldPlatform,
+	FieldProviderID,
 	FieldType,
 	FieldCredentials,
 	FieldExtra,
@@ -176,6 +179,8 @@ var (
 	NameValidator func(string) error
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	PlatformValidator func(string) error
+	// ProviderIDValidator is a validator for the "provider_id" field. It is called by the builders before save.
+	ProviderIDValidator func(string) error
 	// TypeValidator is a validator for the "type" field. It is called by the builders before save.
 	TypeValidator func(string) error
 	// DefaultCredentials holds the default value on creation for the "credentials" field.
@@ -236,6 +241,11 @@ func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 // ByPlatform orders the results by the platform field.
 func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
+}
+
+// ByProviderID orders the results by the provider_id field.
+func ByProviderID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProviderID, opts...).ToFunc()
 }
 
 // ByType orders the results by the type field.

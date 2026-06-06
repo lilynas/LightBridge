@@ -72,7 +72,146 @@ cd backend && golangci-lint run ./...
 cd frontend && pnpm install
 ```
 
-## 四、常见坑点 & 解决方案
+## 四、模块化开发硬规则
+
+LightBridge 的长期方向是微内核 + 可下载模块。开发时必须按下面规则切分，避免把模块化做成“核心内置代码 + 开关隐藏”的伪模块化。
+
+模块化专题文档入口：
+
+| 文档 | 用途 |
+|------|------|
+| `docs/modules/README.md` | 模块化总览、Core 边界、生命周期、第一阶段开发顺序 |
+| `docs/modules/package-spec.md` | 模块包目录、`module.yaml`、checksum/signature、状态机、人工验包清单 |
+| `docs/modules/backend-plugin-protocol.md` | sidecar runtime、ProviderAdapter RPC、GatewayRequest/Event、CoreBridge |
+| `docs/modules/frontend-extension-protocol.md` | UI manifest、动态路由、菜单、账号表单 contribution、remote 失败兜底 |
+| `docs/modules/provider-sdk.md` | provider 模块开发教程、mock provider、本地打包安装和 streaming 验证 |
+| `docs/modules/migrations-and-data.md` | 模块 migration 规则、私有表命名、卸载和 purge 数据策略 |
+| `docs/modules/security-permissions.md` | permissions 声明、审批、secret 读取、审计和 MVP sandbox 边界 |
+| `docs/modules/testing.md` | core no-provider、模块安装、sidecar crash、remote UI failure 测试矩阵 |
+| `docs/modules/runbooks.md` | 安装失败、签名失败、sidecar 启动失败、迁移失败、provider unhealthy 排查 |
+
+推荐执行顺序固定为：
+
+```text
+module schema
+  -> installer
+  -> supervisor
+  -> provider protocol
+  -> provider registry
+  -> UI manifest
+  -> sample/mock provider
+```
+
+任何实现变更如果改变接口名、状态名、API 路径、表名、错误码或模块包字段，必须同步更新 `docs/modules/` 对应专题文档。
+
+### 1. Core 只保留稳定内核
+
+- Core 可以定义协议、扩展点、生命周期、权限声明、审计和调度流程。
+- Core 不允许新增 provider 专属分支，例如 `if provider == "openai"`、`if provider == "anthropic"`。
+- Core 网关只面向统一的 `ProviderAdapter`、routing policy、gateway hook 等抽象。
+- 新 provider 必须通过模块安装、manifest 声明、sidecar adapter 注册和动态 UI 挂载接入。
+
+### 2. Provider 代码必须在模块中
+
+新增 provider 时，最小交付物是：
+
+- `module.yaml`
+- `checksums.txt`
+- provider sidecar backend
+- provider settings frontend remote
+- manifest 引用的 migrations
+- provider adapter 协议测试
+
+不要在核心前端预置 provider 配置页；provider settings 必须来自 `/api/v1/modules/ui-manifest` 和动态 remote module。
+
+### 3. 模块包必须自描述且可校验
+
+模块包必须使用 `lightbridge-module-<module-id>-<version>.tar.zst` 格式，并且必须包含 `module.yaml`、`checksums.txt` 与 `signature.sig`。`module.yaml` 中声明的 `backend.command`、`frontend.entry`、`migrations` 文件必须真实存在于包内，并且全部出现在 `checksums.txt` 中。
+
+模块市场第一阶段使用静态 JSON registry。Core 从 `modules.marketplace_registry_path` 或 `modules.marketplace_registry_url` 读取 registry；如果两者都配置，本地 path 优先。registry entry 必须声明 `id`、`version`、`type`、`core`、`downloadUrl`、`capabilities`，并且 capability 必须在 MVP allowlist 内。
+
+`downloadUrl` 支持本地路径、`file://`、`http://`、`https://`。registry `sha256` 校验的是整个归档包字节；包内 `checksums.txt` 校验的是展开后的模块文件。marketplace 安装顺序固定为：读取 registry → 校验 entry → 下载/复制归档 → 可选 registry SHA256 → 进入包安装器 → 校验 `module.yaml`/`checksums.txt`/`signature.sig`/manifest 引用文件/迁移边界。
+
+当前 checksum 行格式固定为：
+
+```text
+sha256 <hex> <relative-path>
+```
+
+路径必须是模块包内相对路径，不能是绝对路径，也不能逃逸到 `../`。
+
+`signature.sig` 必须签名原始 `checksums.txt` 字节。Core 通过 `modules.signature_public_key_path` 配置受信 Ed25519 公钥；未配置或签名不匹配时，模块安装必须失败。
+
+### 4. 数据库边界
+
+- 模块自有表必须使用模块私有前缀，例如 `provider_openai_*`。
+- 不要修改已经应用或已经发布的 migration。需要修正时新增 migration，并在提交说明里写清楚原因。
+- 模块迁移不能直接修改核心表，除非有明确的核心扩展点和 migration review。
+- 安装器会静态检查 migration SQL 中的 `CREATE/ALTER/DROP TABLE`、`CREATE INDEX`、`COMMENT ON TABLE/COLUMN`、`INSERT/UPDATE/DELETE/TRUNCATE`、`REFERENCES` 目标表；任何不匹配 `permissions.database` 前缀的表都必须拒绝安装。
+- `core.compatible` 是强约束。服务启动时注入当前 `BuildInfo.Version`，安装器必须拒绝不兼容 core 版本的模块包。
+- provider 实例统一写入 `ai_provider_instances`，不要重新引入旧名 `provider_instances`。
+- `Disable` 只停 runtime 和 UI/API 注册，保留数据。
+- `Uninstall` 停 runtime，安全删除 `<modules.data_dir>/modules/<module-id>/<version>` 下的模块文件，保留数据库数据和 migration 记录。
+- `Purge` 必须是显式用户动作；它先删除 manifest `permissions.database` 前缀匹配的模块私有表，再删除模块文件并标记为 `purged`。Purge 不能删除核心表。
+
+### 5. 权限与安全
+
+- `permissions` 是 declaration / approval / audit 的基础，不代表已经完成进程级沙箱。
+- MVP 阶段必须记录模块声明了哪些 network、secrets、database、ui、gateway 权限。
+- 任何读取 secret、发起外部网络、挂载登录流程、注册 gateway hook 的能力都必须先在 manifest 中声明。
+- 模块之间不能直接互相调用，也不能直接读取其他模块数据；跨模块协作必须通过 Core Service API。
+
+### 6. 后端接入规则
+
+- sidecar 是第一阶段唯一允许的 backend kind。
+- Core 通过 runtime 启动 sidecar，并把 sidecar 包装成核心内部的 adapter。
+- gateway/core 只能依赖 `ProviderRegistry.Resolve()` 得到统一 adapter，不能知道具体 provider 实现。
+- 模块 provider 账号必须显式使用 `type=module`，新账号应使用 `platform=module`，并同时提交 `provider_id`、`extra.provider_id`、`extra.module_id`。
+- `platform=module` 只是账号分类标记，不能当作 provider ID。缺少 `provider_id` 的模块账号必须报错。
+- 模块账号解析不到已注册 provider 时必须返回 provider-module 错误，不能回落到旧 Claude/Anthropic/OpenAI 分支。
+- 当前 Ent schema 已有 `accounts.provider_id`，但生成代码若未更新，仓储层必须继续以 `extra.provider_id` 作为兼容 source of truth。只有 `go generate ./ent` 成功生成 `ProviderID` / `SetProviderID` 后，才能改为强列读写。
+- 如果 Wire 生成因为网络、代理或依赖下载失败无法运行，可以手动同步 `wire_gen.go`，但必须在提交说明或开发记录里写清楚原因。
+
+### 7. 前端接入规则
+
+- 主前端只保留 Shell、基础登录、基础设置、模块市场、模块管理和动态路由挂载器。
+- 模块菜单、后台页面、账号配置表单必须来自 UI manifest。
+- 不允许为了某个 provider 在核心 sidebar、router、views 中写死页面。
+- provider frontend remote 必须暴露 manifest 中声明的 `exposedModule`。
+
+### 8. 第一阶段范围
+
+第一阶段只把 provider 模块 MVP 打通：
+
+- 模块安装、签名校验、checksum 校验、migration runner、权限声明/审批。
+- marketplace registry 读取、local/file/http/https 包下载、registry archive SHA256 校验。
+- sidecar provider runtime、启动恢复、runtime 状态与 stdout/stderr 日志。
+- `ProviderRegistry`、模块 provider gateway bridge、模块账号测试 bridge。
+- UI manifest、动态后台路由、动态 provider 账号表单挂载。
+- 模块账号契约：`platform=module`、`type=module`、`provider_id`、`extra.provider_id`、`extra.module_id`。
+
+下面内容不是第一阶段完成条件：
+
+- 发布密钥轮换与远程 registry trust policy
+- Auth extension / 2FA / Passkey
+- 把所有旧 provider 代码从 Core 中删除
+- 进程级网络与文件系统沙箱
+
+### 9. Provider 模块验证命令
+
+优先跑小范围验证，避免在当前大包上触发长时间无输出的包加载：
+
+```bash
+cd backend
+go test ./internal/modules -count=1 -timeout=90s
+go test ./internal/repository -run 'TestModuleStore' -count=1 -timeout=90s
+go test ./internal/service -run 'TestProviderModuleBridge' -count=1 -timeout=90s
+go generate ./ent
+```
+
+如果 `go test ./internal/repository`、`go test ./internal/service` 或 `go generate ./ent` 超过 30 秒没有任何输出，先终止并记录为环境/包加载阻塞，不要继续并行启动新的 Go 命令。当前 provider bridge 可以先依赖 `extra.provider_id` 兼容层继续开发。
+
+## 五、常见坑点 & 解决方案
 
 ### 坑 1：pnpm-lock.yaml 必须同步提交
 
@@ -243,7 +382,7 @@ git add ent/       # 生成的文件也要提交
 - [ ] 所有 test stub 补全新接口方法（如果改了 interface）
 - [ ] Ent 生成的代码已提交（如果改了 schema）
 
-## 五、常用命令速查
+## 六、常用命令速查
 
 ### 数据库操作
 
@@ -310,7 +449,7 @@ go test -tags=integration ./...
 golangci-lint run ./...
 ```
 
-## 六、项目结构速览
+## 七、项目结构速览
 
 ```
 LightBridge-bmai/
@@ -338,7 +477,7 @@ LightBridge-bmai/
     └── CLAUDE.md            # 本文档
 ```
 
-## 七、参考资源
+## 八、参考资源
 
 - [上游仓库](https://github.com/WilliamWang1721/LightBridge)
 - [Ent 文档](https://entgo.io/docs/getting-started)
