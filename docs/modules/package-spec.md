@@ -173,12 +173,16 @@ The public key may be raw 32-byte content, hex, base64, or a PEM block containin
 
 The first marketplace implementation reads a static JSON registry from either `modules.marketplace_registry_path` or `modules.marketplace_registry_url`. If both are set, the local file path wins. If neither is set, `GET /api/v1/admin/modules/marketplace` returns an empty module list.
 
-Registry URLs must use `http` or `https`. Package `downloadUrl` values may use:
+Registry URLs must use `http` or `https`. Published package `downloadUrl`
+values must also use `http` or `https`. Local paths are reserved for smoke
+tests and development-only registries.
+
+Package `downloadUrl` values may use:
 
 | Scheme | Meaning |
 | --- | --- |
-| local path | Copy a package already available to the Core process. |
-| `file://` | Copy a package from the local filesystem. |
+| local path | Copy a package already available to the Core process for smoke tests only. |
+| `file://` | Copy a package from the local filesystem for smoke tests only. |
 | `http://` / `https://` | Download a package with `modules.marketplace_timeout_seconds`. |
 
 Example registry:
@@ -187,12 +191,12 @@ Example registry:
 {
   "modules": [
     {
-      "id": "lightbridge.provider.openai-api",
+      "id": "openai",
       "version": "0.1.0",
       "type": "provider",
-      "name": "OpenAI API Provider",
-      "description": "OpenAI-compatible upstream provider using API keys.",
-      "downloadUrl": "file:///data/module-packages/lightbridge-module-lightbridge.provider.openai-api-0.1.0.tar.zst",
+      "name": "OpenAI Provider",
+      "description": "OpenAI provider module adapted from the legacy Sub2API OpenAI implementation.",
+      "downloadUrl": "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/lightbridge-module-openai-0.1.0.tar.zst",
       "sha256": "9a8d4f6f0a5f4c2d8b1e4f6a4d1d8f0e9c7b6a5d4c3b2a190817263544332211",
       "signature": "optional-registry-metadata-signature",
       "core": ">=0.1.0 <0.2.0",

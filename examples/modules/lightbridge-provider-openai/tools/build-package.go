@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,9 +22,10 @@ import (
 )
 
 const (
-	moduleID      = "openai"
-	moduleName    = "OpenAI Provider"
-	moduleVersion = "0.1.0"
+	moduleID              = "openai"
+	moduleName            = "OpenAI Provider"
+	moduleVersion         = "0.1.0"
+	defaultReleaseBaseURL = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606"
 )
 
 func main() {
@@ -48,7 +50,7 @@ func main() {
 	must(err)
 	must(os.WriteFile(filepath.Join(stageDir, "checksums.txt"), checksums, 0o644))
 
-	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	publicKey, privateKey, err := loadSigningKey()
 	must(err)
 	signature := ed25519.Sign(privateKey, checksums)
 	must(os.WriteFile(filepath.Join(stageDir, "signature.sig"), []byte(hex.EncodeToString(signature)+"\n"), 0o644))
@@ -119,10 +121,7 @@ func buildChecksums(stageDir string) ([]byte, error) {
 }
 
 func writeRegistry(distDir, archivePath, archiveSHA string) error {
-	absArchive, err := filepath.Abs(archivePath)
-	if err != nil {
-		return err
-	}
+	downloadURL := moduleDownloadURL(archivePath)
 	registry := map[string]any{
 		"modules": []map[string]any{{
 			"id":          moduleID,
@@ -130,7 +129,7 @@ func writeRegistry(distDir, archivePath, archiveSHA string) error {
 			"type":        "provider",
 			"name":        moduleName,
 			"description": "OpenAI provider module adapted from the legacy sub2API OpenAI implementation.",
-			"downloadUrl": "file://" + absArchive,
+			"downloadUrl": downloadURL,
 			"sha256":      archiveSHA,
 			"core":        ">=0.1.0 <0.2.0",
 			"capabilities": []string{
@@ -159,6 +158,58 @@ func writeRegistry(distDir, archivePath, archiveSHA string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(distDir, "registry.json"), append(data, '\n'), 0o644)
+}
+
+func moduleDownloadURL(archivePath string) string {
+	if raw := strings.TrimSpace(os.Getenv("LIGHTBRIDGE_MODULE_DOWNLOAD_URL")); raw != "" {
+		return validateRemoteDownloadURL(raw)
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("LIGHTBRIDGE_MODULE_RELEASE_BASE_URL")), "/")
+	if baseURL == "" {
+		baseURL = defaultReleaseBaseURL
+	}
+	return validateRemoteDownloadURL(baseURL + "/" + filepath.Base(archivePath))
+}
+
+func validateRemoteDownloadURL(raw string) string {
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("LIGHTBRIDGE_MODULE_ALLOW_LOCAL_REGISTRY")), "1") {
+		return raw
+	}
+	must(fmt.Errorf("module registry downloadUrl must be http(s); got %q. Set LIGHTBRIDGE_MODULE_ALLOW_LOCAL_REGISTRY=1 only for local smoke tests", raw))
+	return ""
+}
+
+func loadSigningKey() (ed25519.PublicKey, ed25519.PrivateKey, error) {
+	if raw := strings.TrimSpace(os.Getenv("LIGHTBRIDGE_MODULE_SIGNING_PRIVATE_KEY")); raw != "" {
+		privateKey, err := parseEd25519PrivateKey(raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		return privateKey.Public().(ed25519.PublicKey), privateKey, nil
+	}
+	return ed25519.GenerateKey(rand.Reader)
+}
+
+func parseEd25519PrivateKey(raw string) (ed25519.PrivateKey, error) {
+	raw = strings.TrimPrefix(strings.TrimSpace(raw), "ed25519:")
+	if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) == ed25519.PrivateKeySize {
+		return ed25519.PrivateKey(decoded), nil
+	}
+	encodings := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+	for _, encoding := range encodings {
+		if decoded, err := encoding.DecodeString(raw); err == nil && len(decoded) == ed25519.PrivateKeySize {
+			return ed25519.PrivateKey(decoded), nil
+		}
+	}
+	return nil, fmt.Errorf("LIGHTBRIDGE_MODULE_SIGNING_PRIVATE_KEY must be a 64-byte Ed25519 private key encoded as hex or base64")
 }
 
 func writeArchive(stageDir, archivePath string) error {

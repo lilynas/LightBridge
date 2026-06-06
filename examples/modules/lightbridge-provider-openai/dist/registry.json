@@ -1,0 +1,35 @@
+{
+  "modules": [
+    {
+      "capabilities": [
+        "provider.adapter",
+        "ui.admin.route",
+        "ui.account.form"
+      ],
+      "core": "\u003e=0.1.0 \u003c0.2.0",
+      "description": "OpenAI provider module adapted from the legacy sub2API OpenAI implementation.",
+      "downloadUrl": "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/lightbridge-module-openai-0.1.0.tar.zst",
+      "id": "openai",
+      "name": "OpenAI Provider",
+      "permissions": {
+        "database": [
+          "provider_openai_*"
+        ],
+        "network": [
+          "https://api.openai.com/*",
+          "https://chatgpt.com/*",
+          "https://auth.openai.com/*"
+        ],
+        "secrets": [
+          "api_key",
+          "access_token",
+          "refresh_token",
+          "id_token"
+        ]
+      },
+      "sha256": "210a26e48c9e7b254fd43e1a99e2dce6aa527399d92b6c343f8dfad1e021adb3",
+      "type": "provider",
+      "version": "0.1.0"
+    }
+  ]
+}

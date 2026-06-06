@@ -5,7 +5,7 @@ It is intentionally deterministic: it does not call any upstream provider, but i
 exercises the marketplace, installer, permission approval, provider sidecar,
 dynamic admin route, sidebar menu, and module account form.
 
-## Build A Local Package
+## Build A Release Package
 
 From this directory:
 
@@ -19,7 +19,32 @@ The command creates:
 - `dist/registry.json`
 - `dist/ed25519.pub`
 
-Configure LightBridge Core with:
+The generated registry uses the GitHub release asset URL by default. Override
+the release base URL only when publishing to another release:
+
+```sh
+LIGHTBRIDGE_MODULE_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/<tag> \
+  go run ./tools/build-package.go
+```
+
+Local `file://` or absolute-path registry entries are blocked by default. For
+local smoke tests only:
+
+```sh
+LIGHTBRIDGE_MODULE_ALLOW_LOCAL_REGISTRY=1 \
+LIGHTBRIDGE_MODULE_DOWNLOAD_URL=file:///absolute/path/to/lightbridge-module-lightbridge.provider.mock-0.1.0.tar.zst \
+  go run ./tools/build-package.go
+```
+
+Configure LightBridge Core from GitHub with:
+
+```yaml
+modules:
+  signature_public_key_path: /absolute/path/to/ed25519.pub
+  marketplace_registry_url: https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/registry.json
+```
+
+Or configure a local smoke-test registry with:
 
 ```yaml
 modules:
@@ -51,8 +76,9 @@ cd ../../../backend
 go test ./internal/modules -run 'TestPackageInstallerInstallsMockProviderExamplePackage|TestGRPCProviderAdapterTalksToMockProviderExampleSidecar' -count=1 -timeout=90s
 ```
 
-The generated `dist/registry.json` and `dist/ed25519.pub` are local smoke-test
-artifacts. They are intentionally regenerated instead of committed.
+The generated `dist/registry.json` uses a remote release URL unless local
+registry mode is explicitly enabled. The package and public key are regenerated
+for each build.
 
 For a full manual smoke test, configure Core with the generated registry and
 public key, restart Core, then verify:
