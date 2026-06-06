@@ -2315,7 +2315,7 @@
         v-if="!authStore.isSimpleMode"
         v-model="form.group_ids"
         :groups="groups"
-        :platform="account?.platform"
+        :platform="groupSelectorPlatform(account?.platform)"
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
       />
@@ -2385,6 +2385,7 @@ import type {
   Proxy,
   AdminGroup,
   CheckMixedChannelResponse,
+  AccountPlatform,
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability
@@ -3544,6 +3545,10 @@ function toPositiveNumber(value: unknown) {
 }
 
 const needsMixedChannelCheck = () => props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic'
+
+function groupSelectorPlatform(platform?: AccountPlatform) {
+  return platform === 'module' ? undefined : platform
+}
 
 const buildMixedChannelDetails = (resp?: CheckMixedChannelResponse) => {
   const details = resp?.details

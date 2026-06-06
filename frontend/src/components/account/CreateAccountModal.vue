@@ -150,8 +150,41 @@
         </div>
       </div>
 
+      <div v-if="validModuleProviderForms.length" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+        <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <input
+            v-model="useModuleProviderForm"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span>{{ t('admin.accounts.useInstalledProviderModule') }}</span>
+        </label>
+        <div v-if="useModuleProviderForm" class="mt-3 space-y-3">
+          <select v-model="selectedModuleProviderId" class="input w-full">
+            <option value="">{{ t('admin.accounts.selectInstalledProvider') }}</option>
+            <option
+              v-for="providerForm in validModuleProviderForms"
+              :key="providerForm.providerId"
+              :value="providerForm.providerId"
+            >
+              {{ providerForm.providerName || providerForm.providerId }}
+            </option>
+          </select>
+          <ModuleAccountFormHost
+            v-if="selectedModuleProviderForm?.remoteEntry"
+            :provider-id="selectedModuleProviderForm.providerId"
+            :module-id="selectedModuleProviderForm.moduleId"
+            :module-version="selectedModuleProviderForm.moduleVersion"
+            :remote-entry="selectedModuleProviderForm.remoteEntry"
+            :exposed-module="selectedModuleProviderForm.exposedModule"
+            @submit="handleModuleProviderSubmit"
+            @cancel="handleModuleProviderCancel"
+          />
+        </div>
+      </div>
+
       <!-- Account Type Selection (Anthropic) -->
-      <div v-if="form.platform === 'anthropic'">
+      <div v-if="!useModuleProviderForm && form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
         <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="account-form-type">
           <button
@@ -281,7 +314,7 @@
       </div>
 
       <!-- Account Type Selection (OpenAI) -->
-      <div v-if="form.platform === 'openai'">
+      <div v-if="!useModuleProviderForm && form.platform === 'openai'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
         <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
@@ -340,7 +373,7 @@
       </div>
 
       <!-- Account Type Selection (Gemini) -->
-      <div v-if="form.platform === 'gemini'">
+      <div v-if="!useModuleProviderForm && form.platform === 'gemini'">
         <div class="flex items-center justify-between">
           <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
           <button
@@ -2843,7 +2876,7 @@
           v-if="!authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
-          :platform="form.platform"
+          :platform="groupSelectorPlatform(form.platform)"
           :mixed-scheduling="mixedScheduling"
           data-tour="account-form-groups"
         />
@@ -3251,6 +3284,8 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import ModuleAccountFormHost from '@/components/modules/ModuleAccountFormHost.vue'
+import type { ModuleFrontendAccountForm } from '@/api/admin/modules'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -3293,6 +3328,8 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  providerAccountForms?: ModuleFrontendAccountForm[]
+  defaultModuleProviderId?: string
 }
 
 const props = defineProps<Props>()
@@ -3685,6 +3722,44 @@ const form = reactive({
   expires_at: null as number | null
 })
 
+const useModuleProviderForm = ref(false)
+const selectedModuleProviderId = ref('')
+const isValidModuleProviderForm = (item: ModuleFrontendAccountForm) => {
+  const moduleId = item.moduleId || item.providerId
+  return typeof item.providerId === 'string' &&
+    item.providerId.length > 0 &&
+    typeof moduleId === 'string' &&
+    moduleId.length > 0 &&
+    item.providerId === moduleId &&
+    (item.moduleVersion === undefined || typeof item.moduleVersion === 'string') &&
+    typeof item.remoteEntry === 'string' &&
+    item.remoteEntry.length > 0 &&
+    typeof item.exposedModule === 'string' &&
+    item.exposedModule.startsWith('./')
+}
+const validModuleProviderForms = computed(() => {
+  const seen = new Set<string>()
+  const providerForms = Array.isArray(props.providerAccountForms) ? props.providerAccountForms : []
+  return providerForms
+    .filter(isValidModuleProviderForm)
+    .filter((item) => !seen.has(item.providerId) && seen.add(item.providerId))
+})
+const selectedModuleProviderForm = computed(() => {
+  return validModuleProviderForms.value.find(item => item.providerId === selectedModuleProviderId.value)
+})
+
+function applyDefaultModuleProviderId() {
+  if (!props.show || !props.defaultModuleProviderId) {
+    return
+  }
+  const providerForm = validModuleProviderForms.value.find(item => item.providerId === props.defaultModuleProviderId)
+  if (!providerForm) {
+    return
+  }
+  useModuleProviderForm.value = true
+  selectedModuleProviderId.value = providerForm.providerId
+}
+
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
   // Antigravity upstream 类型不需要 OAuth 流程
@@ -3746,10 +3821,17 @@ watch(
         antigravityModelMappings.value = []
         antigravityModelRestrictionMode.value = 'mapping'
       }
+      applyDefaultModuleProviderId()
     } else {
       resetForm()
     }
   }
+)
+
+watch(
+  [validModuleProviderForms, () => props.defaultModuleProviderId],
+  () => applyDefaultModuleProviderId(),
+  { immediate: true }
 )
 
 // Sync form.type based on accountCategory, addMethod, and platform-specific type
@@ -4455,6 +4537,15 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (useModuleProviderForm.value) {
+    if (!selectedModuleProviderForm.value) {
+      appStore.showError(t('admin.accounts.selectInstalledProviderModule'))
+      return
+    }
+    appStore.showError(t('admin.accounts.completeProviderModuleForm'))
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!form.name.trim()) {
@@ -4696,6 +4787,135 @@ const handleValidateRefreshToken = (rt: string) => {
   } else if (form.platform === 'antigravity') {
     handleAntigravityValidateRT(rt)
   }
+}
+
+const moduleProviderNumberValue = (
+  data: Record<string, unknown>,
+  snakeKey: string,
+  camelKey: string,
+  fallback: number | null | undefined
+) => {
+  const value = data[snakeKey] ?? data[camelKey]
+  const resolved = typeof value === 'number' ? value : fallback
+  return resolved === null ? undefined : resolved
+}
+
+function groupSelectorPlatform(platform: AccountPlatform) {
+  return platform === 'module' ? undefined : platform
+}
+
+const moduleProviderBooleanValue = (
+  data: Record<string, unknown>,
+  snakeKey: string,
+  camelKey: string,
+  fallback: boolean
+) => {
+  const value = data[snakeKey] ?? data[camelKey]
+  return typeof value === 'boolean' ? value : fallback
+}
+
+const moduleProviderGroupIDsValue = (
+  data: Record<string, unknown>,
+  fallback: number[]
+) => {
+  const value = data.group_ids ?? data.groupIds
+  return Array.isArray(value) ? value.filter((id): id is number => typeof id === 'number') : fallback
+}
+
+const moduleProviderObjectValue = (
+  data: Record<string, unknown>,
+  snakeKey: string,
+  camelKey: string
+) => {
+  const value = data[snakeKey] ?? data[camelKey]
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+const handleModuleProviderSubmit = async (payload: unknown) => {
+  const selected = selectedModuleProviderForm.value
+  if (!selected) {
+    appStore.showError(t('admin.accounts.selectInstalledProviderModule'))
+    return
+  }
+  const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
+  const credentials = (data.credentials && typeof data.credentials === 'object'
+    ? data.credentials
+    : moduleProviderCredentialsFromPayload(data)) as Record<string, unknown>
+  const extra = (data.extra && typeof data.extra === 'object' ? data.extra : {}) as Record<string, unknown>
+  const moduleId = selected.moduleId || selected.providerId
+  const moduleConfig = moduleProviderObjectValue(data, 'module_config', 'moduleConfig')
+  if (moduleConfig) {
+    extra.module_config = moduleConfig
+  }
+  extra.provider_id = selected.providerId
+  extra.module_id = moduleId
+  await submitCreateAccount({
+    name: String(data.name || form.name || selected.providerName || selected.providerId),
+    notes: String(data.notes || form.notes || ''),
+    platform: 'module' as AccountPlatform,
+    provider_id: selected.providerId,
+    type: 'module' as AccountType,
+    credentials,
+    extra,
+    proxy_id: moduleProviderNumberValue(data, 'proxy_id', 'proxyId', form.proxy_id),
+    concurrency: moduleProviderNumberValue(data, 'concurrency', 'concurrency', form.concurrency),
+    load_factor: moduleProviderNumberValue(data, 'load_factor', 'loadFactor', form.load_factor ?? undefined),
+    priority: moduleProviderNumberValue(data, 'priority', 'priority', form.priority),
+    rate_multiplier: moduleProviderNumberValue(data, 'rate_multiplier', 'rateMultiplier', form.rate_multiplier),
+    group_ids: moduleProviderGroupIDsValue(data, form.group_ids),
+    expires_at: moduleProviderNumberValue(data, 'expires_at', 'expiresAt', form.expires_at),
+    auto_pause_on_expired: moduleProviderBooleanValue(
+      data,
+      'auto_pause_on_expired',
+      'autoPauseOnExpired',
+      autoPauseOnExpired.value
+    )
+  })
+}
+
+const handleModuleProviderCancel = () => {
+  useModuleProviderForm.value = false
+  selectedModuleProviderId.value = ''
+}
+
+const moduleProviderCredentialsFromPayload = (data: Record<string, unknown>): Record<string, unknown> => {
+  const credentials: Record<string, unknown> = {}
+  const reservedKeys = new Set([
+    'name',
+    'notes',
+    'type',
+    'credentials',
+    'extra',
+    'module_config',
+    'moduleConfig',
+    'platform',
+    'provider_id',
+    'providerId',
+    'module_id',
+    'moduleId',
+    'proxy_id',
+    'proxyId',
+    'concurrency',
+    'load_factor',
+    'loadFactor',
+    'priority',
+    'rate_multiplier',
+    'rateMultiplier',
+    'group_ids',
+    'groupIds',
+    'expires_at',
+    'expiresAt',
+    'auto_pause_on_expired',
+    'autoPauseOnExpired'
+  ])
+  for (const [key, value] of Object.entries(data)) {
+    if (!reservedKeys.has(key)) {
+      credentials[key] = value
+    }
+  }
+  return credentials
 }
 
 const handleValidateSessionToken = (_sessionToken: string) => {

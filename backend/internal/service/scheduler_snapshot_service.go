@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -390,6 +391,18 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		}
 	}
 
+	var firstErr error
+	for _, account := range accounts {
+		if account == nil || account.ID <= 0 {
+			continue
+		}
+		accountGroupIDs := append([]int64{}, preloadGroupIDs...)
+		accountGroupIDs = append(accountGroupIDs, account.GroupIDs...)
+		if err := s.rebuildByAccount(ctx, account, accountGroupIDs, "account_bulk_change", seen); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
 	if s.cache != nil {
 		for _, id := range ids {
 			if _, ok := found[id]; ok {
@@ -405,7 +418,10 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	for gid := range rebuildGroupSet {
 		rebuildGroupIDs = append(rebuildGroupIDs, gid)
 	}
-	return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
+	if err := s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any, seen map[batchSeenKey]struct{}) error {
@@ -462,14 +478,8 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	}
 
 	var firstErr error
-	if err := s.rebuildBucketsForPlatform(ctx, account.Platform, groupIDs, reason, seen); err != nil && firstErr == nil {
-		firstErr = err
-	}
-	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
-		if err := s.rebuildBucketsForPlatform(ctx, PlatformAnthropic, groupIDs, reason, seen); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		if err := s.rebuildBucketsForPlatform(ctx, PlatformGemini, groupIDs, reason, seen); err != nil && firstErr == nil {
+	for _, platform := range schedulerRebuildPlatformsForAccount(account) {
+		if err := s.rebuildBucketsForPlatform(ctx, platform, groupIDs, reason, seen); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -481,7 +491,7 @@ func (s *SchedulerSnapshotService) rebuildByGroupIDs(ctx context.Context, groupI
 	if len(groupIDs) == 0 {
 		return nil
 	}
-	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	platforms := s.rebuildPlatformsForGroupIDs(ctx, groupIDs)
 	var firstErr error
 	for _, platform := range platforms {
 		if err := s.rebuildBucketsForPlatform(ctx, platform, groupIDs, reason, seen); err != nil && firstErr == nil {
@@ -531,6 +541,57 @@ func (s *SchedulerSnapshotService) rebuildBuckets(ctx context.Context, buckets [
 		}
 	}
 	return firstErr
+}
+
+func (s *SchedulerSnapshotService) rebuildPlatformsForGroupIDs(ctx context.Context, groupIDs []int64) []string {
+	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	if s == nil || s.groupRepo == nil || s.isRunModeSimple() {
+		return dedupeStrings(platforms)
+	}
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil || group == nil {
+			continue
+		}
+		if platform := strings.TrimSpace(group.Platform); platform != "" {
+			platforms = append(platforms, platform)
+		}
+	}
+	return dedupeStrings(platforms)
+}
+
+func schedulerRebuildPlatformsForAccount(account *Account) []string {
+	if account == nil {
+		return nil
+	}
+	platforms := make([]string, 0, 3)
+	if providerID := effectiveServiceProviderID(account); providerID != "" {
+		platforms = append(platforms, providerID)
+	}
+	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
+		platforms = append(platforms, PlatformAnthropic, PlatformGemini)
+	}
+	return dedupeStrings(platforms)
+}
+
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, value := range in {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket SchedulerBucket, reason string) error {

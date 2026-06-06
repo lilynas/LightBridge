@@ -1,0 +1,44 @@
+apiVersion: lightbridge.dev/modules/v1alpha1
+id: lightbridge.provider.mock
+name: Mock Provider
+type: provider
+version: 0.1.0
+description: Deterministic provider module used to verify the marketplace, runtime, and UI extension loop.
+core:
+  compatible: ">=0.1.0 <0.2.0"
+backend:
+  kind: sidecar
+  command: ./backend/{{PLATFORM}}/lightbridge-provider-mock
+  protocol: grpc
+  healthcheck:
+    rpc: HealthCheck
+    timeout: 2s
+frontend:
+  kind: vite-remote-esm
+  entry: ./frontend/remoteEntry.js
+  routes:
+    - path: /admin/providers/mock
+      title: Mock Provider
+      exposedModule: ./MockProviderSettings
+      requiresAdmin: true
+  menu:
+    - title: Mock Provider
+      path: /admin/providers/mock
+      group: Providers
+      order: 100
+  accountForms:
+    - providerId: lightbridge.provider.mock
+      providerName: Mock Provider
+      exposedModule: ./MockAccountForm
+capabilities:
+  - provider.adapter
+  - ui.admin.route
+  - ui.account.form
+permissions:
+  network: []
+  secrets:
+    - mock_api_key
+  database:
+    - provider_mock_*
+migrations: []
+

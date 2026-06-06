@@ -187,6 +187,7 @@ import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } 
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import { getUIManifest, type ModuleUIManifestItem } from '@/api/modules'
 
 interface NavItem {
   path: string
@@ -240,6 +241,9 @@ const isDark = ref(document.documentElement.classList.contains('dark'))
 
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())
+const moduleUIManifest = ref<ModuleUIManifestItem[]>([])
+const moduleUIManifestLoading = ref(false)
+const moduleUIManifestLoadFailed = ref(false)
 
 // Site settings from appStore (cached, no flicker)
 const siteName = computed(() => appStore.siteName)
@@ -563,6 +567,21 @@ const OrderListIcon = {
     )
 }
 
+const ModuleIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25M21 7.5v9l-9 5.25m0-9L3 7.5m9 5.25v9M3 7.5v9l9 5.25'
+        })
+      ]
+    )
+}
+
 const ChevronDoubleRightIcon = {
   render: () =>
     h(
@@ -713,6 +732,41 @@ const customMenuItemsForAdmin = computed(() => {
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 
+type ModuleMenuContribution = NonNullable<ModuleUIManifestItem['menu']>[number] & {
+  moduleId: string
+}
+
+const isValidModuleMenuContribution = (item: ModuleMenuContribution) => {
+  return typeof item.moduleId === 'string' &&
+    item.moduleId.length > 0 &&
+    typeof item.path === 'string' &&
+    item.path.startsWith('/admin/') &&
+    typeof item.title === 'string' &&
+    item.title.length > 0 &&
+    (item.order === undefined || typeof item.order === 'number')
+}
+
+const moduleMenuItems = computed((): NavItem[] => {
+  const seen = new Set<string>()
+  return moduleUIManifest.value
+    .flatMap((manifest) => {
+      const menu = Array.isArray(manifest.menu) ? manifest.menu : []
+      return menu.map((item) => ({
+        ...item,
+        moduleId: manifest.moduleId
+      }))
+    })
+    .filter((item): item is ModuleMenuContribution => isValidModuleMenuContribution(item))
+    .sort((a, b) => (a.order ?? 1000) - (b.order ?? 1000) || a.title.localeCompare(b.title))
+    .filter((item) => !seen.has(item.path) && seen.add(item.path))
+    .map((item): NavItem => ({
+      path: item.path,
+      label: item.title,
+      icon: ModuleIcon,
+      hideInSimpleMode: true
+    }))
+})
+
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
@@ -781,6 +835,8 @@ const adminNavItems = computed((): NavItem[] => {
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
+  visible.push({ path: '/admin/modules', label: t('nav.modules'), icon: ModuleIcon, hideInSimpleMode: true })
+  visible.push(...moduleMenuItems.value)
   for (const cm of customMenuItemsForAdmin.value) {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
   }
@@ -880,6 +936,10 @@ watch(
   (v) => {
     if (v) {
       adminSettingsStore.fetch()
+      loadModuleUIManifest()
+    } else {
+      moduleUIManifest.value = []
+      moduleUIManifestLoadFailed.value = false
     }
   },
   { immediate: true }
@@ -888,8 +948,27 @@ watch(
 onMounted(() => {
   if (isAdmin.value) {
     adminSettingsStore.fetch()
+    loadModuleUIManifest()
   }
 })
+
+async function loadModuleUIManifest() {
+  if (moduleUIManifestLoading.value) return
+  moduleUIManifestLoading.value = true
+  try {
+    moduleUIManifest.value = await getUIManifest()
+    moduleUIManifestLoadFailed.value = false
+  } catch (error) {
+    moduleUIManifest.value = []
+    if (!moduleUIManifestLoadFailed.value) {
+      moduleUIManifestLoadFailed.value = true
+      appStore.showError(t('admin.moduleUIManifestLoadFailed'))
+    }
+    console.error('Module UI manifest failed to load', { error })
+  } finally {
+    moduleUIManifestLoading.value = false
+  }
+}
 </script>
 
 <style scoped>
