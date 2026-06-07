@@ -30,6 +30,31 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultModuleMarketplaceRegistryURL(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Modules.MarketplaceRegistryURL != DefaultModuleMarketplaceRegistryURL {
+		t.Fatalf("marketplace registry = %q, want %q", cfg.Modules.MarketplaceRegistryURL, DefaultModuleMarketplaceRegistryURL)
+	}
+}
+
+func TestLoadUpgradesLegacyModuleMarketplaceRegistryURL(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("modules.marketplace_registry_url", LegacyModuleMarketplaceRegistryURL)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Modules.MarketplaceRegistryURL != DefaultModuleMarketplaceRegistryURL {
+		t.Fatalf("marketplace registry = %q, want %q", cfg.Modules.MarketplaceRegistryURL, DefaultModuleMarketplaceRegistryURL)
+	}
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string

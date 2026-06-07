@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 GITHUB_REPO="${GITHUB_REPO:-WilliamWang1721/LightBridge}"
-MODULE_RELEASE_TAG="${MODULE_RELEASE_TAG:-module-migration-20260606}"
+MODULE_RELEASE_TAG="${MODULE_RELEASE_TAG:-module-anthropic-oauth-provider-v0.1.0}"
 MODULE_REGISTRY_URL="${MODULE_REGISTRY_URL:-https://github.com/${GITHUB_REPO}/releases/download/${MODULE_RELEASE_TAG}/registry.json}"
 MODULE_PUBLIC_KEY_URL="${MODULE_PUBLIC_KEY_URL:-https://github.com/${GITHUB_REPO}/releases/download/${MODULE_RELEASE_TAG}/ed25519.pub}"
 
@@ -523,7 +523,11 @@ configure_module_release() {
   fi
 
   if grep -q '^modules:' "$config_file"; then
-    grep -q 'marketplace_registry_url:' "$config_file" || sed -i '/^modules:/a\  marketplace_registry_url: "'"$MODULE_REGISTRY_URL"'"' "$config_file"
+    if ! grep -q 'marketplace_registry_url:' "$config_file"; then
+      sed -i '/^modules:/a\  marketplace_registry_url: "'"$MODULE_REGISTRY_URL"'"' "$config_file"
+    elif grep -q 'marketplace_registry_url:.*module-migration-20260606/registry.json' "$config_file"; then
+      sed -i 's#marketplace_registry_url:.*module-migration-20260606/registry.json.*#marketplace_registry_url: "'"$MODULE_REGISTRY_URL"'"#' "$config_file"
+    fi
     if [[ -n "$OPENAI_MODULE_PUBLIC_KEY" ]]; then
       grep -q 'signature_public_key_path:' "$config_file" || sed -i '/^modules:/a\  signature_public_key_path: "'"$OPENAI_MODULE_PUBLIC_KEY"'"' "$config_file"
     fi

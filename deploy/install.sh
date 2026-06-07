@@ -32,7 +32,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 GITHUB_REPO="WilliamWang1721/LightBridge"
-MODULE_RELEASE_TAG="module-migration-20260606"
+MODULE_RELEASE_TAG="module-anthropic-oauth-provider-v0.1.0"
 MODULE_REGISTRY_URL="https://github.com/${GITHUB_REPO}/releases/download/${MODULE_RELEASE_TAG}/registry.json"
 MODULE_PUBLIC_KEY_URL="https://github.com/${GITHUB_REPO}/releases/download/${MODULE_RELEASE_TAG}/ed25519.pub"
 INSTALL_DIR="/opt/LightBridge"
@@ -1149,6 +1149,8 @@ configure_module_release() {
     if grep -q '^modules:' "$config_file" 2>/dev/null; then
         if ! grep -q 'marketplace_registry_url:' "$config_file"; then
             sed -i '/^modules:/a\  marketplace_registry_url: "'"$MODULE_REGISTRY_URL"'"' "$config_file"
+        elif grep -q 'marketplace_registry_url:.*module-migration-20260606/registry.json' "$config_file"; then
+            sed -i 's#marketplace_registry_url:.*module-migration-20260606/registry.json.*#marketplace_registry_url: "'"$MODULE_REGISTRY_URL"'"#' "$config_file"
         fi
         if ! grep -q 'signature_public_key_path:' "$config_file"; then
             sed -i '/^modules:/a\  signature_public_key_path: "'"$key_path"'"' "$config_file"

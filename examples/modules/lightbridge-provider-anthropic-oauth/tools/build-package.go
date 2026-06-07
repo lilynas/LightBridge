@@ -26,7 +26,7 @@ const (
 	moduleID              = "anthropic-oauth"
 	moduleName            = "Anthropic OAuth Provider"
 	moduleVersion         = "0.1.0"
-	defaultReleaseBaseURL = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606"
+	defaultReleaseBaseURL = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-anthropic-oauth-provider-v0.1.0"
 )
 
 func main() {

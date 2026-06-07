@@ -20,6 +20,11 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	LegacyModuleMarketplaceRegistryURL  = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/registry.json"
+	DefaultModuleMarketplaceRegistryURL = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-anthropic-oauth-provider-v0.1.0/registry.json"
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -1433,6 +1438,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
+	normalizeModuleConfig(&cfg.Modules)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
 	cfg.SetTrustForwardedIPForAPIKeyACL(cfg.Security.TrustForwardedIPForAPIKeyACL)
 	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
@@ -1510,6 +1516,15 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func normalizeModuleConfig(cfg *ModuleConfig) {
+	if cfg == nil {
+		return
+	}
+	if strings.TrimSpace(cfg.MarketplaceRegistryURL) == LegacyModuleMarketplaceRegistryURL {
+		cfg.MarketplaceRegistryURL = DefaultModuleMarketplaceRegistryURL
+	}
 }
 
 func setDefaults() {
@@ -1596,7 +1611,7 @@ func setDefaults() {
 	viper.SetDefault("modules.data_dir", "data")
 	viper.SetDefault("modules.signature_public_key_path", "")
 	viper.SetDefault("modules.marketplace_registry_path", "")
-	viper.SetDefault("modules.marketplace_registry_url", "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/registry.json")
+	viper.SetDefault("modules.marketplace_registry_url", DefaultModuleMarketplaceRegistryURL)
 	viper.SetDefault("modules.marketplace_timeout_seconds", 20)
 
 	// Turnstile

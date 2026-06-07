@@ -44,7 +44,7 @@ func ResolveOpenAIModulePackage(ctx context.Context, registryURL string, timeout
 
 	packagePath := filepath.Join(workspace, filepath.Base(entry.DownloadURL))
 	if packagePath == workspace || strings.TrimSpace(filepath.Base(entry.DownloadURL)) == "" || filepath.Base(entry.DownloadURL) == "." {
-		packagePath = filepath.Join(workspace, "lightbridge-module-openai-0.1.0.tar.zst")
+		packagePath = filepath.Join(workspace, "lightbridge-module-openai-"+DefaultOpenAIModuleVersion+".tar.zst")
 	}
 	if err := downloadFile(ctx, entry.DownloadURL, packagePath, timeoutSeconds); err != nil {
 		return nil, fmt.Errorf("download openai module package: %w", err)

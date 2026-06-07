@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	DefaultModuleMigrationRegistryURL = "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/registry.json"
+	DefaultModuleMigrationRegistryURL = config.DefaultModuleMarketplaceRegistryURL
 	DefaultOpenAIModuleID             = "openai"
-	DefaultOpenAIModuleVersion        = "0.1.0"
+	DefaultOpenAIModuleVersion        = "0.1.1"
 )
 
 type Registry struct {

@@ -1007,7 +1007,7 @@ modules:
   signature_public_key_path: ""
   # Marketplace registry published as a GitHub Release asset.
   # 作为 GitHub Release 资产发布的模块市场索引。
-  marketplace_registry_url: "https://github.com/WilliamWang1721/LightBridge/releases/download/module-migration-20260606/registry.json"
+  marketplace_registry_url: "https://github.com/WilliamWang1721/LightBridge/releases/download/module-anthropic-oauth-provider-v0.1.0/registry.json"
   # Optional local registry file. When set, it takes precedence over marketplace_registry_url.
   # 可选本地索引文件；设置后优先于 marketplace_registry_url。
   marketplace_registry_path: ""
