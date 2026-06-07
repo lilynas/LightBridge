@@ -462,17 +462,9 @@ const handleExchangeCode = async () => {
     claudeOAuth.error.value = ''
 
     try {
-      const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-      const endpoint =
-        addMethod.value === 'oauth'
-          ? '/admin/accounts/exchange-code'
-          : '/admin/accounts/exchange-setup-token-code'
-
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-        session_id: sessionId,
-        code: authCode.trim(),
-        ...proxyConfig
-      })
+      claudeOAuth.authCode.value = authCode.trim()
+      const tokenInfo = await claudeOAuth.exchangeAuthCode(addMethod.value, props.account.proxy_id)
+      if (!tokenInfo) return
 
       const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
@@ -505,17 +497,8 @@ const handleCookieAuth = async (sessionKey: string) => {
   claudeOAuth.error.value = ''
 
   try {
-    const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
-
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-      session_id: '',
-      code: sessionKey.trim(),
-      ...proxyConfig
-    })
+    const tokenInfo = await claudeOAuth.cookieAuth(addMethod.value, sessionKey.trim(), props.account.proxy_id)
+    if (!tokenInfo) return
 
     const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 

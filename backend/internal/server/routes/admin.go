@@ -318,13 +318,6 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
-		// Claude OAuth routes
-		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
-		accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)
-		accounts.POST("/exchange-code", h.Admin.OAuth.ExchangeCode)
-		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
-		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
-		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
 	}
 }
 

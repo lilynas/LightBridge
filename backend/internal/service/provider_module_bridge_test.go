@@ -19,6 +19,14 @@ type fakeProviderAdapter struct {
 	testResult *modules.TestAccountResult
 }
 
+func (a *fakeProviderAdapter) ValidateAccount(_ context.Context, req modules.ProviderAccount) (*modules.AccountValidationResult, error) {
+	return &modules.AccountValidationResult{Valid: true}, nil
+}
+
+func (a *fakeProviderAdapter) RefreshAccount(_ context.Context, req modules.ProviderAccount) (*modules.ProviderAccount, error) {
+	return &req, nil
+}
+
 func (a *fakeProviderAdapter) Forward(_ context.Context, req modules.GatewayRequest) (<-chan modules.GatewayEvent, error) {
 	a.forwardReq = req
 	ch := make(chan modules.GatewayEvent, len(a.events))

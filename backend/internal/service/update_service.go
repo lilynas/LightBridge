@@ -47,6 +47,7 @@ type UpdateCache interface {
 // GitHubReleaseClient 获取 GitHub release 信息的接口
 type GitHubReleaseClient interface {
 	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
+	FetchReleases(ctx context.Context, repo string, limit int) ([]GitHubRelease, error)
 	DownloadFile(ctx context.Context, url, dest string, maxSize int64) error
 	FetchChecksumFile(ctx context.Context, url string) ([]byte, error)
 }
@@ -57,6 +58,18 @@ type UpdateService struct {
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
+}
+
+type VersionRelease struct {
+	Version     string `json:"version"`
+	Name        string `json:"name"`
+	Body        string `json:"body"`
+	PublishedAt string `json:"published_at"`
+	HTMLURL     string `json:"html_url"`
+	Prerelease  bool   `json:"prerelease"`
+	Draft       bool   `json:"draft"`
+	Current     bool   `json:"current"`
+	Latest      bool   `json:"latest"`
 }
 
 // NewUpdateService creates a new UpdateService
@@ -103,6 +116,8 @@ type GitHubRelease struct {
 	Body        string        `json:"body"`
 	PublishedAt string        `json:"published_at"`
 	HTMLURL     string        `json:"html_url"`
+	Prerelease  bool          `json:"prerelease"`
+	Draft       bool          `json:"draft"`
 	Assets      []GitHubAsset `json:"assets"`
 }
 
@@ -143,10 +158,46 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 	return info, nil
 }
 
+func (s *UpdateService) ListVersionReleases(ctx context.Context, force bool) ([]VersionRelease, *UpdateInfo, error) {
+	info, err := s.CheckUpdate(ctx, force)
+	if err != nil {
+		return nil, nil, err
+	}
+	releases, err := s.githubClient.FetchReleases(ctx, githubRepo, 100)
+	if err != nil {
+		return nil, info, err
+	}
+	out := make([]VersionRelease, 0, len(releases))
+	current := strings.TrimPrefix(strings.TrimSpace(info.CurrentVersion), "v")
+	latest := strings.TrimPrefix(strings.TrimSpace(info.LatestVersion), "v")
+	for _, release := range releases {
+		version := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+		if version == "" {
+			continue
+		}
+		out = append(out, VersionRelease{
+			Version:     version,
+			Name:        release.Name,
+			Body:        release.Body,
+			PublishedAt: release.PublishedAt,
+			HTMLURL:     release.HTMLURL,
+			Prerelease:  release.Prerelease,
+			Draft:       release.Draft,
+			Current:     current == version,
+			Latest:      latest == version,
+		})
+	}
+	return out, info, nil
+}
+
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
-	info, err := s.CheckUpdate(ctx, true)
+	return s.PerformUpdateToVersion(ctx, "")
+}
+
+func (s *UpdateService) PerformUpdateToVersion(ctx context.Context, targetVersion string) error {
+	info, err := s.updateInfoForTargetVersion(ctx, targetVersion)
 	if err != nil {
 		return err
 	}
@@ -253,6 +304,46 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 	// Success - backup file is kept for rollback capability
 	// It will be cleaned up on next successful update
 	return nil
+}
+
+func (s *UpdateService) updateInfoForTargetVersion(ctx context.Context, targetVersion string) (*UpdateInfo, error) {
+	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	if targetVersion == "" {
+		return s.CheckUpdate(ctx, true)
+	}
+	releases, err := s.githubClient.FetchReleases(ctx, githubRepo, 100)
+	if err != nil {
+		return nil, err
+	}
+	for _, release := range releases {
+		version := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+		if version != targetVersion {
+			continue
+		}
+		assets := make([]Asset, len(release.Assets))
+		for i, a := range release.Assets {
+			assets[i] = Asset{
+				Name:        a.Name,
+				DownloadURL: a.BrowserDownloadURL,
+				Size:        a.Size,
+			}
+		}
+		return &UpdateInfo{
+			CurrentVersion: s.currentVersion,
+			LatestVersion:  targetVersion,
+			HasUpdate:      compareVersions(s.currentVersion, targetVersion) != 0,
+			ReleaseInfo: &ReleaseInfo{
+				Name:        release.Name,
+				Body:        release.Body,
+				PublishedAt: release.PublishedAt,
+				HTMLURL:     release.HTMLURL,
+				Assets:      assets,
+			},
+			Cached:    false,
+			BuildType: s.buildType,
+		}, nil
+	}
+	return nil, fmt.Errorf("release version %s was not found", targetVersion)
 }
 
 // Rollback restores the previous version

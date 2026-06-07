@@ -1,9 +1,16 @@
 import { ref } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { adminAPI } from '@/api/admin'
 
 export type AddMethod = 'oauth' | 'setup-token'
 export type AuthInputMethod = 'manual' | 'cookie' | 'refresh_token' | 'mobile_refresh_token' | 'session_token' | 'access_token' | 'codex_session'
+
+const ANTHROPIC_PROVIDER_ID = 'anthropic-oauth'
+const ANTHROPIC_MODULE_ID = 'lightbridge-provider-anthropic-oauth'
+const CLAUDE_OAUTH_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize'
+const CLAUDE_OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e'
+const CLAUDE_OAUTH_REDIRECT_URI = 'https://platform.claude.com/oauth/code/callback'
+const CLAUDE_OAUTH_SCOPE_FULL = 'org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload'
+const CLAUDE_OAUTH_SCOPE_INFERENCE = 'user:inference'
 
 export interface OAuthState {
   authUrl: string
@@ -21,6 +28,41 @@ export interface TokenInfo {
   [key: string]: unknown
 }
 
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function randomString(bytes = 32): string {
+  const values = new Uint8Array(bytes)
+  crypto.getRandomValues(values)
+  return base64UrlEncode(values)
+}
+
+async function sha256Base64Url(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return base64UrlEncode(new Uint8Array(digest))
+}
+
+function parseAuthorizationCode(raw: string): { code: string; state?: string } {
+  const trimmed = raw.trim()
+  if (!trimmed) return { code: '' }
+  try {
+    const parsed = new URL(trimmed)
+    return {
+      code: parsed.searchParams.get('code') || trimmed,
+      state: parsed.searchParams.get('state') || undefined
+    }
+  } catch {
+    const [code, state] = trimmed.split('#')
+    return { code: code.trim(), state: state?.trim() || undefined }
+  }
+}
+
 export function useAccountOAuth() {
   const appStore = useAppStore()
 
@@ -32,6 +74,9 @@ export function useAccountOAuth() {
   const loading = ref(false)
   const error = ref('')
 
+  const codeVerifier = ref('')
+  const oauthState = ref('')
+
   // Reset state
   const resetState = () => {
     authUrl.value = ''
@@ -40,12 +85,14 @@ export function useAccountOAuth() {
     sessionKey.value = ''
     loading.value = false
     error.value = ''
+    codeVerifier.value = ''
+    oauthState.value = ''
   }
 
-  // Generate auth URL
+  // Generate Claude OAuth URL locally. Token exchange is handled by the provider module.
   const generateAuthUrl = async (
     addMethod: AddMethod,
-    proxyId?: number | null
+    _proxyId?: number | null
   ): Promise<boolean> => {
     loading.value = true
     authUrl.value = ''
@@ -53,18 +100,28 @@ export function useAccountOAuth() {
     error.value = ''
 
     try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
-      const endpoint =
-        addMethod === 'oauth'
-          ? '/admin/accounts/generate-auth-url'
-          : '/admin/accounts/generate-setup-token-url'
+      const verifier = randomString(48)
+      const state = randomString(32)
+      const challenge = await sha256Base64Url(verifier)
+      const scope = addMethod === 'setup-token' ? CLAUDE_OAUTH_SCOPE_INFERENCE : CLAUDE_OAUTH_SCOPE_FULL
+      const params = new URLSearchParams({
+        code: 'true',
+        client_id: CLAUDE_OAUTH_CLIENT_ID,
+        response_type: 'code',
+        redirect_uri: CLAUDE_OAUTH_REDIRECT_URI,
+        scope,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        state
+      })
 
-      const response = await adminAPI.accounts.generateAuthUrl(endpoint, proxyConfig)
-      authUrl.value = response.auth_url
-      sessionId.value = response.session_id
+      codeVerifier.value = verifier
+      oauthState.value = state
+      sessionId.value = state
+      authUrl.value = `${CLAUDE_OAUTH_AUTHORIZE_URL}?${params.toString()}`
       return true
     } catch (err: any) {
-      error.value = err.response?.data?.detail || 'Failed to generate auth URL'
+      error.value = err?.message || 'Failed to generate auth URL'
       appStore.showError(error.value)
       return false
     } finally {
@@ -72,13 +129,14 @@ export function useAccountOAuth() {
     }
   }
 
-  // Exchange auth code for tokens
+  // Build provider-module credentials from the authorization code.
   const exchangeAuthCode = async (
     addMethod: AddMethod,
-    proxyId?: number | null
+    _proxyId?: number | null
   ): Promise<TokenInfo | null> => {
-    if (!authCode.value.trim() || !sessionId.value) {
-      error.value = 'Missing auth code or session ID'
+    const parsed = parseAuthorizationCode(authCode.value)
+    if (!parsed.code || !codeVerifier.value) {
+      error.value = 'Missing auth code or verifier'
       return null
     }
 
@@ -86,61 +144,37 @@ export function useAccountOAuth() {
     error.value = ''
 
     try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
-      const endpoint =
-        addMethod === 'oauth'
-          ? '/admin/accounts/exchange-code'
-          : '/admin/accounts/exchange-setup-token-code'
-
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-        session_id: sessionId.value,
-        code: authCode.value.trim(),
-        ...proxyConfig
-      })
-
-      return tokenInfo as TokenInfo
-    } catch (err: any) {
-      error.value = err.response?.data?.detail || 'Failed to exchange auth code'
-      appStore.showError(error.value)
-      return null
+      const scope = addMethod === 'setup-token' ? CLAUDE_OAUTH_SCOPE_INFERENCE : CLAUDE_OAUTH_SCOPE_FULL
+      return {
+        provider_id: ANTHROPIC_PROVIDER_ID,
+        module_id: ANTHROPIC_MODULE_ID,
+        authorization_code: parsed.code,
+        code_verifier: codeVerifier.value,
+        oauth_state: parsed.state || oauthState.value,
+        scope
+      }
     } finally {
       loading.value = false
     }
   }
 
-  // Cookie-based authentication
+  // Cookie-based authentication is completed by the provider module during account creation/update.
   const cookieAuth = async (
     addMethod: AddMethod,
     sessionKeyValue: string,
-    proxyId?: number | null
+    _proxyId?: number | null
   ): Promise<TokenInfo | null> => {
     if (!sessionKeyValue.trim()) {
       error.value = 'Please enter sessionKey'
       return null
     }
 
-    loading.value = true
-    error.value = ''
-
-    try {
-      const proxyConfig = proxyId ? { proxy_id: proxyId } : {}
-      const endpoint =
-        addMethod === 'oauth'
-          ? '/admin/accounts/cookie-auth'
-          : '/admin/accounts/setup-token-cookie-auth'
-
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-        session_id: '',
-        code: sessionKeyValue.trim(),
-        ...proxyConfig
-      })
-
-      return tokenInfo as TokenInfo
-    } catch (err: any) {
-      error.value = err.response?.data?.detail || 'Cookie authorization failed'
-      return null
-    } finally {
-      loading.value = false
+    const scope = addMethod === 'setup-token' ? CLAUDE_OAUTH_SCOPE_INFERENCE : CLAUDE_OAUTH_SCOPE_FULL
+    return {
+      provider_id: ANTHROPIC_PROVIDER_ID,
+      module_id: ANTHROPIC_MODULE_ID,
+      session_key: sessionKeyValue.trim(),
+      scope
     }
   }
 
@@ -152,19 +186,27 @@ export function useAccountOAuth() {
       .filter((k) => k)
   }
 
-  // Build extra info from token response
-  const buildExtraInfo = (tokenInfo: TokenInfo): Record<string, string> | undefined => {
-    const extra: Record<string, string> = {}
-    if (tokenInfo.org_uuid) {
+  // Build extra info from module login credentials/metadata.
+  const buildExtraInfo = (tokenInfo: TokenInfo): Record<string, string | boolean> | undefined => {
+    const extra: Record<string, string | boolean> = {
+      provider_id: ANTHROPIC_PROVIDER_ID,
+      module_id: ANTHROPIC_MODULE_ID,
+      platform: 'module',
+      setup_token: tokenInfo.scope === CLAUDE_OAUTH_SCOPE_INFERENCE
+    }
+    if (typeof tokenInfo.org_uuid === 'string' && tokenInfo.org_uuid) {
       extra.org_uuid = tokenInfo.org_uuid
     }
-    if (tokenInfo.account_uuid) {
+    if (typeof tokenInfo.account_uuid === 'string' && tokenInfo.account_uuid) {
       extra.account_uuid = tokenInfo.account_uuid
     }
-    if (tokenInfo.email_address) {
+    if (typeof tokenInfo.email_address === 'string' && tokenInfo.email_address) {
       extra.email_address = tokenInfo.email_address
     }
-    return Object.keys(extra).length > 0 ? extra : undefined
+    if (typeof tokenInfo.scope === 'string' && tokenInfo.scope) {
+      extra.oauth_scope = tokenInfo.scope
+    }
+    return extra
   }
 
   return {

@@ -48,7 +48,6 @@ func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiToke
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
-	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
@@ -61,7 +60,7 @@ func ProvideTokenRefreshService(
 	refreshAPI *OAuthRefreshAPI,
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
+	svc := NewTokenRefreshService(accountRepo, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -77,12 +76,8 @@ func ProvideTokenRefreshService(
 func ProvideClaudeTokenProvider(
 	accountRepo AccountRepository,
 	tokenCache GeminiTokenCache,
-	oauthService *OAuthService,
-	refreshAPI *OAuthRefreshAPI,
 ) *ClaudeTokenProvider {
-	p := NewClaudeTokenProvider(accountRepo, tokenCache, oauthService)
-	executor := NewClaudeTokenRefresher(oauthService)
-	p.SetRefreshAPI(refreshAPI, executor)
+	p := NewClaudeTokenProvider(accountRepo, tokenCache)
 	p.SetRefreshPolicy(ClaudeProviderRefreshPolicy())
 	return p
 }
@@ -500,7 +495,6 @@ var ProviderSet = wire.NewSet(
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
-	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,

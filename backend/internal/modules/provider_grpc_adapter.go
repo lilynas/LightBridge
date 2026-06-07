@@ -49,6 +49,20 @@ func (a *grpcProviderAdapter) Close() error {
 	return a.conn.Close()
 }
 func method(name string) string { return "/" + providerAdapterService + "/" + name }
+func (a *grpcProviderAdapter) ValidateAccount(ctx context.Context, req ProviderAccount) (*AccountValidationResult, error) {
+	var out AccountValidationResult
+	if err := a.conn.Invoke(ctx, method("ValidateAccount"), &req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+func (a *grpcProviderAdapter) RefreshAccount(ctx context.Context, req ProviderAccount) (*ProviderAccount, error) {
+	var out ProviderAccount
+	if err := a.conn.Invoke(ctx, method("RefreshAccount"), &req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
 func (a *grpcProviderAdapter) TestAccount(ctx context.Context, req TestAccountRequest) (*TestAccountResult, error) {
 	var out TestAccountResult
 	if err := a.conn.Invoke(ctx, method("TestAccount"), &req, &out); err != nil {

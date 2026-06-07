@@ -5266,17 +5266,9 @@ const handleAnthropicExchange = async (authCode: string) => {
   oauth.error.value = ''
 
   try {
-    const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/exchange-code'
-        : '/admin/accounts/exchange-setup-token-code'
-
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-      session_id: oauth.sessionId.value,
-      code: authCode.trim(),
-      ...proxyConfig
-    })
+    oauth.authCode.value = authCode.trim()
+    const tokenInfo = await oauth.exchangeAuthCode(addMethod.value, form.proxy_id)
+    if (!tokenInfo) return
 
     // Build extra with quota control settings
     const baseExtra = oauth.buildExtraInfo(tokenInfo) || {}
@@ -5368,7 +5360,6 @@ const handleCookieAuth = async (sessionKey: string) => {
   oauth.error.value = ''
 
   try {
-    const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
     const keys = oauth.parseSessionKeys(sessionKey)
 
     if (keys.length === 0) {
@@ -5384,22 +5375,16 @@ const handleCookieAuth = async (sessionKey: string) => {
       return
     }
 
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
-
     let successCount = 0
     let failedCount = 0
     const errors: string[] = []
 
     for (let i = 0; i < keys.length; i++) {
       try {
-        const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-          session_id: '',
-          code: keys[i],
-          ...proxyConfig
-        })
+        const tokenInfo = await oauth.cookieAuth(addMethod.value, keys[i], form.proxy_id)
+        if (!tokenInfo) {
+          throw new Error(oauth.error.value || t('admin.accounts.oauth.authFailed'))
+        }
 
         // Build extra with quota control settings
         const baseExtra = oauth.buildExtraInfo(tokenInfo) || {}

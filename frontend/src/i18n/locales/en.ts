@@ -6497,6 +6497,14 @@ export default {
     updateAvailable: 'A new version is available!',
     releaseNotes: 'Release Notes',
     noReleaseNotes: 'No release notes',
+    upgradeChangesTitle: 'Upgrade Changes',
+    noSectionChanges: 'No changes',
+    sections: {
+      main: 'Main Features',
+      features: 'New Features',
+      migration: 'Migration',
+      fixes: 'Fixes'
+    },
     viewUpdate: 'View Update',
     viewRelease: 'View Release',
     viewChangelog: 'View Changelog',

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/LightBridge/internal/modules"
 	"github.com/Wei-Shaw/LightBridge/internal/service"
 )
 
@@ -602,6 +603,13 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
 	return nil
+}
+
+func (s *stubAdminService) RefreshModuleProviderAccount(ctx context.Context, account *service.Account) (*service.Account, bool, error) {
+	return nil, false, nil
+}
+
+func (s *stubAdminService) SetProviderRegistry(registry *modules.ProviderRegistry) {
 }
 
 func (s *stubAdminService) EnsureOpenAIPrivacy(ctx context.Context, account *service.Account) string {

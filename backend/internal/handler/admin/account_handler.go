@@ -31,22 +31,9 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// OAuthHandler handles OAuth-related operations for accounts
-type OAuthHandler struct {
-	oauthService *service.OAuthService
-}
-
-// NewOAuthHandler creates a new OAuth handler
-func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
-	return &OAuthHandler{
-		oauthService: oauthService,
-	}
-}
-
 // AccountHandler handles admin account management
 type AccountHandler struct {
 	adminService            service.AdminService
-	oauthService            *service.OAuthService
 	openaiOAuthService      *service.OpenAIOAuthService
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
@@ -63,7 +50,6 @@ type AccountHandler struct {
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
 	adminService service.AdminService,
-	oauthService *service.OAuthService,
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
@@ -78,7 +64,6 @@ func NewAccountHandler(
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
-		oauthService:            oauthService,
 		openaiOAuthService:      openaiOAuthService,
 		geminiOAuthService:      geminiOAuthService,
 		antigravityOAuthService: antigravityOAuthService,
@@ -558,6 +543,15 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		h.adminService.ForceAntigravityPrivacy(ctx, account)
 		// OpenAI OAuth: 新账号直接设置隐私
 		h.adminService.ForceOpenAIPrivacy(ctx, account)
+		if refreshed, handled, refreshErr := h.adminService.RefreshModuleProviderAccount(ctx, account); handled {
+			if refreshErr != nil {
+				return nil, refreshErr
+			}
+			if refreshed != nil {
+				createdAccount = refreshed
+				account = refreshed
+			}
+		}
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 	})
 	if err != nil {
@@ -835,7 +829,12 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 
 	var newCredentials map[string]any
 
-	if account.IsOpenAI() {
+	if refreshed, handled, err := h.adminService.RefreshModuleProviderAccount(ctx, account); handled {
+		if err != nil {
+			return nil, "", err
+		}
+		return refreshed, "", nil
+	} else if account.IsOpenAI() {
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
@@ -901,29 +900,7 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 			}
 		}
 	} else {
-		// Use Anthropic/Claude OAuth service to refresh token
-		tokenInfo, err := h.oauthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			return nil, "", err
-		}
-
-		// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
-		newCredentials = make(map[string]any)
-		for k, v := range account.Credentials {
-			newCredentials[k] = v
-		}
-
-		// Update token-related fields
-		newCredentials["access_token"] = tokenInfo.AccessToken
-		newCredentials["token_type"] = tokenInfo.TokenType
-		newCredentials["expires_in"] = strconv.FormatInt(tokenInfo.ExpiresIn, 10)
-		newCredentials["expires_at"] = strconv.FormatInt(tokenInfo.ExpiresAt, 10)
-		if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
-			newCredentials["refresh_token"] = tokenInfo.RefreshToken
-		}
-		if strings.TrimSpace(tokenInfo.Scope) != "" {
-			newCredentials["scope"] = tokenInfo.Scope
-		}
+		return nil, "", infraerrors.BadRequest("UNSUPPORTED_OAUTH_REFRESH", "unsupported OAuth account refresh provider")
 	}
 
 	updatedAccount, err := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
@@ -1051,6 +1028,25 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 				"extra_keys", extraKeys,
 				"err", extraErr,
 			)
+		} else {
+			mergedExtra := make(map[string]any, len(updatedAccount.Extra)+len(req.Extra))
+			for k, v := range updatedAccount.Extra {
+				mergedExtra[k] = v
+			}
+			for k, v := range req.Extra {
+				mergedExtra[k] = v
+			}
+			updatedAccount.Extra = mergedExtra
+		}
+	}
+
+	if refreshed, handled, refreshErr := h.adminService.RefreshModuleProviderAccount(ctx, updatedAccount); handled {
+		if refreshErr != nil {
+			response.ErrorFrom(c, refreshErr)
+			return
+		}
+		if refreshed != nil {
+			updatedAccount = refreshed
 		}
 	}
 
@@ -1590,150 +1586,6 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		Search:      filters.Search,
 		PrivacyMode: filters.PrivacyMode,
 	}
-}
-
-// ========== OAuth Handlers ==========
-
-// GenerateAuthURLRequest represents the request for generating auth URL
-type GenerateAuthURLRequest struct {
-	ProxyID *int64 `json:"proxy_id"`
-}
-
-// GenerateAuthURL generates OAuth authorization URL with full scope
-// POST /api/v1/admin/accounts/generate-auth-url
-func (h *OAuthHandler) GenerateAuthURL(c *gin.Context) {
-	var req GenerateAuthURLRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// Allow empty body
-		req = GenerateAuthURLRequest{}
-	}
-
-	result, err := h.oauthService.GenerateAuthURL(c.Request.Context(), req.ProxyID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, result)
-}
-
-// GenerateSetupTokenURL generates OAuth authorization URL for setup token (inference only)
-// POST /api/v1/admin/accounts/generate-setup-token-url
-func (h *OAuthHandler) GenerateSetupTokenURL(c *gin.Context) {
-	var req GenerateAuthURLRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// Allow empty body
-		req = GenerateAuthURLRequest{}
-	}
-
-	result, err := h.oauthService.GenerateSetupTokenURL(c.Request.Context(), req.ProxyID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, result)
-}
-
-// ExchangeCodeRequest represents the request for exchanging auth code
-type ExchangeCodeRequest struct {
-	SessionID string `json:"session_id" binding:"required"`
-	Code      string `json:"code" binding:"required"`
-	ProxyID   *int64 `json:"proxy_id"`
-}
-
-// ExchangeCode exchanges authorization code for tokens
-// POST /api/v1/admin/accounts/exchange-code
-func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
-	var req ExchangeCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	tokenInfo, err := h.oauthService.ExchangeCode(c.Request.Context(), &service.ExchangeCodeInput{
-		SessionID: req.SessionID,
-		Code:      req.Code,
-		ProxyID:   req.ProxyID,
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
-}
-
-// ExchangeSetupTokenCode exchanges authorization code for setup token
-// POST /api/v1/admin/accounts/exchange-setup-token-code
-func (h *OAuthHandler) ExchangeSetupTokenCode(c *gin.Context) {
-	var req ExchangeCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	tokenInfo, err := h.oauthService.ExchangeCode(c.Request.Context(), &service.ExchangeCodeInput{
-		SessionID: req.SessionID,
-		Code:      req.Code,
-		ProxyID:   req.ProxyID,
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
-}
-
-// CookieAuthRequest represents the request for cookie-based authentication
-type CookieAuthRequest struct {
-	SessionKey string `json:"code" binding:"required"` // Using 'code' field as sessionKey (frontend sends it this way)
-	ProxyID    *int64 `json:"proxy_id"`
-}
-
-// CookieAuth performs OAuth using sessionKey (cookie-based auto-auth)
-// POST /api/v1/admin/accounts/cookie-auth
-func (h *OAuthHandler) CookieAuth(c *gin.Context) {
-	var req CookieAuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	tokenInfo, err := h.oauthService.CookieAuth(c.Request.Context(), &service.CookieAuthInput{
-		SessionKey: req.SessionKey,
-		ProxyID:    req.ProxyID,
-		Scope:      "full",
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
-}
-
-// SetupTokenCookieAuth performs OAuth using sessionKey for setup token (inference only)
-// POST /api/v1/admin/accounts/setup-token-cookie-auth
-func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
-	var req CookieAuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	tokenInfo, err := h.oauthService.CookieAuth(c.Request.Context(), &service.CookieAuthInput{
-		SessionKey: req.SessionKey,
-		ProxyID:    req.ProxyID,
-		Scope:      "inference",
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
 }
 
 // GetUsage handles getting account usage information

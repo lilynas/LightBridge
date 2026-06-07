@@ -30,6 +30,13 @@ func (s *AccountTestService) SetProviderRegistry(registry *modules.ProviderRegis
 	s.providerRegistry = registry
 }
 
+func (s *adminServiceImpl) SetProviderRegistry(registry *modules.ProviderRegistry) {
+	if s == nil {
+		return
+	}
+	s.providerRegistry = registry
+}
+
 func (s *GatewayService) forwardModuleProvider(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest, startTime interface{}) (*ForwardResult, bool, error) {
 	adapter, providerID, ok, err := s.resolveModuleProviderAdapter(account)
 	if !ok || err != nil {
@@ -234,6 +241,75 @@ func (s *AccountTestService) testModuleProviderAccount(c *gin.Context, account *
 	return true, s.sendErrorAndEnd(c, msg)
 }
 
+func (s *adminServiceImpl) RefreshModuleProviderAccount(ctx context.Context, account *Account) (*Account, bool, error) {
+	if s == nil || account == nil {
+		return nil, false, nil
+	}
+	adapter, providerID, ok, err := resolveModuleProviderAdapter(s.providerRegistry, account)
+	if !ok || err != nil {
+		return nil, ok, err
+	}
+	providerAccount, err := s.providerAccountForModuleRefresh(ctx, account, providerID)
+	if err != nil {
+		return nil, true, err
+	}
+	refreshed, err := adapter.RefreshAccount(ctx, providerAccount)
+	if err != nil {
+		return nil, true, err
+	}
+	if refreshed == nil {
+		return nil, true, errors.New("module provider returned empty refreshed account")
+	}
+	input := &UpdateAccountInput{}
+	if refreshed.Secrets != nil {
+		input.Credentials = clearModuleTransientCredentials(refreshed.Secrets)
+	}
+	if refreshed.Config != nil {
+		input.Extra = mergeModuleProviderExtra(account.Extra, refreshed.Config)
+	}
+	if refreshed.Metadata != nil {
+		input.Extra = mergeModuleProviderExtra(input.Extra, map[string]any{"provider_metadata": refreshed.Metadata})
+	}
+	if input.Credentials == nil && input.Extra == nil {
+		return account, true, nil
+	}
+	updated, err := s.UpdateAccount(ctx, account.ID, input)
+	if err != nil {
+		return nil, true, err
+	}
+	return updated, true, nil
+}
+
+func (s *adminServiceImpl) providerAccountForModuleRefresh(ctx context.Context, account *Account, providerID string) (modules.ProviderAccount, error) {
+	out := providerAccountFromService(account, providerID)
+	if account == nil || account.ProxyID == nil || stringFromMapAny(out.Metadata, "proxy_url") != "" {
+		return out, nil
+	}
+	if s == nil || s.proxyRepo == nil {
+		return out, errors.New("module provider account has proxy_id but proxy repository is not configured")
+	}
+	proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+	if err != nil {
+		return out, err
+	}
+	if proxy == nil {
+		return out, errors.New("module provider account proxy not found")
+	}
+	out.Metadata["proxy_url"] = proxy.URL()
+	return out, nil
+}
+
+func clearModuleTransientCredentials(secrets map[string]any) map[string]any {
+	out := copyAnyMap(secrets)
+	if out == nil {
+		out = map[string]any{}
+	}
+	for _, key := range []string{"authorization_code", "code_verifier", "oauth_state", "session_key"} {
+		out[key] = ""
+	}
+	return out
+}
+
 func providerAccountFromService(account *Account, providerID string) modules.ProviderAccount {
 	out := modules.ProviderAccount{
 		ProviderID: providerID,
@@ -246,6 +322,9 @@ func providerAccountFromService(account *Account, providerID string) modules.Pro
 		out.Secrets = copyAnyMap(account.Credentials)
 		out.Metadata["platform"] = account.Platform
 		out.Metadata["type"] = account.Type
+		if account.ProxyID != nil && account.Proxy != nil {
+			out.Metadata["proxy_url"] = account.Proxy.URL()
+		}
 	}
 	if out.Config == nil {
 		out.Config = map[string]any{}
@@ -284,7 +363,7 @@ func accountUsesModuleProvider(account *Account) bool {
 	if strings.EqualFold(account.Platform, moduleAccountPlatform) {
 		return true
 	}
-	return strings.EqualFold(stringFromMapAny(account.Extra, "provider_id"), "openai")
+	return stringFromMapAny(account.Extra, "provider_id") != ""
 }
 
 func moduleMigrationProviderID(extra map[string]any) string {
@@ -372,6 +451,20 @@ func copyAnyMap(in map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(in))
 	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func mergeModuleProviderExtra(existing map[string]any, updates map[string]any) map[string]any {
+	if existing == nil && updates == nil {
+		return nil
+	}
+	out := copyAnyMap(existing)
+	if out == nil {
+		out = map[string]any{}
+	}
+	for key, value := range updates {
 		out[key] = value
 	}
 	return out

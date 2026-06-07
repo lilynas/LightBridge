@@ -167,9 +167,16 @@ type TestAccountResult struct {
 	Message  string         `json:"message,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
+type AccountValidationResult struct {
+	Valid    bool           `json:"valid"`
+	Warnings []string       `json:"warnings,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
 
 type ProviderAdapter interface {
 	Forward(context.Context, GatewayRequest) (<-chan GatewayEvent, error)
+	ValidateAccount(context.Context, ProviderAccount) (*AccountValidationResult, error)
+	RefreshAccount(context.Context, ProviderAccount) (*ProviderAccount, error)
 	TestAccount(context.Context, TestAccountRequest) (*TestAccountResult, error)
 	Close() error
 }

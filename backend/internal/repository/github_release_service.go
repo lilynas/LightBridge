@@ -70,6 +70,10 @@ func (c *githubReleaseClientError) FetchLatestRelease(ctx context.Context, repo 
 	return nil, c.err
 }
 
+func (c *githubReleaseClientError) FetchReleases(ctx context.Context, repo string, limit int) ([]service.GitHubRelease, error) {
+	return nil, c.err
+}
+
 func (c *githubReleaseClientError) DownloadFile(ctx context.Context, url, dest string, maxSize int64) error {
 	return c.err
 }
@@ -79,9 +83,26 @@ func (c *githubReleaseClientError) FetchChecksumFile(ctx context.Context, url st
 }
 
 func (c *githubReleaseClient) FetchLatestRelease(ctx context.Context, repo string) (*service.GitHubRelease, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=30", repo)
+	releases, err := c.FetchReleases(ctx, repo, 30)
+	if err != nil {
+		return nil, err
+	}
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("no LightBridge application release found for %s", repo)
+	}
+	return &releases[0], nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (c *githubReleaseClient) FetchReleases(ctx context.Context, repo string, limit int) ([]service.GitHubRelease, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rawURL := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=%d", repo, limit)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -103,13 +124,13 @@ func (c *githubReleaseClient) FetchLatestRelease(ctx context.Context, repo strin
 		return nil, err
 	}
 
+	out := make([]service.GitHubRelease, 0, len(releases))
 	for i := range releases {
 		if appReleaseTagPattern.MatchString(strings.TrimSpace(releases[i].TagName)) {
-			return &releases[i], nil
+			out = append(out, releases[i])
 		}
 	}
-
-	return nil, fmt.Errorf("no LightBridge application release found for %s", repo)
+	return out, nil
 }
 
 func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string, maxSize int64) error {

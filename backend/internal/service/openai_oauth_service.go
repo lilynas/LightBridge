@@ -12,6 +12,12 @@ import (
 	"github.com/Wei-Shaw/LightBridge/internal/pkg/openai"
 )
 
+type OpenAIOAuthClient interface {
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
+	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error)
+}
+
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
 	sessionStore         *openai.SessionStore

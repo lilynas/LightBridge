@@ -29,9 +29,18 @@ func (s *systemHandlerUpdateServiceStub) CheckUpdate(_ context.Context, force bo
 	return s.updateInfo, s.checkErr
 }
 
+func (s *systemHandlerUpdateServiceStub) ListVersionReleases(ctx context.Context, force bool) ([]service.VersionRelease, *service.UpdateInfo, error) {
+	info, err := s.CheckUpdate(ctx, force)
+	return nil, info, err
+}
+
 func (s *systemHandlerUpdateServiceStub) PerformUpdate(context.Context) error {
 	s.performCall++
 	return s.performErr
+}
+
+func (s *systemHandlerUpdateServiceStub) PerformUpdateToVersion(context.Context, string) error {
+	return s.PerformUpdate(context.Background())
 }
 
 func (s *systemHandlerUpdateServiceStub) Rollback() error {

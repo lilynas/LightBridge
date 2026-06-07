@@ -225,6 +225,14 @@
         </p>
       </div>
     </ConfirmDialog>
+
+    <UpgradeChangesDialog
+      :show="upgradeChangesOpen"
+      :version="installedRelease?.version"
+      :body="installedRelease?.body"
+      :html-url="installedRelease?.html_url"
+      @close="upgradeChangesOpen = false"
+    />
   </div>
   </AppLayout>
 </template>
@@ -241,6 +249,7 @@ import {
   type VersionRelease
 } from '@/api/admin/system'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import UpgradeChangesDialog from '@/components/common/UpgradeChangesDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -260,6 +269,8 @@ const restarting = ref(false)
 const restartCountdown = ref(0)
 const confirmDialogOpen = ref(false)
 const selectedRelease = ref<VersionRelease | null>(null)
+const installedRelease = ref<VersionRelease | null>(null)
+const upgradeChangesOpen = ref(false)
 
 const isReleaseBuild = computed(() => buildType.value === 'release')
 const publishedReleases = computed(() => releases.value.filter((release) => !release.draft))
@@ -340,9 +351,12 @@ async function handleInstall() {
   needRestart.value = false
 
   try {
+    const release = selectedRelease.value
     const result = await performUpdate({ version: selectedRelease.value.version })
     updateSuccess.value = true
     needRestart.value = result.need_restart
+    installedRelease.value = release
+    upgradeChangesOpen.value = true
     appStore.clearVersionCache()
     try {
       await loadReleases(true)

@@ -292,16 +292,16 @@
                 <div
                   class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
                 >
-                <div
-                  class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
-                >
-                  <Icon
-                    name="download"
-                    size="sm"
-                    :stroke-width="2"
-                    class="text-amber-600 dark:text-amber-400"
-                  />
-                </div>
+                  <div
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
+                  >
+                    <Icon
+                      name="download"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-amber-600 dark:text-amber-400"
+                    />
+                  </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
                       {{ t('version.updateAvailable') }}
@@ -384,6 +384,14 @@
           </div>
         </div>
       </transition>
+
+      <UpgradeChangesDialog
+        :show="upgradeChangesOpen"
+        :version="latestVersion"
+        :body="releaseInfo?.body"
+        :html-url="releaseInfo?.html_url"
+        @close="upgradeChangesOpen = false"
+      />
     </template>
 
     <!-- Non-admin: Simple static version text -->
@@ -399,6 +407,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import { performUpdate, restartService } from '@/api/admin/system'
+import UpgradeChangesDialog from '@/components/common/UpgradeChangesDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -431,6 +440,7 @@ const needRestart = ref(false)
 const updateError = ref('')
 const updateSuccess = ref(false)
 const restartCountdown = ref(0)
+const upgradeChangesOpen = ref(false)
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
@@ -470,6 +480,7 @@ async function handleUpdate() {
     const result = await performUpdate()
     updateSuccess.value = true
     needRestart.value = result.need_restart
+    upgradeChangesOpen.value = true
     // Clear version cache to reflect update completed
     appStore.clearVersionCache()
   } catch (error: unknown) {

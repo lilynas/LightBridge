@@ -25,7 +25,9 @@ type SystemHandler struct {
 
 type systemUpdateService interface {
 	CheckUpdate(ctx context.Context, force bool) (*service.UpdateInfo, error)
+	ListVersionReleases(ctx context.Context, force bool) ([]service.VersionRelease, *service.UpdateInfo, error)
 	PerformUpdate(ctx context.Context) error
+	PerformUpdateToVersion(ctx context.Context, targetVersion string) error
 	Rollback() error
 }
 
@@ -62,27 +64,10 @@ func (h *SystemHandler) CheckUpdates(c *gin.Context) {
 // GET /api/v1/admin/system/versions
 func (h *SystemHandler) ListVersionReleases(c *gin.Context) {
 	force := c.Query("force") == "true"
-	info, err := h.updateSvc.CheckUpdate(c.Request.Context(), force)
+	releases, info, err := h.updateSvc.ListVersionReleases(c.Request.Context(), force)
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("SYSTEM_VERSION_LIST_FAILED", "failed to list versions: "+err.Error()).WithCause(err))
 		return
-	}
-
-	releases := make([]gin.H, 0, 1)
-	if info.ReleaseInfo != nil && strings.TrimSpace(info.LatestVersion) != "" {
-		current := strings.TrimPrefix(strings.TrimSpace(info.CurrentVersion), "v")
-		latest := strings.TrimPrefix(strings.TrimSpace(info.LatestVersion), "v")
-		releases = append(releases, gin.H{
-			"version":      latest,
-			"name":         info.ReleaseInfo.Name,
-			"body":         info.ReleaseInfo.Body,
-			"published_at": info.ReleaseInfo.PublishedAt,
-			"html_url":     info.ReleaseInfo.HTMLURL,
-			"prerelease":   false,
-			"draft":        false,
-			"current":      current == latest,
-			"latest":       true,
-		})
 	}
 
 	response.Success(c, gin.H{
@@ -98,6 +83,10 @@ func (h *SystemHandler) ListVersionReleases(c *gin.Context) {
 func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 	operationID := buildSystemOperationID(c, "update")
 	payload := gin.H{"operation_id": operationID}
+	var req struct {
+		Version string `json:"version"`
+	}
+	_ = c.ShouldBindJSON(&req)
 	executeAdminIdempotentJSON(c, "admin.system.update", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		lock, release, err := h.acquireSystemLock(ctx, operationID)
 		if err != nil {
@@ -109,7 +98,7 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 			release(releaseReason, succeeded)
 		}()
 
-		if err := h.updateSvc.PerformUpdate(ctx); err != nil {
+		if err := h.updateSvc.PerformUpdateToVersion(ctx, req.Version); err != nil {
 			if errors.Is(err, service.ErrNoUpdateAvailable) {
 				info, checkErr := h.updateSvc.CheckUpdate(ctx, false)
 				if checkErr != nil {

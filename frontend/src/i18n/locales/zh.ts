@@ -6652,6 +6652,14 @@ export default {
     updateAvailable: '有新版本可用！',
     releaseNotes: '更新日志',
     noReleaseNotes: '暂无更新日志',
+    upgradeChangesTitle: '升级变化',
+    noSectionChanges: '无',
+    sections: {
+      main: '主要功能',
+      features: '新增功能',
+      migration: '迁移板块',
+      fixes: '修复板块'
+    },
     viewUpdate: '查看更新',
     viewRelease: '查看发布',
     viewChangelog: '查看更新日志',

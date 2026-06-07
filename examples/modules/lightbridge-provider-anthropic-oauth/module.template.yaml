@@ -1,0 +1,45 @@
+apiVersion: lightbridge/v1alpha1
+id: anthropic-oauth
+name: Anthropic OAuth Provider
+type: provider
+version: 0.1.0
+description: Anthropic Claude OAuth provider module extracted from the legacy Sub2API Claude OAuth implementation.
+core:
+  compatible: ">=0.1.0 <0.2.0"
+backend:
+  entrypoints:
+    {{PLATFORM}}: backend/{{PLATFORM}}/lightbridge-provider-anthropic-oauth
+    default: backend/{{PLATFORM}}/lightbridge-provider-anthropic-oauth
+frontend:
+  entry: frontend/remoteEntry.js
+  routes:
+    - path: /admin/providers/anthropic-oauth-module
+      title: Anthropic OAuth Provider
+      exposedModule: ./AnthropicOAuthProviderSettings
+      requiresAdmin: true
+  menu:
+    - title: Anthropic OAuth Provider
+      path: /admin/providers/anthropic-oauth-module
+      group: Providers
+      order: 11
+  accountForms:
+    - providerId: anthropic-oauth
+      exposedModule: ./AnthropicOAuthAccountForm
+capabilities:
+  - provider.adapter
+  - ui.admin.route
+  - ui.account.form
+permissions:
+  network:
+    - https://api.anthropic.com/*
+    - https://platform.claude.com/*
+    - https://claude.ai/*
+  secrets:
+    - authorization_code
+    - code_verifier
+    - oauth_state
+    - access_token
+    - refresh_token
+    - session_key
+  database:
+    - provider_anthropic_oauth_*
