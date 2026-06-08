@@ -22,44 +22,40 @@ interface ThemeInstallResponse {
   theme: UITheme
 }
 
-function unwrap<T>(resp: { data: { data: T } }): T {
-  return resp.data.data
-}
-
 export async function listThemes(): Promise<UITheme[]> {
-  const resp = await apiClient.get<{ data: ThemeListResponse }>('/admin/ui-themes')
-  return unwrap(resp).themes || []
+  const resp = await apiClient.get<ThemeListResponse>('/admin/ui-themes')
+  return resp.data?.themes || []
 }
 
 export async function uploadTheme(file: File, replace = false): Promise<UITheme> {
   const form = new FormData()
   form.append('file', file)
-  const resp = await apiClient.post<{ data: ThemeInstallResponse }>(
+  const resp = await apiClient.post<ThemeInstallResponse>(
     `/admin/ui-themes/upload${replace ? '?replace=true' : ''}`,
     form,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   )
-  return unwrap(resp).theme
+  return resp.data.theme
 }
 
 export async function importGitHubTheme(url: string, replace = false): Promise<UITheme> {
-  const resp = await apiClient.post<{ data: ThemeInstallResponse }>('/admin/ui-themes/import-github', { url, replace })
-  return unwrap(resp).theme
+  const resp = await apiClient.post<ThemeInstallResponse>('/admin/ui-themes/import-github', { url, replace })
+  return resp.data.theme
 }
 
 export async function activateTheme(id: string): Promise<UITheme> {
-  const resp = await apiClient.put<{ data: UITheme }>(`/admin/ui-themes/${encodeURIComponent(id)}/activate`)
-  return unwrap(resp)
+  const resp = await apiClient.put<UITheme>(`/admin/ui-themes/${encodeURIComponent(id)}/activate`)
+  return resp.data
 }
 
 export async function deactivateTheme(id: string): Promise<UITheme> {
-  const resp = await apiClient.put<{ data: UITheme }>(`/admin/ui-themes/${encodeURIComponent(id)}/deactivate`)
-  return unwrap(resp)
+  const resp = await apiClient.put<UITheme>(`/admin/ui-themes/${encodeURIComponent(id)}/deactivate`)
+  return resp.data
 }
 
 export async function updateThemeConfig(id: string, config: Record<string, unknown>): Promise<UITheme> {
-  const resp = await apiClient.put<{ data: UITheme }>(`/admin/ui-themes/${encodeURIComponent(id)}/config`, { config })
-  return unwrap(resp)
+  const resp = await apiClient.put<UITheme>(`/admin/ui-themes/${encodeURIComponent(id)}/config`, { config })
+  return resp.data
 }
 
 export async function deleteTheme(id: string): Promise<void> {
