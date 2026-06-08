@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/LightBridge/internal/server/middleware"
+	"github.com/Wei-Shaw/LightBridge/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,11 +40,12 @@ type FrontendServer struct {
 	baseHTML    []byte
 	cache       *HTMLCache
 	settings    PublicSettingsProvider
+	themes      *service.UIThemeService
 	overrideDir string // local file override directory
 }
 
 // NewFrontendServer creates a new frontend server with settings injection
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, themeService ...*service.UIThemeService) (*FrontendServer, error) {
 	distFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
 		return nil, err
@@ -64,12 +66,17 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 	cache := NewHTMLCache()
 	cache.SetBaseHTML(baseHTML)
 
+	var themes *service.UIThemeService
+	if len(themeService) > 0 {
+		themes = themeService[0]
+	}
 	return &FrontendServer{
 		distFS:      distFS,
 		fileServer:  http.FileServer(http.FS(distFS)),
 		baseHTML:    baseHTML,
 		cache:       cache,
 		settings:    settingsProvider,
+		themes:      themes,
 		overrideDir: filepath.Join("data", "public"),
 	}, nil
 }
@@ -183,8 +190,19 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 		return
 	}
 
-	rendered := s.injectSettings(settingsJSON)
-	s.cache.Set(rendered, settingsJSON)
+	var themeInjection *service.UIThemeInjection
+	if s.themes != nil {
+		themeInjection, _ = s.themes.ActiveInjection(ctx)
+	}
+
+	rendered := s.injectSettings(settingsJSON, themeInjection)
+	cacheKey := settingsJSON
+	if themeInjection != nil {
+		if b, err := json.Marshal(themeInjection); err == nil {
+			cacheKey = append(append([]byte{}, settingsJSON...), b...)
+		}
+	}
+	s.cache.Set(rendered, cacheKey)
 
 	// Replace nonce placeholder with actual nonce before serving
 	content := replaceNoncePlaceholder(rendered, nonce)
@@ -198,10 +216,13 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	c.Abort()
 }
 
-func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
+func (s *FrontendServer) injectSettings(settingsJSON []byte, themeInjection *service.UIThemeInjection) []byte {
 	// Create the script tag to inject with nonce placeholder
 	// The placeholder will be replaced with actual nonce at request time
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
+	if themeInjection != nil {
+		script = append(script, renderThemeInjection(themeInjection)...)
+	}
 
 	// Inject before </head>
 	headClose := []byte("</head>")
@@ -211,6 +232,41 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	result = injectSiteTitle(result, settingsJSON)
 
 	return result
+}
+
+func renderThemeInjection(theme *service.UIThemeInjection) []byte {
+	if theme == nil || strings.TrimSpace(theme.CSSHref) == "" {
+		return nil
+	}
+	var buf bytes.Buffer
+	buf.WriteString(`<link rel="stylesheet" href="`)
+	buf.WriteString(htmlEscape(theme.CSSHref))
+	buf.WriteString(`" data-lightbridge-ui-theme="`)
+	buf.WriteString(htmlEscape(theme.ThemeID))
+	buf.WriteString(`">`)
+	if len(theme.Vars) > 0 {
+		buf.WriteString(`<style nonce="`)
+		buf.WriteString(NonceHTMLPlaceholder)
+		buf.WriteString(`" data-lightbridge-ui-theme-vars="`)
+		buf.WriteString(htmlEscape(theme.ThemeID))
+		buf.WriteString(`">:root{`)
+		for _, pair := range service.SortedUIThemeVars(theme.Vars) {
+			buf.WriteString(pair[0])
+			buf.WriteString(`:`)
+			buf.WriteString(strings.ReplaceAll(pair[1], `;`, ``))
+			buf.WriteString(`;`)
+		}
+		buf.WriteString(`}</style>`)
+	}
+	return buf.Bytes()
+}
+
+func htmlEscape(value string) string {
+	value = strings.ReplaceAll(value, `&`, `&amp;`)
+	value = strings.ReplaceAll(value, `"`, `&quot;`)
+	value = strings.ReplaceAll(value, `<`, `&lt;`)
+	value = strings.ReplaceAll(value, `>`, `&gt;`)
+	return value
 }
 
 // injectSiteTitle replaces the static <title> in HTML with the configured site name.
@@ -304,6 +360,7 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		strings.HasPrefix(trimmed, "/backend-api/") ||
 		strings.HasPrefix(trimmed, "/antigravity/") ||
 		strings.HasPrefix(trimmed, "/setup/") ||
+		strings.HasPrefix(trimmed, "/ui-themes/") ||
 		trimmed == "/health" ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||

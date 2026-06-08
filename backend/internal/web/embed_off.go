@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Wei-Shaw/LightBridge/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,7 +22,7 @@ type PublicSettingsProvider interface {
 type FrontendServer struct{}
 
 // NewFrontendServer returns an error when frontend is not embedded
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, themeService ...*service.UIThemeService) (*FrontendServer, error) {
 	return nil, errors.New("frontend not embedded")
 }
 

@@ -5673,6 +5673,10 @@
 
         </div><!-- /Tab: Features -->
 
+        <div v-show="activeTab === 'themes'" class="space-y-6">
+          <ThemeManager />
+        </div>
+
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
         <div v-show="activeTab === 'payment'" class="space-y-6">
@@ -6710,6 +6714,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import ThemeManager from "@/components/admin/ThemeManager.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -6748,6 +6753,7 @@ type SettingsTab =
   | "general"
   | "agreement"
   | "features"
+  | "themes"
   | "security"
   | "users"
   | "gateway"
@@ -6759,6 +6765,7 @@ const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
+  { key: "themes" as SettingsTab, icon: "sparkles" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },

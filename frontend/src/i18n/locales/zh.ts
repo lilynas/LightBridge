@@ -364,6 +364,7 @@ export default {
     subscriptions: '订阅管理',
     accounts: '账号管理',
     modules: '模块市场',
+    proxyModule: 'LightBridge Proxy',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',
@@ -1374,6 +1375,10 @@ export default {
 
   // Admin
   admin: {
+    proxyModule: {
+      title: 'LightBridge Proxy',
+      description: '统一管理出站代理节点、策略、绑定与运行状态'
+    },
     // Dashboard
     dashboard: {
       title: '管理控制台',
@@ -5473,12 +5478,27 @@ export default {
         general: '通用设置',
         agreement: '登录条款',
         features: '功能开关',
+        themes: '界面主题',
         security: '安全与认证',
         users: '用户默认值',
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+      },
+      uiThemes: {
+        title: '界面主题',
+        description: '安装、配置和激活自定义 CSS、菜单模块与页面板块。',
+        githubUrl: 'GitHub 仓库 URL',
+        zipUpload: 'ZIP 上传',
+        import: '导入',
+        upload: '上传',
+        replaceExisting: '替换同 ID 的已安装主题',
+        installed: '已安装主题',
+        empty: '暂无已安装主题',
+        active: '已激活',
+        activate: '激活',
+        deactivate: '停用',
       },
       features: {
         channelMonitor: {

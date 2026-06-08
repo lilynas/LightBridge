@@ -36,6 +36,7 @@ type AdminHandlers struct {
 	Payment                *admin.PaymentHandler
 	Affiliate              *admin.AffiliateHandler
 	Module                 *admin.ModuleHandler
+	UITheme                *admin.UIThemeHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -57,6 +58,7 @@ type Handlers struct {
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
 	Module           *ModuleHandler
+	UIThemeAsset     *UIThemeAssetHandler
 }
 
 // BuildInfo contains build-time information

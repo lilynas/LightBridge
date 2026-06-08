@@ -30,6 +30,7 @@ func SetupRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	uiThemeService *service.UIThemeService,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
@@ -63,21 +64,28 @@ func SetupRouter(
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
-		frontendServer, err := web.NewFrontendServer(settingService)
+		frontendServer, err := web.NewFrontendServer(settingService, uiThemeService)
 		if err != nil {
 			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
 			r.Use(web.ServeEmbeddedFrontend())
 			settingService.SetOnUpdateCallback(refreshFrameOrigins)
 		} else {
 			// Register combined callback: invalidate HTML cache + refresh frame origins
-			settingService.SetOnUpdateCallback(func() {
+			invalidateFrontend := func() {
 				frontendServer.InvalidateCache()
 				refreshFrameOrigins()
-			})
+			}
+			settingService.SetOnUpdateCallback(invalidateFrontend)
+			if uiThemeService != nil {
+				uiThemeService.SetOnUpdateCallback(invalidateFrontend)
+			}
 			r.Use(frontendServer.Middleware())
 		}
 	} else {
 		settingService.SetOnUpdateCallback(refreshFrameOrigins)
+		if uiThemeService != nil {
+			uiThemeService.SetOnUpdateCallback(refreshFrameOrigins)
+		}
 	}
 
 	// 注册路由
@@ -110,6 +118,7 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
 	routes.RegisterAdminRoutes(v1, h, adminAuth)
+	routes.RegisterUIThemeAssetRoutes(r, h)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)
 

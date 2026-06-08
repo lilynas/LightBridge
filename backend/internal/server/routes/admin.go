@@ -99,6 +99,21 @@ func RegisterAdminRoutes(
 		registerAffiliateRoutes(admin, h)
 
 		registerAdminModuleRoutes(admin, h)
+
+		registerUIThemeRoutes(admin, h)
+	}
+}
+
+func registerUIThemeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	themes := admin.Group("/ui-themes")
+	{
+		themes.GET("", h.Admin.UITheme.List)
+		themes.POST("/upload", h.Admin.UITheme.Upload)
+		themes.POST("/import-github", h.Admin.UITheme.ImportGitHub)
+		themes.PUT("/:id/activate", h.Admin.UITheme.Activate)
+		themes.PUT("/:id/deactivate", h.Admin.UITheme.Deactivate)
+		themes.PUT("/:id/config", h.Admin.UITheme.UpdateConfig)
+		themes.DELETE("/:id", h.Admin.UITheme.Delete)
 	}
 }
 

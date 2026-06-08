@@ -364,6 +364,7 @@ export default {
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     modules: 'Modules',
+    proxyModule: 'LightBridge Proxy',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
@@ -1370,6 +1371,10 @@ export default {
 
   // Admin
   admin: {
+    proxyModule: {
+      title: 'LightBridge Proxy',
+      description: 'Unified outbound proxy nodes, profiles, bindings, and runtime state'
+    },
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',
@@ -5313,12 +5318,27 @@ export default {
         general: 'General',
         agreement: 'Agreement',
         features: 'Feature Switches',
+        themes: 'UI Themes',
         security: 'Security',
         users: 'Users',
         gateway: 'Gateway',
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+      },
+      uiThemes: {
+        title: 'UI Themes',
+        description: 'Install, configure, and activate custom CSS, menu modules, and page sections.',
+        githubUrl: 'GitHub repository URL',
+        zipUpload: 'ZIP upload',
+        import: 'Import',
+        upload: 'Upload',
+        replaceExisting: 'Replace an installed theme with the same ID',
+        installed: 'Installed themes',
+        empty: 'No themes installed',
+        active: 'Active',
+        activate: 'Activate',
+        deactivate: 'Deactivate',
       },
       features: {
         channelMonitor: {
