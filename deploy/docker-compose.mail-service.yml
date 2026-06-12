@@ -19,9 +19,11 @@ services:
       LIGHTBRIDGE_BASE_URL: ${LIGHTBRIDGE_BASE_URL:-http://LightBridge:8080}
     volumes:
       - ./mail_service_data:/data
+    depends_on:
+      - LightBridge
     networks:
-      - lightbridge-network
+      - LightBridge-network
 
 networks:
-  lightbridge-network:
-    external: false
+  LightBridge-network:
+    driver: bridge
