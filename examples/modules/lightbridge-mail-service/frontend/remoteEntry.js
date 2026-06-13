@@ -11,11 +11,14 @@ const style = `
 .lbms input, .lbms select { box-sizing: border-box; width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 9px 10px; font-size: 13px; }
 .lbms button { border: 1px solid #111827; border-radius: 8px; background: #111827; color: #fff; padding: 8px 12px; font-size: 13px; cursor: pointer; margin: 4px 6px 4px 0; }
 .lbms button.secondary { background: #fff; color: #111827; }
+.lbms button:disabled { opacity: 0.55; cursor: not-allowed; }
 .lbms table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
 .lbms th, .lbms td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: 10px 8px; }
 .lbms th { color: #374151; font-weight: 650; background: #f9fafb; }
 .lbms .hint { color: #6b7280; font-size: 12px; }
 .lbms .danger { color: #b91c1c; }
+.lbms .ok { color: #047857; }
+.lbms .pill { display: inline-block; border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; font-size: 12px; background: #f9fafb; }
 `;
 
 function ensureStyle() {
@@ -44,26 +47,55 @@ async function lbmsFetch(path, options = {}) {
   return data;
 }
 
+function mailboxRows(payload) {
+  return payload?.data?.mailboxes || [];
+}
+
+function formatTime(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
 const MailServiceHome = {
   name: "MailServiceHome",
   data() {
     return {
       health: null,
+      mailboxes: [],
+      loading: false,
       error: "",
     };
   },
   mounted() {
     ensureStyle();
-    this.testConnection();
+    this.refresh();
+  },
+  computed: {
+    bindingTotal() {
+      return this.mailboxes.reduce((sum, item) => sum + Number(item.binding_count || 0), 0);
+    },
   },
   methods: {
-    async testConnection() {
+    async refresh() {
+      this.loading = true;
       this.error = "";
       try {
-        this.health = await lbmsFetch("/mail/v1/health");
+        const [health, mailboxPayload] = await Promise.all([
+          lbmsFetch("/mail/v1/health"),
+          lbmsFetch("/mail/v1/mailboxes"),
+        ]);
+        this.health = health;
+        this.mailboxes = mailboxRows(mailboxPayload);
       } catch (err) {
         this.health = null;
+        this.mailboxes = [];
         this.error = err.message || "LightBridge Mail Service 暂不可用。";
+      } finally {
+        this.loading = false;
       }
     },
   },
@@ -74,11 +106,11 @@ const MailServiceHome = {
       <div class="grid">
         <div class="card"><div class="metric">服务状态</div><div class="value">{{ health ? '正常' : '未连接' }}</div></div>
         <div class="card"><div class="metric">Driver 状态</div><div class="value">{{ health?.data?.driver_status || '未知' }}</div></div>
-        <div class="card"><div class="metric">邮箱总数</div><div class="value">—</div></div>
-        <div class="card"><div class="metric">已绑定 OAuth</div><div class="value">—</div></div>
+        <div class="card"><div class="metric">邮箱总数</div><div class="value">{{ mailboxes.length }}</div></div>
+        <div class="card"><div class="metric">已绑定 OAuth</div><div class="value">{{ bindingTotal }}</div></div>
       </div>
       <p v-if="error" class="danger">{{ error }}</p>
-      <button type="button" @click="testConnection">测试连接</button>
+      <button type="button" @click="refresh" :disabled="loading">{{ loading ? '刷新中...' : '刷新状态' }}</button>
       <button type="button" class="secondary">新增邮箱</button>
       <button type="button" class="secondary">导入邮箱池</button>
       <button type="button" class="secondary">查看审计日志</button>
@@ -108,7 +140,7 @@ const MailServiceSettings = {
       this.save();
       try {
         const health = await lbmsFetch("/mail/v1/health");
-        this.status = `LightBridge Mail Service 已连接，Driver 状态：${health?.data?.driver_status || '未知'}`;
+        this.status = `LightBridge Mail Service 已连接，Driver 状态：${health?.data?.driver_status || '未知'}，Store：${health?.data?.store?.type || '未知'}`;
       } catch (err) {
         this.status = err.message || "LightBridge Mail Service 暂不可用。";
       }
@@ -138,25 +170,72 @@ const MailServiceMailboxes = {
   data() {
     return {
       keyword: "",
-      status: "active",
+      status: "all",
       rows: [],
+      loading: false,
       error: "",
     };
   },
-  mounted() { ensureStyle(); },
+  mounted() {
+    ensureStyle();
+    this.load();
+  },
+  computed: {
+    filteredRows() {
+      const keyword = this.keyword.trim().toLowerCase();
+      return this.rows.filter((row) => {
+        const statusMatched = this.status === "all" || row.status === this.status;
+        const keywordMatched = !keyword || String(row.email_address || "").toLowerCase().includes(keyword) || String(row.id || "").toLowerCase().includes(keyword);
+        return statusMatched && keywordMatched;
+      });
+    },
+  },
+  methods: {
+    formatTime,
+    async load() {
+      this.loading = true;
+      this.error = "";
+      try {
+        const payload = await lbmsFetch("/mail/v1/mailboxes");
+        this.rows = mailboxRows(payload);
+      } catch (err) {
+        this.rows = [];
+        this.error = err.message || "无法读取邮箱池。";
+      } finally {
+        this.loading = false;
+      }
+    },
+    reset() {
+      this.keyword = "";
+      this.status = "all";
+      this.load();
+    },
+  },
   template: `
     <section class="lbms">
       <h2>邮箱池</h2>
-      <p>查看邮箱、绑定 OAuth 数量、最近验证码状态和操作入口。完整列表 API 会在持久化 store 阶段补齐。</p>
+      <p>查看邮箱、绑定 OAuth 数量和操作入口。邮箱详情保存在 LightBridge Mail Service；LightBridge 主账号 Extra 只保留 lbms_link。</p>
       <div class="grid">
-        <div><label>关键词</label><input v-model="keyword" placeholder="邮箱地址 / OAuth 名称" /></div>
-        <div><label>状态</label><select v-model="status"><option>active</option><option>available</option><option>disabled</option><option>error</option></select></div>
-        <div><label>平台</label><select><option>全部</option><option>OpenAI</option><option>Gemini</option><option>Anthropic</option></select></div>
+        <div><label>关键词</label><input v-model="keyword" placeholder="邮箱地址 / mailbox id" /></div>
+        <div><label>状态</label><select v-model="status"><option value="all">全部</option><option value="active">active</option><option value="available">available</option><option value="disabled">disabled</option><option value="error">error</option></select></div>
+        <div><label>平台</label><select disabled><option>后续按绑定平台过滤</option></select></div>
       </div>
-      <button type="button">搜索</button><button type="button" class="secondary">重置</button><button type="button" class="secondary">批量导入</button>
+      <button type="button" @click="load" :disabled="loading">{{ loading ? '读取中...' : '刷新' }}</button><button type="button" class="secondary" @click="reset">重置</button><button type="button" class="secondary">批量导入</button>
+      <p v-if="error" class="danger">{{ error }}</p>
       <table>
-        <thead><tr><th>邮箱地址</th><th>状态</th><th>绑定 OAuth 数</th><th>最近邮件时间</th><th>最近验证码时间</th><th>标签</th><th>操作</th></tr></thead>
-        <tbody><tr><td colspan="7" class="hint">等待接入持久化 mailbox list API。</td></tr></tbody>
+        <thead><tr><th>邮箱地址</th><th>状态</th><th>绑定 OAuth 数</th><th>创建时间</th><th>更新时间</th><th>Mailbox ID</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-if="filteredRows.length === 0"><td colspan="7" class="hint">暂无邮箱，或当前筛选条件没有结果。</td></tr>
+          <tr v-for="row in filteredRows" :key="row.id">
+            <td>{{ row.email_address }}</td>
+            <td><span class="pill">{{ row.status }}</span></td>
+            <td>{{ row.binding_count }}</td>
+            <td>{{ formatTime(row.created_at) }}</td>
+            <td>{{ formatTime(row.updated_at) }}</td>
+            <td class="hint">{{ row.id }}</td>
+            <td><button type="button" class="secondary">查看绑定</button><button type="button" class="secondary">获取验证码</button></td>
+          </tr>
+        </tbody>
       </table>
     </section>
   `,
