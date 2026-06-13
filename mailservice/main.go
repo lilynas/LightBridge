@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +32,7 @@ type Config struct {
 	Driver               string
 	DriverBaseURL        string
 	DriverAPIKey         string
+	DataPath             string
 	RequestTimeout       time.Duration
 	VerificationCacheTTL time.Duration
 }
@@ -42,6 +45,7 @@ func LoadConfig() Config {
 		Driver:               envOrDefault("LBMS_DRIVER", "outlook_email_plus"),
 		DriverBaseURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("LBMS_DRIVER_BASE_URL")), "/"),
 		DriverAPIKey:         strings.TrimSpace(os.Getenv("LBMS_DRIVER_API_KEY")),
+		DataPath:             envOrDefault("LBMS_DATA_PATH", "data/lbms-store.json"),
 		RequestTimeout:       envDurationSeconds("LBMS_REQUEST_TIMEOUT_SECONDS", 10),
 		VerificationCacheTTL: envDurationSeconds("LBMS_VERIFICATION_CACHE_SECONDS", 30),
 	}
@@ -89,12 +93,20 @@ type OAuthBinding struct {
 }
 
 type Store struct {
-	mu                 sync.RWMutex
-	mailboxesByID      map[string]*Mailbox
-	mailboxIDByEmail   map[string]string
-	bindingsByAccount  map[int64]*OAuthBinding
-	bindingsByMailbox  map[string]map[int64]*OAuthBinding
-	verificationCache  map[string]cachedVerification
+	mu                sync.RWMutex
+	dataPath          string
+	mailboxesByID     map[string]*Mailbox
+	mailboxIDByEmail  map[string]string
+	bindingsByAccount map[int64]*OAuthBinding
+	bindingsByMailbox map[string]map[int64]*OAuthBinding
+	verificationCache map[string]cachedVerification
+}
+
+type persistedStore struct {
+	Version   int             `json:"version"`
+	SavedAt   time.Time       `json:"saved_at"`
+	Mailboxes []*Mailbox      `json:"mailboxes"`
+	Bindings  []*OAuthBinding `json:"bindings"`
 }
 
 type cachedVerification struct {
@@ -103,14 +115,113 @@ type cachedVerification struct {
 	ExpiresAt  time.Time
 }
 
-func NewStore() *Store {
-	return &Store{
+func NewStore(dataPath string) (*Store, error) {
+	s := &Store{
+		dataPath:          strings.TrimSpace(dataPath),
 		mailboxesByID:     map[string]*Mailbox{},
 		mailboxIDByEmail:  map[string]string{},
 		bindingsByAccount: map[int64]*OAuthBinding{},
 		bindingsByMailbox: map[string]map[int64]*OAuthBinding{},
 		verificationCache: map[string]cachedVerification{},
 	}
+	if err := s.load(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Store) load() error {
+	if s.dataPath == "" {
+		return nil
+	}
+	file, err := os.Open(s.dataPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open_store: %w", err)
+	}
+	defer file.Close()
+
+	var snapshot persistedStore
+	if err := json.NewDecoder(file).Decode(&snapshot); err != nil {
+		return fmt.Errorf("decode_store: %w", err)
+	}
+	for _, mailbox := range snapshot.Mailboxes {
+		if mailbox == nil || mailbox.ID == "" || mailbox.NormalizedEmail == "" {
+			continue
+		}
+		copy := *mailbox
+		s.mailboxesByID[copy.ID] = &copy
+		s.mailboxIDByEmail[copy.NormalizedEmail] = copy.ID
+	}
+	for _, binding := range snapshot.Bindings {
+		if binding == nil || binding.LightBridgeAccountID <= 0 || binding.MailboxID == "" {
+			continue
+		}
+		if _, ok := s.mailboxesByID[binding.MailboxID]; !ok {
+			continue
+		}
+		copy := *binding
+		s.bindingsByAccount[copy.LightBridgeAccountID] = &copy
+		if s.bindingsByMailbox[copy.MailboxID] == nil {
+			s.bindingsByMailbox[copy.MailboxID] = map[int64]*OAuthBinding{}
+		}
+		s.bindingsByMailbox[copy.MailboxID][copy.LightBridgeAccountID] = &copy
+	}
+	return nil
+}
+
+func (s *Store) saveLocked() error {
+	if s.dataPath == "" {
+		return nil
+	}
+	mailboxes := make([]*Mailbox, 0, len(s.mailboxesByID))
+	for _, mailbox := range s.mailboxesByID {
+		copy := *mailbox
+		mailboxes = append(mailboxes, &copy)
+	}
+	sort.Slice(mailboxes, func(i, j int) bool { return mailboxes[i].ID < mailboxes[j].ID })
+
+	bindings := make([]*OAuthBinding, 0, len(s.bindingsByAccount))
+	for _, binding := range s.bindingsByAccount {
+		copy := *binding
+		bindings = append(bindings, &copy)
+	}
+	sort.Slice(bindings, func(i, j int) bool { return bindings[i].ID < bindings[j].ID })
+
+	snapshot := persistedStore{
+		Version:   1,
+		SavedAt:   time.Now().UTC(),
+		Mailboxes: mailboxes,
+		Bindings:  bindings,
+	}
+
+	if err := os.MkdirAll(filepath.Dir(s.dataPath), 0o700); err != nil {
+		return fmt.Errorf("create_store_dir: %w", err)
+	}
+	tmp := s.dataPath + ".tmp"
+	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open_store_tmp: %w", err)
+	}
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(snapshot); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("encode_store: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync_store: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close_store: %w", err)
+	}
+	if err := os.Rename(tmp, s.dataPath); err != nil {
+		return fmt.Errorf("replace_store: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) LinkOrCreate(req LinkOrCreateRequest) (*Mailbox, *OAuthBinding, error) {
@@ -164,7 +275,10 @@ func (s *Store) LinkOrCreate(req LinkOrCreateRequest) (*Mailbox, *OAuthBinding, 
 			s.bindingsByMailbox[mailbox.ID] = map[int64]*OAuthBinding{}
 		}
 		s.bindingsByMailbox[mailbox.ID][req.LightBridgeAccountID] = existing
-		return mailbox, existing, nil
+		if err := s.saveLocked(); err != nil {
+			return nil, nil, err
+		}
+		return cloneMailbox(mailbox), cloneBinding(existing), nil
 	}
 
 	binding := &OAuthBinding{
@@ -183,7 +297,34 @@ func (s *Store) LinkOrCreate(req LinkOrCreateRequest) (*Mailbox, *OAuthBinding, 
 		s.bindingsByMailbox[mailbox.ID] = map[int64]*OAuthBinding{}
 	}
 	s.bindingsByMailbox[mailbox.ID][req.LightBridgeAccountID] = binding
-	return mailbox, binding, nil
+	if err := s.saveLocked(); err != nil {
+		return nil, nil, err
+	}
+	return cloneMailbox(mailbox), cloneBinding(binding), nil
+}
+
+func (s *Store) ListMailboxes() []*MailboxSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]*MailboxSummary, 0, len(s.mailboxesByID))
+	for _, mailbox := range s.mailboxesByID {
+		bindingCount := 0
+		for _, binding := range s.bindingsByMailbox[mailbox.ID] {
+			if binding.Status == "active" {
+				bindingCount++
+			}
+		}
+		items = append(items, &MailboxSummary{
+			ID:           mailbox.ID,
+			EmailAddress: mailbox.EmailAddress,
+			Status:       mailbox.Status,
+			BindingCount: bindingCount,
+			CreatedAt:    mailbox.CreatedAt,
+			UpdatedAt:    mailbox.UpdatedAt,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].UpdatedAt.After(items[j].UpdatedAt) })
+	return items
 }
 
 func (s *Store) BindingByAccount(accountID int64) (*OAuthBinding, *Mailbox, bool) {
@@ -197,7 +338,7 @@ func (s *Store) BindingByAccount(accountID int64) (*OAuthBinding, *Mailbox, bool
 	if mailbox == nil {
 		return nil, nil, false
 	}
-	return binding, mailbox, true
+	return cloneBinding(binding), cloneMailbox(mailbox), true
 }
 
 func (s *Store) BindingsByMailbox(mailboxID string) (*Mailbox, []*OAuthBinding, bool) {
@@ -210,11 +351,11 @@ func (s *Store) BindingsByMailbox(mailboxID string) (*Mailbox, []*OAuthBinding, 
 	bindings := make([]*OAuthBinding, 0, len(s.bindingsByMailbox[mailboxID]))
 	for _, binding := range s.bindingsByMailbox[mailboxID] {
 		if binding.Status == "active" {
-			copy := *binding
-			bindings = append(bindings, &copy)
+			bindings = append(bindings, cloneBinding(binding))
 		}
 	}
-	return mailbox, bindings, true
+	sort.Slice(bindings, func(i, j int) bool { return bindings[i].LightBridgeAccountID < bindings[j].LightBridgeAccountID })
+	return cloneMailbox(mailbox), bindings, true
 }
 
 func (s *Store) UnlinkAccount(accountID int64) bool {
@@ -226,6 +367,9 @@ func (s *Store) UnlinkAccount(accountID int64) bool {
 	}
 	delete(s.bindingsByAccount, accountID)
 	delete(s.bindingsByMailbox[binding.MailboxID], accountID)
+	if err := s.saveLocked(); err != nil {
+		log.Printf("%s failed to persist unlink: %v", serviceName, err)
+	}
 	return true
 }
 
@@ -252,12 +396,37 @@ func (s *Store) SetCachedVerification(key, code, receivedAt string, ttl time.Dur
 	}
 }
 
+func cloneMailbox(mailbox *Mailbox) *Mailbox {
+	if mailbox == nil {
+		return nil
+	}
+	copy := *mailbox
+	return &copy
+}
+
+func cloneBinding(binding *OAuthBinding) *OAuthBinding {
+	if binding == nil {
+		return nil
+	}
+	copy := *binding
+	return &copy
+}
+
 type LinkOrCreateRequest struct {
 	EmailAddress           string `json:"email_address"`
 	LightBridgeAccountID   int64  `json:"lightbridge_account_id"`
 	LightBridgePlatform    string `json:"lightbridge_platform"`
 	LightBridgeAccountType string `json:"lightbridge_account_type"`
 	LightBridgeAccountName string `json:"lightbridge_account_name"`
+}
+
+type MailboxSummary struct {
+	ID           string    `json:"id"`
+	EmailAddress string    `json:"email_address"`
+	Status       string    `json:"status"`
+	BindingCount int       `json:"binding_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type DriverClient struct {
@@ -347,20 +516,26 @@ type Server struct {
 
 func main() {
 	cfg := LoadConfig()
+	store, err := NewStore(cfg.DataPath)
+	if err != nil {
+		log.Fatalf("%s failed to load store: %v", serviceName, err)
+	}
 	server := &Server{
 		cfg:    cfg,
-		store:  NewStore(),
+		store:  store,
 		driver: NewDriverClient(cfg),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mail/v1/health", server.handleHealth)
+	mux.HandleFunc("/mail/v1/mailboxes", server.withAuth(server.handleMailboxes))
 	mux.HandleFunc("/mail/v1/mailboxes/link-or-create", server.withAuth(server.handleLinkOrCreate))
 	mux.HandleFunc("/mail/v1/accounts/", server.withAuth(server.handleAccountRoute))
 	mux.HandleFunc("/mail/v1/mailboxes/", server.withAuth(server.handleMailboxRoute))
 
 	addr := cfg.Host + ":" + cfg.Port
 	log.Printf("%s starting on %s", serviceName, addr)
+	log.Printf("%s store path: %s", serviceName, cfg.DataPath)
 	if err := http.ListenAndServe(addr, requestIDMiddleware(mux)); err != nil {
 		log.Fatal(err)
 	}
@@ -379,7 +554,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"service":       serviceName,
 			"status":        "ok",
 			"driver_status": s.driver.Health(ctx),
-			"version":       version,
+			"store": map[string]any{
+				"type": "json_file",
+				"path": s.cfg.DataPath,
+			},
+			"version": version,
+		},
+	})
+}
+
+func (s *Server) handleMailboxes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data": map[string]any{
+			"mailboxes": s.store.ListMailboxes(),
 		},
 	})
 }
@@ -447,17 +639,7 @@ func (s *Server) handleAccountVerificationCode(w http.ResponseWriter, r *http.Re
 	codeLength := intQuery(r, "code_length", 0)
 	cacheKey := fmt.Sprintf("account:%d:%d:%d", accountID, sinceMinutes, codeLength)
 	if cached, ok := s.store.GetCachedVerification(cacheKey); ok {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"success": true,
-			"data": map[string]any{
-				"mailbox_id":    mailbox.ID,
-				"email_address": mailbox.EmailAddress,
-				"code":          cached.Code,
-				"received_at":   cached.ReceivedAt,
-				"confidence":    "high",
-				"cached":        true,
-			},
-		})
+		writeVerificationCode(w, mailbox, cached.Code, cached.ReceivedAt, true)
 		return
 	}
 
@@ -470,35 +652,41 @@ func (s *Server) handleAccountVerificationCode(w http.ResponseWriter, r *http.Re
 	if code != "" {
 		s.store.SetCachedVerification(cacheKey, code, receivedAt, s.cfg.VerificationCacheTTL)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"data": map[string]any{
-			"mailbox_id":    mailbox.ID,
-			"email_address": mailbox.EmailAddress,
-			"code":          code,
-			"received_at":   receivedAt,
-			"confidence":    "high",
-			"cached":        false,
-		},
-	})
+	writeVerificationCode(w, mailbox, code, receivedAt, false)
 }
 
 func (s *Server) handleAccountMailboxLink(w http.ResponseWriter, r *http.Request, accountID int64) {
-	if r.Method != http.MethodDelete {
+	switch r.Method {
+	case http.MethodGet:
+		binding, mailbox, ok := s.store.BindingByAccount(accountID)
+		if !ok {
+			writeError(w, http.StatusNotFound, "mailbox_binding_not_found", "mailbox binding not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": true,
+			"data": map[string]any{
+				"lbms_link":     "lbms://mailbox/" + mailbox.ID,
+				"mailbox_id":    mailbox.ID,
+				"email_address": mailbox.EmailAddress,
+				"binding":       binding,
+			},
+		})
+	case http.MethodDelete:
+		if !s.store.UnlinkAccount(accountID) {
+			writeError(w, http.StatusNotFound, "mailbox_binding_not_found", "mailbox binding not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": true,
+			"data": map[string]any{
+				"lightbridge_account_id": accountID,
+				"unlinked":               true,
+			},
+		})
+	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-		return
 	}
-	if !s.store.UnlinkAccount(accountID) {
-		writeError(w, http.StatusNotFound, "mailbox_binding_not_found", "mailbox binding not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"data": map[string]any{
-			"lightbridge_account_id": accountID,
-			"unlinked":               true,
-		},
-	})
 }
 
 func (s *Server) handleMailboxRoute(w http.ResponseWriter, r *http.Request) {
@@ -565,6 +753,20 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		}
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
+	})
+}
+
+func writeVerificationCode(w http.ResponseWriter, mailbox *Mailbox, code, receivedAt string, cached bool) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data": map[string]any{
+			"mailbox_id":    mailbox.ID,
+			"email_address": mailbox.EmailAddress,
+			"code":          code,
+			"received_at":   receivedAt,
+			"confidence":    "high",
+			"cached":        cached,
+		},
 	})
 }
 
