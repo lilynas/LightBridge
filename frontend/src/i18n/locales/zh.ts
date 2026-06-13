@@ -4105,6 +4105,24 @@ export default {
           now: '现在'
         }
       },
+      custom: {
+        title: 'Custom Provider',
+        protocol: '协议类型',
+        selectProtocol: '请选择协议类型',
+        protocolOptions: {
+          openai_responses: 'OpenAI Responses',
+          openai_chat_completions: 'OpenAI Chat Completions',
+          openai_embeddings: 'OpenAI Embeddings',
+          anthropic_messages: 'Anthropic Messages',
+          gemini: 'Gemini'
+        },
+        protocolHint: '选择与上游兼容的协议类型',
+        baseUrl: 'Base URL',
+        baseUrlHint: '自定义上游端点地址，例如 https://api.example.com/v1',
+        pleaseSelectProtocol: '请选择协议类型',
+        pleaseEnterBaseUrl: '请输入 Base URL',
+        pleaseEnterApiKey: '请输入 API Key'
+      },
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',

@@ -134,6 +134,22 @@
             </svg>
             Gemini
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'custom'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'custom'
+                ? 'bg-white text-purple-600 shadow-sm dark:bg-dark-600 dark:text-purple-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Custom
+          </button>
         </div>
       </div>
 
@@ -194,6 +210,96 @@
             </div>
           </button>
         </div>
+      </div>
+
+      <!-- Custom Provider Configuration -->
+      <!-- Provider Preset Selector -->
+      <div v-if="form.platform === 'custom'">
+        <label class="input-label">{{ t('admin.accounts.custom.preset') }}</label>
+        <select
+          v-model="selectedPreset"
+          @change="applyPreset"
+          class="input"
+        >
+          <option value="">{{ t('admin.accounts.custom.selectPreset') }}</option>
+          <optgroup :label="t('admin.accounts.custom.presetGroups.openaiChat')">
+            <option
+              v-for="preset in presetsByProtocol['openai-chat']"
+              :key="preset.id"
+              :value="preset.id"
+            >
+              {{ preset.name }}
+            </option>
+          </optgroup>
+          <optgroup :label="t('admin.accounts.custom.presetGroups.openaiResponses')">
+            <option
+              v-for="preset in presetsByProtocol['openai-responses']"
+              :key="preset.id"
+              :value="preset.id"
+            >
+              {{ preset.name }}
+            </option>
+          </optgroup>
+          <optgroup :label="t('admin.accounts.custom.presetGroups.openaiEmbeddings')">
+            <option
+              v-for="preset in presetsByProtocol['openai-embeddings']"
+              :key="preset.id"
+              :value="preset.id"
+            >
+              {{ preset.name }}
+            </option>
+          </optgroup>
+          <optgroup :label="t('admin.accounts.custom.presetGroups.anthropic')">
+            <option
+              v-for="preset in presetsByProtocol['anthropic']"
+              :key="preset.id"
+              :value="preset.id"
+            >
+              {{ preset.name }}
+            </option>
+          </optgroup>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.custom.presetHint') }}</p>
+      </div>
+
+      <div v-if="form.platform === 'custom'">
+        <label class="input-label">{{ t('admin.accounts.custom.protocol') }}</label>
+        <select
+          v-model="form.customProtocol"
+          required
+          class="input"
+        >
+          <option value="">{{ t('admin.accounts.custom.selectProtocol') }}</option>
+          <option value="openai_responses">{{ t('admin.accounts.custom.protocolOptions.openai_responses') }}</option>
+          <option value="openai_chat_completions">{{ t('admin.accounts.custom.protocolOptions.openai_chat_completions') }}</option>
+          <option value="openai_embeddings">{{ t('admin.accounts.custom.protocolOptions.openai_embeddings') }}</option>
+          <option value="anthropic_messages">{{ t('admin.accounts.custom.protocolOptions.anthropic_messages') }}</option>
+          <option value="gemini">{{ t('admin.accounts.custom.protocolOptions.gemini') }}</option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.custom.protocolHint') }}</p>
+      </div>
+
+      <div v-if="form.platform === 'custom'">
+        <label class="input-label">{{ t('admin.accounts.custom.baseUrl') }}</label>
+        <input
+          v-model="form.customBaseUrl"
+          type="url"
+          required
+          class="input"
+          placeholder="https://api.example.com/v1"
+        />
+        <p class="input-hint">{{ t('admin.accounts.custom.baseUrlHint') }}</p>
+      </div>
+
+      <div v-if="form.platform === 'custom'">
+        <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
+        <input
+          v-model="form.customApiKey"
+          type="password"
+          required
+          class="input"
+          :placeholder="t('admin.accounts.enterApiKey')"
+        />
       </div>
 
       <!-- Account Type Selection (Anthropic) -->
@@ -3728,7 +3834,11 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  // Custom provider fields
+  customProtocol: '',
+  customBaseUrl: '',
+  customApiKey: ''
 })
 
 // Helper to check if current type needs OAuth flow
@@ -4501,6 +4611,38 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  // For Custom provider, create directly
+  if (form.platform === 'custom') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!form.customProtocol) {
+      appStore.showError(t('admin.accounts.custom.pleaseSelectProtocol'))
+      return
+    }
+    if (!form.customBaseUrl.trim()) {
+      appStore.showError(t('admin.accounts.custom.pleaseEnterBaseUrl'))
+      return
+    }
+    if (!form.customApiKey.trim()) {
+      appStore.showError(t('admin.accounts.custom.pleaseEnterApiKey'))
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      base_url: form.customBaseUrl.trim(),
+      api_key: form.customApiKey.trim()
+    }
+
+    const extra: Record<string, unknown> = {
+      protocol: form.customProtocol
+    }
+
+    await createAccountAndFinish('custom', 'apikey', credentials, extra)
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!form.name.trim()) {

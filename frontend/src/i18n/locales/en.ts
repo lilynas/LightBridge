@@ -3978,6 +3978,24 @@ export default {
           now: 'now'
         }
       },
+      custom: {
+        title: 'Custom Provider',
+        protocol: 'Protocol',
+        selectProtocol: 'Please select a protocol',
+        protocolOptions: {
+          openai_responses: 'OpenAI Responses',
+          openai_chat_completions: 'OpenAI Chat Completions',
+          openai_embeddings: 'OpenAI Embeddings',
+          anthropic_messages: 'Anthropic Messages',
+          gemini: 'Gemini'
+        },
+        protocolHint: 'Select the protocol compatible with your upstream',
+        baseUrl: 'Base URL',
+        baseUrlHint: 'Custom upstream endpoint, e.g., https://api.example.com/v1',
+        pleaseSelectProtocol: 'Please select a protocol',
+        pleaseEnterBaseUrl: 'Please enter Base URL',
+        pleaseEnterApiKey: 'Please enter API Key'
+      },
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
