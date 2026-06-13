@@ -69,6 +69,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 LBMS_HOST=0.0.0.0
 LBMS_PORT=8091
 LBMS_API_KEY=change-me-to-a-long-random-value
+LBMS_DATA_PATH=/var/lib/LightBridge/mail-service/lbms-store.json
 LBMS_DRIVER=outlook_email_plus
 LBMS_DRIVER_BASE_URL=http://127.0.0.1:5000
 LBMS_DRIVER_API_KEY=change-me-driver-key
