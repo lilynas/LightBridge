@@ -873,7 +873,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: (CodexUsageSnapshot & OpenAICompactState & {
+  extra?: (CodexUsageSnapshot & OpenAICompactState & ClaudeAuthenticityState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)
@@ -1058,6 +1058,16 @@ export interface OpenAICompactState {
   openai_compact_checked_at?: string
   openai_compact_last_status?: number
   openai_compact_last_error?: string
+}
+
+// Claude 模型真伪检测状态（写入 Account.Extra）。
+// verdict: genuine(真) / counterfeit(假冒或疑似) / unknown(未知或不适用)。
+export interface ClaudeAuthenticityState {
+  claude_authenticity_verdict?: 'genuine' | 'counterfeit' | 'unknown'
+  claude_authenticity_checked_at?: string
+  claude_authenticity_method?: 'probe' | 'passive'
+  claude_authenticity_detail?: string
+  claude_authenticity_suspicious_count?: number
 }
 
 export interface OpenAIResponsesState {

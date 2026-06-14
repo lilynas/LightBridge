@@ -5,8 +5,8 @@
     width="wide"
     @close="handleClose"
   >
-    <!-- Step Indicator for OAuth accounts -->
-    <div v-if="isOAuthFlow" class="mb-6 flex items-center justify-center">
+    <!-- Step Indicator for OAuth / AIStudio 反代 accounts -->
+    <div v-if="showStepIndicator" class="mb-6 flex items-center justify-center">
       <div class="flex items-center space-x-4">
         <div class="flex items-center">
           <div
@@ -528,7 +528,7 @@
       </div>
 
       <!-- Account Type Selection (Gemini) -->
-      <div v-if="form.platform === 'gemini'">
+      <div v-if="form.platform === 'gemini' && geminiAuthMode !== 'proxy'">
         <div class="flex items-center justify-between">
           <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
           <button
@@ -1245,19 +1245,62 @@
           <!-- 绑定方式：引导登录（M3）或粘贴 cookie（M1） -->
           <div>
             <label class="input-label">{{ t('admin.accounts.gemini.proxyBindModeLabel') }}</label>
-            <div class="flex gap-2">
+            <div class="mt-2 grid grid-cols-2 gap-3">
               <button
                 type="button"
                 @click="geminiProxyBindMode = 'cookie'"
-                :class="['rounded-lg border-2 px-3 py-1.5 text-xs', geminiProxyBindMode === 'cookie' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-dark-600']"
-              >{{ t('admin.accounts.gemini.proxyBindModeCookie') }}</button>
+                :class="[
+                  'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                  geminiProxyBindMode === 'cookie'
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                    : 'border-gray-200 hover:border-emerald-300 dark:border-dark-600 dark:hover:border-emerald-700'
+                ]"
+              >
+                <div
+                  :class="[
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    geminiProxyBindMode === 'cookie'
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1721.75 8.25z" />
+                  </svg>
+                </div>
+                <div class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.gemini.proxyBindModeCookie') }}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.gemini.proxyCookieLabel') }}</span>
+                </div>
+              </button>
               <button
                 type="button"
                 @click="geminiProxyBindMode = 'login'"
-                :class="['rounded-lg border-2 px-3 py-1.5 text-xs', geminiProxyBindMode === 'login' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-dark-600']"
-              >{{ t('admin.accounts.gemini.proxyBindModeLogin') }}</button>
+                :class="[
+                  'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                  geminiProxyBindMode === 'login'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+                ]"
+              >
+                <div
+                  :class="[
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    geminiProxyBindMode === 'login'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l3 3m0 0l-3 3m3-3H2.25" />
+                  </svg>
+                </div>
+                <div class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.gemini.proxyBindModeLogin') }}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.gemini.proxyBindModeHint') }}</span>
+                </div>
+              </button>
             </div>
-            <p class="input-hint">{{ t('admin.accounts.gemini.proxyBindModeHint') }}</p>
           </div>
           <div v-if="geminiProxyBindMode === 'cookie'">
             <label class="input-label">{{ t('admin.accounts.gemini.proxyCookieLabel') }}</label>
@@ -1509,7 +1552,10 @@
         </div>
 
         <!-- Pool Mode Section -->
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div
+          v-if="!(form.platform === 'gemini' && geminiAuthMode === 'proxy')"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
@@ -2730,6 +2776,30 @@
         </div>
       </div>
 
+      <!-- 高级菜单：将代理、过期时间、并发数、负载因子、优先级、计费倍率统一折叠 -->
+      <div class="rounded-xl border border-gray-200 dark:border-dark-600">
+        <button
+          type="button"
+          @click="showAdvancedMenu = !showAdvancedMenu"
+          class="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-700"
+        >
+          <span class="flex items-center gap-2">
+            <svg
+              :class="['h-4 w-4 transition-transform', showAdvancedMenu ? 'rotate-90' : '']"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+            {{ t('admin.accounts.advancedMenu') }}
+          </span>
+          <span class="text-xs font-normal text-gray-400 dark:text-gray-500">
+            {{ showAdvancedMenu ? t('admin.accounts.advancedMenuCollapse') : t('admin.accounts.advancedMenuExpand') }}
+          </span>
+        </button>
+        <div v-if="showAdvancedMenu" class="space-y-4 border-t border-gray-200 p-4 dark:border-dark-600">
       <div>
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -2772,6 +2842,8 @@
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
+      </div>
+        </div>
       </div>
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
@@ -3551,6 +3623,8 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 
 const oauthStepTitle = computed(() => {
+  if (isAistudioProxyFlow.value) return t('admin.accounts.gemini.providerAistudioProxy')
+  if (form.platform === 'custom') return t('admin.accounts.custom.accountAddTitle')
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
@@ -3822,6 +3896,7 @@ const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
 const antigravityMixedChannelConfirmed = ref(false)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
+const showAdvancedMenu = ref(false)
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -4068,6 +4143,15 @@ const isOAuthFlow = computed(() => {
   }
   return accountCategory.value === 'oauth-based'
 })
+
+// AIStudio 反代流程：Gemini 平台 + API Key + proxy 模式。
+// 这是一个独立的两步流程（基础信息 → AI Studio 反代授权），需要保留顶部步骤指示器。
+const isAistudioProxyFlow = computed(() =>
+  form.platform === 'gemini' && geminiAuthMode.value === 'proxy'
+)
+
+// 是否展示顶部的「授权方式 / 第二步」步骤指示器
+const showStepIndicator = computed(() => isOAuthFlow.value || isAistudioProxyFlow.value)
 
 // Check if should show LightBridge Connect configuration
 const shouldShowLightBridgeConnect = computed(() => {

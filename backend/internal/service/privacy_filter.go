@@ -19,6 +19,21 @@ type PrivacyFilterModelFilter struct {
 	Models []string `json:"models"`
 }
 
+// 隐私过滤应用对象（针对谁过滤）。
+const (
+	PrivacyFilterTargetAllUsers  = "all_users"   // 全部用户
+	PrivacyFilterTargetPartial    = "partial_users" // 部分用户
+	PrivacyFilterTargetAdminOnly = "admin_only"  // 仅管理员
+)
+
+// 隐私过滤渠道维度（在哪些渠道生效）。
+const (
+	PrivacyFilterChannelAll     = "all"     // 全部渠道
+	PrivacyFilterChannelGroup   = "group"   // 按分组
+	PrivacyFilterChannelChannel = "channel" // 按渠道
+	PrivacyFilterChannelAccount = "account" // 按账号
+)
+
 // PrivacyFilterRule 一条管理员自定义正则脱敏规则。
 type PrivacyFilterRule struct {
 	Name        string `json:"name"`
@@ -37,6 +52,13 @@ type PrivacyFilterConfig struct {
 	AllGroups      bool                     `json:"all_groups"`
 	GroupIDs       []int64                  `json:"group_ids"`
 	ModelFilter    PrivacyFilterModelFilter `json:"model_filter"`
+	// 应用对象（针对谁过滤）
+	TargetScope  string  `json:"target_scope"`
+	TargetUserIDs []int64 `json:"target_user_ids"`
+	// 渠道维度
+	ChannelScope    string  `json:"channel_scope"`
+	ChannelIDs      []int64 `json:"channel_ids"`
+	AccountIDs      []int64 `json:"account_ids"`
 }
 
 // PrivacyFilterConfigView 返回给前端的配置视图（含内置规则 ID 列表，便于渲染）。
@@ -50,6 +72,11 @@ type PrivacyFilterConfigView struct {
 	AllGroups      bool                     `json:"all_groups"`
 	GroupIDs       []int64                  `json:"group_ids"`
 	ModelFilter    PrivacyFilterModelFilter `json:"model_filter"`
+	TargetScope    string                   `json:"target_scope"`
+	TargetUserIDs  []int64                  `json:"target_user_ids"`
+	ChannelScope   string                   `json:"channel_scope"`
+	ChannelIDs     []int64                  `json:"channel_ids"`
+	AccountIDs     []int64                  `json:"account_ids"`
 }
 
 // UpdatePrivacyFilterConfigInput 部分更新输入（指针表示"未提供则不变"）。
@@ -62,6 +89,11 @@ type UpdatePrivacyFilterConfigInput struct {
 	AllGroups      *bool                     `json:"all_groups"`
 	GroupIDs       *[]int64                  `json:"group_ids"`
 	ModelFilter    *PrivacyFilterModelFilter `json:"model_filter"`
+	TargetScope    *string                   `json:"target_scope"`
+	TargetUserIDs  *[]int64                  `json:"target_user_ids"`
+	ChannelScope   *string                   `json:"channel_scope"`
+	ChannelIDs     *[]int64                  `json:"channel_ids"`
+	AccountIDs     *[]int64                  `json:"account_ids"`
 }
 
 // PrivacyRedactor 是一次请求/响应内复用的脱敏器快照（持有已编译规则）。
@@ -111,6 +143,11 @@ func defaultPrivacyFilterConfig() *PrivacyFilterConfig {
 		AllGroups:      true,
 		GroupIDs:       []int64{},
 		ModelFilter:    PrivacyFilterModelFilter{Type: ContentModerationModelFilterAll, Models: []string{}},
+		TargetScope:    PrivacyFilterTargetAllUsers,
+		TargetUserIDs:  []int64{},
+		ChannelScope:   PrivacyFilterChannelAll,
+		ChannelIDs:     []int64{},
+		AccountIDs:     []int64{},
 	}
 }
 
@@ -152,6 +189,21 @@ func (s *PrivacyFilterService) UpdateConfig(ctx context.Context, input UpdatePri
 	}
 	if input.ModelFilter != nil {
 		cfg.ModelFilter = *input.ModelFilter
+	}
+	if input.TargetScope != nil {
+		cfg.TargetScope = *input.TargetScope
+	}
+	if input.TargetUserIDs != nil {
+		cfg.TargetUserIDs = normalizeInt64IDs(*input.TargetUserIDs)
+	}
+	if input.ChannelScope != nil {
+		cfg.ChannelScope = *input.ChannelScope
+	}
+	if input.ChannelIDs != nil {
+		cfg.ChannelIDs = normalizeInt64IDs(*input.ChannelIDs)
+	}
+	if input.AccountIDs != nil {
+		cfg.AccountIDs = normalizeInt64IDs(*input.AccountIDs)
 	}
 	if err := s.validateConfig(ctx, cfg); err != nil {
 		return nil, err
@@ -248,6 +300,29 @@ func (cfg *PrivacyFilterConfig) normalize() {
 	if cfg.ModelFilter.Type == ContentModerationModelFilterAll {
 		cfg.ModelFilter.Models = []string{}
 	}
+	cfg.TargetScope = normalizePrivacyTargetScope(cfg.TargetScope)
+	cfg.ChannelScope = normalizePrivacyChannelScope(cfg.ChannelScope)
+	cfg.TargetUserIDs = normalizeInt64IDs(cfg.TargetUserIDs)
+	cfg.ChannelIDs = normalizeInt64IDs(cfg.ChannelIDs)
+	cfg.AccountIDs = normalizeInt64IDs(cfg.AccountIDs)
+}
+
+func normalizePrivacyTargetScope(s string) string {
+	switch s {
+	case PrivacyFilterTargetPartial, PrivacyFilterTargetAdminOnly:
+		return s
+	default:
+		return PrivacyFilterTargetAllUsers
+	}
+}
+
+func normalizePrivacyChannelScope(s string) string {
+	switch s {
+	case PrivacyFilterChannelGroup, PrivacyFilterChannelChannel, PrivacyFilterChannelAccount:
+		return s
+	default:
+		return PrivacyFilterChannelAll
+	}
 }
 
 func normalizePrivacyCustomRules(rules []PrivacyFilterRule) []PrivacyFilterRule {
@@ -288,6 +363,11 @@ func (s *PrivacyFilterService) configView(cfg *PrivacyFilterConfig) *PrivacyFilt
 		AllGroups:      cfg.AllGroups,
 		GroupIDs:       append([]int64(nil), cfg.GroupIDs...),
 		ModelFilter:    PrivacyFilterModelFilter{Type: cfg.ModelFilter.Type, Models: append([]string(nil), cfg.ModelFilter.Models...)},
+		TargetScope:    cfg.TargetScope,
+		TargetUserIDs:  append([]int64(nil), cfg.TargetUserIDs...),
+		ChannelScope:   cfg.ChannelScope,
+		ChannelIDs:     append([]int64(nil), cfg.ChannelIDs...),
+		AccountIDs:     append([]int64(nil), cfg.AccountIDs...),
 	}
 }
 

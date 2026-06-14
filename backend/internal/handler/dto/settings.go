@@ -359,6 +359,12 @@ type RectifierSettings struct {
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 }
 
+// AuthenticitySettings Claude 模型真伪检测配置 DTO
+type AuthenticitySettings struct {
+	Enabled          bool `json:"enabled"`
+	PassiveThreshold int  `json:"passive_threshold"`
+}
+
 // BetaPolicyRule Beta 策略规则 DTO
 type BetaPolicyRule struct {
 	BetaToken            string   `json:"beta_token"`

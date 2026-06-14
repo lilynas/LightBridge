@@ -603,6 +603,46 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 	return n, nil
 }
 
+// AggregateDailyAvailability 把 channel_monitor_daily_rollups 按天聚合，
+// 返回最近 days 天（含今天）每天的全局可用率。
+// 缺失的天会由调用方补齐，这里只返回有数据的天。
+func (r *channelMonitorRepository) AggregateDailyAvailability(ctx context.Context, days int) ([]*service.DailyAvailabilityPoint, error) {
+	if days <= 0 {
+		days = 30
+	}
+	const q = `
+		SELECT
+			bucket_date                                 AS date,
+			COALESCE(SUM(total_checks), 0)              AS total_checks,
+			COALESCE(SUM(ok_count), 0)                  AS ok_count
+		FROM channel_monitor_daily_rollups
+		WHERE bucket_date >= (CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day')
+		GROUP BY bucket_date
+		ORDER BY bucket_date ASC
+	`
+	rows, err := r.db.QueryContext(ctx, q, days)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate daily availability: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*service.DailyAvailabilityPoint, 0, days)
+	for rows.Next() {
+		p := &service.DailyAvailabilityPoint{}
+		if err := rows.Scan(&p.Date, &p.TotalChecks, &p.OkCount); err != nil {
+			return nil, fmt.Errorf("scan daily availability: %w", err)
+		}
+		if p.TotalChecks > 0 {
+			p.Availability = float64(p.OkCount) / float64(p.TotalChecks)
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DeleteRollupsBefore 物理删 bucket_date < beforeDate 的聚合行，同样分批。
 func (r *channelMonitorRepository) DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error) {
 	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneRollupSQL, beforeDate)

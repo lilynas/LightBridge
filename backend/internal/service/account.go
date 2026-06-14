@@ -79,6 +79,26 @@ const (
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
+// Account.Extra 键：Claude 模型真伪检测。
+// 真 Anthropic 服务端会校验 thinking block 的 signature；伪造/中转套壳通常不会。
+// 主动探针(密码学级)与被动检测(SSE 旁路)都会把结论写入这些键。
+const (
+	AccountExtraKeyAuthenticityVerdict     = "claude_authenticity_verdict"      // genuine / counterfeit / unknown
+	AccountExtraKeyAuthenticityCheckedAt   = "claude_authenticity_checked_at"  // RFC3339
+	AccountExtraKeyAuthenticityMethod      = "claude_authenticity_method"      // probe / passive
+	AccountExtraKeyAuthenticityDetail      = "claude_authenticity_detail"      // 人类可读说明
+	AccountExtraKeyAuthenticitySuspicious  = "claude_authenticity_suspicious_count" // 被动累计可疑次数(number)
+)
+
+// 真伪检测结论枚举。
+const (
+	AuthenticityVerdictGenuine      = "genuine"
+	AuthenticityVerdictCounterfeit  = "counterfeit"
+	AuthenticityVerdictUnknown      = "unknown"
+	AuthenticityMethodProbe         = "probe"
+	AuthenticityMethodPassive       = "passive"
+)
+
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
@@ -847,6 +867,22 @@ func (a *Account) GetExtraString(key string) string {
 		}
 	}
 	return ""
+}
+
+// GetAuthenticityVerdict 返回账号的 Claude 模型真伪检测结论。
+// 值为 "genuine"(真)、"counterfeit"(假冒/疑似)、"unknown"(未知/不适用) 或空。
+func (a *Account) GetAuthenticityVerdict() string {
+	return a.GetExtraString(AccountExtraKeyAuthenticityVerdict)
+}
+
+// GetAuthenticityCheckedAt 返回上次真伪检测的时间（RFC3339 字符串）。
+func (a *Account) GetAuthenticityCheckedAt() string {
+	return a.GetExtraString(AccountExtraKeyAuthenticityCheckedAt)
+}
+
+// GetAuthenticityMethod 返回真伪检测方法："probe"(主动探针) 或 "passive"(被动检测)。
+func (a *Account) GetAuthenticityMethod() string {
+	return a.GetExtraString(AccountExtraKeyAuthenticityMethod)
 }
 
 func (a *Account) GetClaudeUserID() string {

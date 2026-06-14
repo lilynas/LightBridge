@@ -39,12 +39,23 @@
         @exit-fullscreen="exitFullscreen"
       />
 
+      <!-- 自定义卡片 / 自定义面板入口 -->
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="flex justify-end">
+        <button class="btn btn-secondary px-3 py-1.5 text-sm" @click="showCustomizePanel = true">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 018.25 20.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+          {{ t('admin.ops.customize.button') }}
+        </button>
+      </div>
+
+      <!-- 最近可用性（30 天网格） -->
+      <OpsAvailabilityGrid v-if="opsEnabled && isCardEnabled('availability') && !(loading && !hasLoadedOnce)" :days="30" />
+
       <!-- Row: Concurrency + Throughput -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        <div class="lg:col-span-1 min-h-[360px]">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isCardEnabled('concurrency') || isCardEnabled('switchRateTrend') || isCardEnabled('throughputTrend'))" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        <div v-if="isCardEnabled('concurrency')" class="lg:col-span-1 min-h-[360px]">
           <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" :refresh-token="dashboardRefreshToken" />
         </div>
-        <div class="lg:col-span-1 min-h-[360px]">
+        <div v-if="isCardEnabled('switchRateTrend')" class="lg:col-span-1 min-h-[360px]">
           <OpsSwitchRateTrendChart
             :points="switchTrend?.points ?? []"
             :loading="loadingSwitchTrend"
@@ -52,7 +63,7 @@
             :fullscreen="isFullscreen"
           />
         </div>
-        <div class="lg:col-span-2 min-h-[360px]">
+        <div v-if="isCardEnabled('throughputTrend')" class="lg:col-span-2 min-h-[360px]">
           <OpsThroughputTrendChart
             :points="throughputTrend?.points ?? []"
             :by-platform="throughputTrend?.by_platform ?? []"
@@ -68,14 +79,16 @@
       </div>
 
       <!-- Row: Visual Analysis (baseline 3-up grid) -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <OpsLatencyChart :latency-data="latencyHistogram" :loading="loadingLatency" />
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce) && (isCardEnabled('latency') || isCardEnabled('errorDistribution') || isCardEnabled('errorTrend'))" class="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <OpsLatencyChart v-if="isCardEnabled('latency')" :latency-data="latencyHistogram" :loading="loadingLatency" />
         <OpsErrorDistributionChart
+          v-if="isCardEnabled('errorDistribution')"
           :data="errorDistribution"
           :loading="loadingErrorDistribution"
           @open-details="openErrorDetails('request')"
         />
         <OpsErrorTrendChart
+          v-if="isCardEnabled('errorTrend')"
           :points="errorTrend?.points ?? []"
           :loading="loadingErrorTrend"
           :time-range="timeRange"
@@ -85,7 +98,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+      <div v-if="opsEnabled && showOpenAITokenStats && isCardEnabled('openaiTokenStats') && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
           :platform-filter="platform"
           :group-id-filter="groupId"
@@ -94,11 +107,11 @@
       </div>
 
       <!-- Alert Events -->
-      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
+      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && isCardEnabled('alertEvents') && !(loading && !hasLoadedOnce)" />
 
       <!-- System Logs -->
       <OpsSystemLogTable
-        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        v-if="opsEnabled && isCardEnabled('systemLog') && !(loading && !hasLoadedOnce)"
         :platform-filter="platform"
         :refresh-token="dashboardRefreshToken"
       />
@@ -106,6 +119,8 @@
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
         <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
+
+        <OpsCustomizePanel :show="showCustomizePanel" @close="showCustomizePanel = false" />
 
         <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
           <OpsAlertRulesCard />
@@ -156,6 +171,7 @@ import { useAdminSettingsStore, useAppStore } from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
 import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
+import OpsAvailabilityGrid from '@/components/admin/ops/OpsAvailabilityGrid.vue'
 import OpsErrorDetailModal from './components/OpsErrorDetailModal.vue'
 import OpsErrorDistributionChart from './components/OpsErrorDistributionChart.vue'
 import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'
@@ -169,6 +185,8 @@ import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
+import OpsCustomizePanel from './components/OpsCustomizePanel.vue'
+import { useOpsConsoleLayout } from '@/composables/useOpsConsoleLayout'
 
 const route = useRoute()
 const router = useRouter()
@@ -377,6 +395,8 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
+const showCustomizePanel = ref(false)
+const { isEnabled: isCardEnabled } = useOpsConsoleLayout()
 
 applyRouteQueryToState()
 

@@ -23,7 +23,8 @@
                     showAutoRefreshDropdown = !showAutoRefreshDropdown;
                     showAccountToolsDropdown = false
                   "
-                  class="btn btn-secondary -ml-px px-2"
+                  class="btn btn-secondary -ml-px px-2 inline-flex items-center justify-center"
+                  style="min-height: 40px"
                   :title="t('admin.accounts.autoRefresh')"
                 >
                   <Icon name="chevronDown" size="xs" :class="{ 'rotate-180': showAutoRefreshDropdown }" />
@@ -73,6 +74,34 @@
             </template>
 
             <template #after>
+              <!-- Import -->
+              <button
+                @click="openImportData"
+                class="btn btn-secondary"
+                :title="t('admin.accounts.dataImport')"
+              >
+                <Icon name="upload" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.accounts.dataImport') }}</span>
+              </button>
+
+              <!-- Export -->
+              <button
+                @click="openExportDataDialogFromMenu"
+                class="btn btn-secondary"
+                :title="selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport')"
+              >
+                <Icon name="download" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">
+                  {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
+                </span>
+                <span
+                  v-if="selIds.length"
+                  class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                >
+                  {{ selIds.length }}
+                </span>
+              </button>
+
               <!-- More Tools Dropdown -->
               <div class="relative" ref="accountToolsDropdownRef">
                 <button
@@ -102,26 +131,6 @@
                         <Icon name="sync" size="sm" />
                       </span>
                       <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openImportData">
-                      <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                        <Icon name="upload" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
-                      <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                        <Icon name="download" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">
-                        {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
-                      </span>
-                      <span
-                        v-if="selIds.length"
-                        class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
-                      >
-                        {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
-                      </span>
                     </button>
 
                     <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
@@ -247,6 +256,13 @@
                 >
                   {{ getAntigravityTierLabel(row) }}
                 </span>
+                <span
+                  v-if="getAuthenticityMeta(row)"
+                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAuthenticityMeta(row)?.className]"
+                  :title="getAuthenticityTitle(row)"
+                >
+                  {{ getAuthenticityMeta(row)?.label }}
+                </span>
               </div>
               <div
                 v-if="getOpenAICompactMeta(row)"
@@ -361,7 +377,7 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @verify-authenticity="handleVerifyAuthenticity" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -1112,6 +1128,36 @@ function getOpenAICompactTitle(row: any): string {
   return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
+// Claude 模型真伪徽章：genuine(真) / counterfeit(假冒/疑似) / unknown(未知)。
+function getAuthenticityMeta(row: any): { label: string; className: string } | null {
+  const verdict = (row.extra as Record<string, unknown> | undefined)?.claude_authenticity_verdict as string | undefined
+  if (!verdict) return null
+  switch (verdict) {
+    case 'genuine':
+      return { label: t('admin.accounts.authenticity.genuine'), className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' }
+    case 'counterfeit':
+      return { label: t('admin.accounts.authenticity.counterfeit'), className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' }
+    case 'unknown':
+      return { label: t('admin.accounts.authenticity.unknown'), className: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' }
+    default:
+      return null
+  }
+}
+
+function getAuthenticityTitle(row: any): string {
+  const extra = row.extra as Record<string, unknown> | undefined
+  const meta = getAuthenticityMeta(row)
+  if (!meta) return ''
+  const checkedAt = typeof extra?.claude_authenticity_checked_at === 'string' ? extra.claude_authenticity_checked_at : ''
+  const method = typeof extra?.claude_authenticity_method === 'string' ? extra.claude_authenticity_method : ''
+  const detail = typeof extra?.claude_authenticity_detail === 'string' ? extra.claude_authenticity_detail : ''
+  const parts: string[] = [meta.label]
+  if (method) parts.push(t(`admin.accounts.authenticity.method.${method}`))
+  if (checkedAt) parts.push(`${t('admin.accounts.authenticity.checkedAt')}: ${formatDateTime(new Date(checkedAt))}`)
+  if (detail) parts.push(detail)
+  return parts.join(' | ')
+}
+
 function getAntigravityTierClass(row: any): string {
   const tier = getAntigravityTierFromRow(row)
   switch (tier) {
@@ -1578,6 +1624,18 @@ const handleRecoverState = async (a: Account) => {
   } catch (error: any) {
     console.error('Failed to recover account state:', error)
     appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
+  }
+}
+const handleVerifyAuthenticity = async (a: Account) => {
+  try {
+    const { account, result } = await adminAPI.accounts.verifyAuthenticity(a.id)
+    if (account) patchAccountInList(account)
+    enterAutoRefreshSilentWindow()
+    const verdictKey = `admin.accounts.authenticity.${result.verdict}`
+    appStore.showSuccess(t('admin.accounts.verifyAuthenticityDone', { verdict: t(verdictKey) }))
+  } catch (error: any) {
+    console.error('Failed to verify authenticity:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.verifyAuthenticityFailed'))
   }
 }
 const handleResetQuota = async (a: Account) => {

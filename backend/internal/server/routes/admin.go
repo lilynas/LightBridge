@@ -273,6 +273,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
 		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 		users.POST("/batch-concurrency", h.Admin.User.BatchUpdateConcurrency)
+		users.POST("/batch-update", h.Admin.User.BatchUpdateUsers)
 		users.GET("/:id/platform-quotas", h.Admin.User.GetUserPlatformQuotas)
 		users.PUT("/:id/platform-quotas", h.Admin.User.UpdateUserPlatformQuotas)
 		users.POST("/:id/platform-quotas/reset", h.Admin.User.ResetUserPlatformQuotaWindow)
@@ -319,6 +320,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.PUT("/:id", h.Admin.Account.Update)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
+		accounts.POST("/:id/verify-authenticity", h.Admin.Account.VerifyAuthenticity)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
 		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)
@@ -521,6 +523,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 请求整流器配置
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
+		// Claude 模型真伪检测配置
+		adminSettings.GET("/authenticity", h.Admin.Setting.GetAuthenticitySettings)
+		adminSettings.PUT("/authenticity", h.Admin.Setting.UpdateAuthenticitySettings)
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)
@@ -688,6 +693,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		monitors.GET("", h.Admin.ChannelMonitor.List)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
+		// 静态路径必须注册在 /:id 之前，避免被参数路由抢占
+		monitors.GET("/availability", h.Admin.ChannelMonitor.RecentAvailability)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)
 		monitors.DELETE("/:id", h.Admin.ChannelMonitor.Delete)

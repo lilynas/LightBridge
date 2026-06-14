@@ -14,6 +14,9 @@ export interface PrivacyFilterRule {
   enabled: boolean
 }
 
+export type PrivacyFilterTargetScope = 'all_users' | 'partial_users' | 'admin_only'
+export type PrivacyFilterChannelScope = 'all' | 'group' | 'channel' | 'account'
+
 export interface PrivacyFilterConfig {
   enabled: boolean
   filter_request: boolean
@@ -24,6 +27,11 @@ export interface PrivacyFilterConfig {
   all_groups: boolean
   group_ids: number[]
   model_filter: PrivacyFilterModelFilter
+  target_scope: PrivacyFilterTargetScope
+  target_user_ids: number[]
+  channel_scope: PrivacyFilterChannelScope
+  channel_ids: number[]
+  account_ids: number[]
 }
 
 export interface UpdatePrivacyFilterConfig {
@@ -35,6 +43,11 @@ export interface UpdatePrivacyFilterConfig {
   all_groups?: boolean
   group_ids?: number[]
   model_filter?: PrivacyFilterModelFilter
+  target_scope?: PrivacyFilterTargetScope
+  target_user_ids?: number[]
+  channel_scope?: PrivacyFilterChannelScope
+  channel_ids?: number[]
+  account_ids?: number[]
 }
 
 export async function getConfig(): Promise<PrivacyFilterConfig> {

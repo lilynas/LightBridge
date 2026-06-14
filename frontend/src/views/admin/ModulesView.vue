@@ -31,6 +31,54 @@
         <p class="min-w-0 break-words text-sm text-red-700 dark:text-red-200">{{ error }}</p>
       </div>
 
+      <!-- 内置功能卡片（原「功能开关」，迁移自系统设置） -->
+      <section class="card overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.builtinFeatures') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.builtinFeaturesDescription') }}</p>
+          </div>
+          <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+            {{ t('modules.builtinCount', { count: builtinFeatures.length }) }}
+          </span>
+        </div>
+        <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="feature in builtinFeatures"
+            :key="feature.key"
+            class="flex flex-col rounded-xl border border-gray-200 p-4 transition-colors dark:border-dark-700"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-3">
+                <span
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                  :class="feature.iconBg"
+                >
+                  <Icon :name="(feature.icon as any)" size="sm" :stroke-width="2" />
+                </span>
+                <div class="min-w-0">
+                  <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ feature.title }}</h3>
+                  <p class="mt-0.5 line-clamp-2 text-xs text-gray-500 dark:text-dark-400">{{ feature.description }}</p>
+                </div>
+              </div>
+              <Toggle :model-value="feature.enabled" @update:model-value="toggleBuiltinFeature(feature, $event)" />
+            </div>
+            <div class="mt-3 flex items-center justify-end">
+              <router-link
+                v-if="feature.configPath"
+                :to="feature.configPath"
+                class="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+              >
+                {{ t('modules.configure') }}
+                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </router-link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="card overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <div>
@@ -134,9 +182,13 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import modulesAPI, { type InstalledModule, type LocalizedText, type MarketplaceModule } from '@/api/admin/modules'
+import { settingsAPI } from '@/api/admin/settings'
+import { useAppStore } from '@/stores'
 
 const { t, te, locale } = useI18n()
+const appStore = useAppStore()
 
 const loading = ref(false)
 const error = ref('')
@@ -145,6 +197,89 @@ const installed = ref<InstalledModule[]>([])
 const marketplace = ref<MarketplaceModule[]>([])
 
 const enabledCount = computed(() => installed.value.filter((mod) => mod.status === 'enabled').length)
+
+// 内置功能（原系统设置「功能开关」）：通过 public-settings 标志位驱动。
+const builtinFeatureBusy = ref('')
+interface BuiltinFeature {
+  key: string
+  title: string
+  description: string
+  icon: string
+  iconBg: string
+  configPath: string
+  enabled: boolean
+  settingKey: string
+}
+const builtinFeatures = computed<BuiltinFeature[]>(() => {
+  const ps = appStore.cachedPublicSettings
+  return [
+    {
+      key: 'channel-monitor',
+      title: t('modules.builtin.channelMonitor'),
+      description: t('modules.builtin.channelMonitorDesc'),
+      icon: 'chart',
+      iconBg: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300',
+      configPath: '/admin/channels/monitor',
+      enabled: !!ps?.channel_monitor_enabled,
+      settingKey: 'channel_monitor_enabled'
+    },
+    {
+      key: 'available-channels',
+      title: t('modules.builtin.availableChannels'),
+      description: t('modules.builtin.availableChannelsDesc'),
+      icon: 'dollar',
+      iconBg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300',
+      configPath: '/admin/channels/pricing',
+      enabled: !!ps?.available_channels_enabled,
+      settingKey: 'available_channels_enabled'
+    },
+    {
+      key: 'risk-control',
+      title: t('modules.builtin.riskControl'),
+      description: t('modules.builtin.riskControlDesc'),
+      icon: 'shield',
+      iconBg: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300',
+      configPath: '/admin/risk-control',
+      enabled: !!ps?.risk_control_enabled,
+      settingKey: 'risk_control_enabled'
+    },
+    {
+      key: 'privacy-filter',
+      title: t('modules.builtin.privacyFilter'),
+      description: t('modules.builtin.privacyFilterDesc'),
+      icon: 'shield',
+      iconBg: 'bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300',
+      configPath: '/admin/privacy-filter',
+      enabled: !!ps?.privacy_filter_enabled,
+      settingKey: 'privacy_filter_enabled'
+    },
+    {
+      key: 'affiliate',
+      title: t('modules.builtin.affiliate'),
+      description: t('modules.builtin.affiliateDesc'),
+      icon: 'gift',
+      iconBg: 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300',
+      configPath: '/admin/affiliates/invites',
+      enabled: !!ps?.affiliate_enabled,
+      settingKey: 'affiliate_enabled'
+    }
+  ]
+})
+
+async function toggleBuiltinFeature(feature: BuiltinFeature, value: boolean) {
+  if (builtinFeatureBusy.value) return
+  builtinFeatureBusy.value = feature.key
+  error.value = ''
+  try {
+    await settingsAPI.updateSettings({ [feature.settingKey]: value } as Record<string, unknown>)
+    // 刷新公开设置，让侧边栏 / 路由守卫 / 卡片状态同步。
+    await appStore.fetchPublicSettings(true)
+  } catch (err) {
+    error.value = messageOf(err)
+  } finally {
+    builtinFeatureBusy.value = ''
+  }
+}
 
 function statusClass(status: string) {
   if (status === 'enabled') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'

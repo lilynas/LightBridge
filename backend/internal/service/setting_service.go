@@ -4645,6 +4645,43 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
+// GetAuthenticitySettings 获取 Claude 模型真伪检测配置
+func (s *SettingService) GetAuthenticitySettings(ctx context.Context) (*AuthenticitySettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAuthenticitySettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultAuthenticitySettings(), nil
+		}
+		return nil, fmt.Errorf("get authenticity settings: %w", err)
+	}
+	if value == "" {
+		return DefaultAuthenticitySettings(), nil
+	}
+
+	var settings AuthenticitySettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultAuthenticitySettings(), nil
+	}
+	if settings.PassiveThreshold <= 0 {
+		settings.PassiveThreshold = defaultAuthenticityPassiveThreshold
+	}
+	return &settings, nil
+}
+
+// SetAuthenticitySettings 设置 Claude 模型真伪检测配置
+func (s *SettingService) SetAuthenticitySettings(ctx context.Context, settings *AuthenticitySettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal authenticity settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyAuthenticitySettings, string(data))
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)

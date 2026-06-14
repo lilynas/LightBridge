@@ -3252,6 +3252,64 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	})
 }
 
+// GetAuthenticitySettings 获取 Claude 模型真伪检测配置
+// GET /api/v1/admin/settings/authenticity
+func (h *SettingHandler) GetAuthenticitySettings(c *gin.Context) {
+	settings, err := h.settingService.GetAuthenticitySettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.AuthenticitySettings{
+		Enabled:          settings.Enabled,
+		PassiveThreshold: settings.PassiveThreshold,
+	})
+}
+
+// UpdateAuthenticitySettingsRequest 更新真伪检测配置请求
+type UpdateAuthenticitySettingsRequest struct {
+	Enabled          bool `json:"enabled"`
+	PassiveThreshold int  `json:"passive_threshold"`
+}
+
+// UpdateAuthenticitySettings 更新 Claude 模型真伪检测配置
+// PUT /api/v1/admin/settings/authenticity
+func (h *SettingHandler) UpdateAuthenticitySettings(c *gin.Context) {
+	var req UpdateAuthenticitySettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	const minThreshold, maxThreshold = 1, 100
+	if req.PassiveThreshold < minThreshold || req.PassiveThreshold > maxThreshold {
+		response.BadRequest(c, fmt.Sprintf("passive_threshold must be between %d and %d", minThreshold, maxThreshold))
+		return
+	}
+
+	settings := &service.AuthenticitySettings{
+		Enabled:          req.Enabled,
+		PassiveThreshold: req.PassiveThreshold,
+	}
+
+	if err := h.settingService.SetAuthenticitySettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetAuthenticitySettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.AuthenticitySettings{
+		Enabled:          updatedSettings.Enabled,
+		PassiveThreshold: updatedSettings.PassiveThreshold,
+	})
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 // GET /api/v1/admin/settings/beta-policy
 func (h *SettingHandler) GetBetaPolicySettings(c *gin.Context) {

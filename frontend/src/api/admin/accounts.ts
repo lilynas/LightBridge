@@ -290,6 +290,38 @@ export async function recoverState(id: number): Promise<Account> {
 }
 
 /**
+ * Verify Claude model authenticity for an account via an active probe.
+ * Sends a forged-signature thinking request: genuine Claude rejects it (400),
+ * a non-genuine upstream accepts it (2xx).
+ * @param id - Account ID
+ * @returns Refreshed account + probe result
+ */
+export async function verifyAuthenticity(
+  id: number,
+): Promise<{
+  account: Account
+  result: {
+    verdict: 'genuine' | 'counterfeit' | 'unknown'
+    method: string
+    checked_at: string
+    detail?: string
+    http_status?: number
+  }
+}> {
+  const { data } = await apiClient.post<{
+    account: Account
+    result: {
+      verdict: 'genuine' | 'counterfeit' | 'unknown'
+      method: string
+      checked_at: string
+      detail?: string
+      http_status?: number
+    }
+  }>(`/admin/accounts/${id}/verify-authenticity`)
+  return data
+}
+
+/**
  * Reset account quota usage
  * @param id - Account ID
  * @returns Updated account
@@ -702,6 +734,7 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
+  verifyAuthenticity,
   refreshCredentials,
   applyOAuthCredentials,
   getStats,

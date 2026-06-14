@@ -229,7 +229,10 @@
       :version="upgradeChangesRelease?.version"
       :body="upgradeChangesRelease?.body"
       :html-url="upgradeChangesRelease?.html_url"
+      :can-upgrade="isReleaseBuild && !isSameVersion(upgradeChangesRelease?.version, currentVersion)"
+      :upgrading="updating"
       @close="upgradeChangesOpen = false"
+      @upgrade="handleUpgradeFromDialog"
     />
   </div>
   </AppLayout>
@@ -342,6 +345,13 @@ function confirmInstall(release: VersionRelease) {
 function showUpgradeChanges(release: VersionRelease) {
   upgradeChangesRelease.value = release
   upgradeChangesOpen.value = true
+}
+
+function handleUpgradeFromDialog() {
+  if (!upgradeChangesRelease.value) return
+  const release = upgradeChangesRelease.value
+  upgradeChangesOpen.value = false
+  confirmInstall(release)
 }
 
 async function handleInstall() {

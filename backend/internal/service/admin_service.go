@@ -39,6 +39,7 @@ type AdminService interface {
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
+	BatchUpdateUsers(ctx context.Context, userIDs []int64, input BatchUpdateUsersInput) (*BatchUpdateUsersResult, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
@@ -867,6 +868,67 @@ func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs [
 		}
 	}
 	return affected, nil
+}
+
+// BatchUpdateUsersInput 批量更新用户输入（指针字段为 nil 表示不更新）。
+type BatchUpdateUsersInput struct {
+	Status        *string
+	Concurrency   *int
+	Notes         *string
+	AllowedGroups *[]int64
+}
+
+// BatchUpdateUsersResult 批量更新结果。
+type BatchUpdateUsersResult struct {
+	Total     int `json:"total"`
+	Success   int `json:"success"`
+	Failed    int `json:"failed"`
+	FailedIDs []int64 `json:"failed_ids"`
+}
+
+// BatchUpdateUsers 对一组用户应用相同的字段更新。
+func (s *adminServiceImpl) BatchUpdateUsers(ctx context.Context, userIDs []int64, input BatchUpdateUsersInput) (*BatchUpdateUsersResult, error) {
+	cleaned := make([]int64, 0, len(userIDs))
+	for _, uid := range userIDs {
+		if uid > 0 {
+			cleaned = append(cleaned, uid)
+		}
+	}
+	if len(cleaned) == 0 {
+		return &BatchUpdateUsersResult{}, nil
+	}
+
+	result := &BatchUpdateUsersResult{Total: len(cleaned)}
+	for _, uid := range cleaned {
+		user, err := s.userRepo.GetByID(ctx, uid)
+		if err != nil {
+			result.Failed++
+			result.FailedIDs = append(result.FailedIDs, uid)
+			continue
+		}
+		if input.Status != nil {
+			user.Status = *input.Status
+		}
+		if input.Concurrency != nil {
+			user.Concurrency = *input.Concurrency
+		}
+		if input.Notes != nil {
+			user.Notes = *input.Notes
+		}
+		if input.AllowedGroups != nil {
+			user.AllowedGroups = *input.AllowedGroups
+		}
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			result.Failed++
+			result.FailedIDs = append(result.FailedIDs, uid)
+			continue
+		}
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, uid)
+		}
+		result.Success++
+	}
+	return result, nil
 }
 
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {

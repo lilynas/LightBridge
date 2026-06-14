@@ -767,6 +767,53 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// VerifyAuthenticity 对一个 Claude/Anthropic 账号执行主动真伪探针。
+// POST /api/v1/admin/accounts/:id/verify-authenticity
+//
+// 原理：构造一个带伪造 thinking signature 的多轮请求发给该账号——
+// 真 Claude 会校验签名并返回 400（genuine），套壳/中转假冒会忽略签名并返回 2xx（counterfeit）。
+// 探针 max_tokens=1 + 伪造签名（多数在计费前 400），单次成本趋零。
+// 结论写回 Account.Extra，并返回刷新后的账号。
+func (h *AccountHandler) VerifyAuthenticity(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return
+	}
+
+	result, err := h.accountTestService.ProbeClaudeAuthenticity(c, accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// key 级增量合并进 Extra，不影响其它运行态键。
+	if err := h.adminService.UpdateAccountExtra(c.Request.Context(), accountID, result.ExtraMap()); err != nil {
+		// 持久化失败不阻断返回结论，但仍上报错误。
+		_ = c.Error(err)
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		// 探针已成功；读取最新账号失败时直接返回结论。
+		response.Success(c, gin.H{
+			"account": nil,
+			"result":  result,
+		})
+		return
+	}
+
+	response.Success(c, gin.H{
+		"account": h.buildAccountResponseWithRuntime(c.Request.Context(), account),
+		"result":  result,
+	})
+}
+
 // SyncFromCRS handles syncing accounts from claude-relay-service (CRS)
 // POST /api/v1/admin/accounts/sync/crs
 func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
