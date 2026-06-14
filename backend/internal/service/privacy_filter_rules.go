@@ -12,7 +12,16 @@ const (
 	PrivacyFilterBuiltinIDCard   = "id_card"
 	PrivacyFilterBuiltinBankCard = "bank_card"
 	PrivacyFilterBuiltinIPv4     = "ipv4"
+	PrivacyFilterBuiltinIPv6     = "ipv6"
 	PrivacyFilterBuiltinSecret   = "secret"
+	PrivacyFilterBuiltinJWT      = "jwt"
+	PrivacyFilterBuiltinPrivateKey = "private_key"
+	PrivacyFilterBuiltinAWSKey   = "aws_key"
+	PrivacyFilterBuiltinGitHubPAT = "github_pat"
+	PrivacyFilterBuiltinSlackToken = "slack_token"
+	PrivacyFilterBuiltinCreditCard = "credit_card"
+	PrivacyFilterBuiltinCNLicense = "cn_license"
+	PrivacyFilterBuiltinURLQuery = "url_query"
 )
 
 const (
@@ -41,6 +50,24 @@ var privacyFilterBuiltinRules = []privacyFilterBuiltin{
 	{ID: PrivacyFilterBuiltinBankCard, Pattern: `\b\d{16,19}\b`, Replacement: "[BANK_CARD]"},
 	{ID: PrivacyFilterBuiltinCNPhone, Pattern: `\b1[3-9]\d{9}\b`, Replacement: "[PHONE]"},
 	{ID: PrivacyFilterBuiltinIPv4, Pattern: `\b(?:\d{1,3}\.){3}\d{1,3}\b`, Replacement: "[IP]"},
+	// IPv6（含完整与压缩形式）
+	{ID: PrivacyFilterBuiltinIPv6, Pattern: `\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b`, Replacement: "[IPV6]"},
+	// JWT（三段式，每段 base64url，以点分隔）
+	{ID: PrivacyFilterBuiltinJWT, Pattern: `\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b`, Replacement: "[JWT]"},
+	// 私钥（PEM 头：RSA / EC / OPENSSH / PRIVATE KEY）
+	{ID: PrivacyFilterBuiltinPrivateKey, Pattern: `-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`, Replacement: "[PRIVATE_KEY]"},
+	// AWS Access Key ID（AKIA 开头 + 16 位）
+	{ID: PrivacyFilterBuiltinAWSKey, Pattern: `\bAKIA[0-9A-Z]{16}\b`, Replacement: "[AWS_KEY]"},
+	// GitHub Personal Access Token（ghp_/gho_/ghu_/ghs_/ghr_ 前缀）
+	{ID: PrivacyFilterBuiltinGitHubPAT, Pattern: `\bgh[posur]_[A-Za-z0-9]{36,}\b`, Replacement: "[GITHUB_PAT]"},
+	// Slack Token（xox[baprs]- 前缀）
+	{ID: PrivacyFilterBuiltinSlackToken, Pattern: `\bxox[baprs]-[A-Za-z0-9\-]{10,}\b`, Replacement: "[SLACK_TOKEN]"},
+	// 信用卡号（Visa/MasterCard/Amex 常见长度）
+	{ID: PrivacyFilterBuiltinCreditCard, Pattern: `\b(?:\d[ -]*?){13,16}\b`, Replacement: "[CREDIT_CARD]"},
+	// 中国车牌号
+	{ID: PrivacyFilterBuiltinCNLicense, Pattern: `\b[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-Z][A-HJ-NP-Z0-9]{4,5}[A-HJ-NP-Z0-9]\b`, Replacement: "[LICENSE_PLATE]"},
+	// URL 查询参数中的敏感键（token/key/secret/password/passwd/pwd 等）
+	{ID: PrivacyFilterBuiltinURLQuery, Pattern: `(?i)(?:token|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|pwd|authorization)=[^&\s\"'<>]+`, Replacement: "[REDACTED_QUERY]"},
 }
 
 // privacyFilterBuiltinCompiled 进程级别只编译一次的内置正则。

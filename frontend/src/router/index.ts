@@ -501,18 +501,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/proxy',
-    name: 'AdminProxyModule',
-    component: () => import('@/views/admin/ProxyModuleView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'LightBridge Proxy',
-      titleKey: 'admin.proxyModule.title',
-      descriptionKey: 'admin.proxyModule.description'
-    }
-  },
-  {
     path: '/admin/proxies',
     name: 'AdminProxies',
     component: () => import('@/views/admin/ProxiesView.vue'),

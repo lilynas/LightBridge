@@ -8,7 +8,7 @@
       @search="$emit('change')"
     />
     <Select :model-value="filters.platform" class="w-32" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
-    <Select :model-value="filters.type" class="w-32" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
+    <Select :model-value="filters.type" class="w-36" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
     <Select :model-value="filters.status" class="w-32" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
     <Select :model-value="filters.privacy_mode" class="w-36" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
     <Select :model-value="filters.group" class="w-32" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
@@ -20,13 +20,62 @@ import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Selec
 import type { AdminGroup } from '@/types'
 const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
-const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value }) }
+const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value, type: '' }) }
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value }) }
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value }) }
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
-const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, { value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'gemini', label: 'Gemini' }, { value: 'antigravity', label: 'Antigravity' }, { value: 'custom', label: 'Custom' }])
-const tOpts = computed(() => [{ value: '', label: t('admin.accounts.allTypes') }, { value: 'oauth', label: t('admin.accounts.oauthType') }, { value: 'setup-token', label: t('admin.accounts.setupToken') }, { value: 'apikey', label: t('admin.accounts.apiKey') }, { value: 'bedrock', label: 'AWS Bedrock' }])
+const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, { value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'gemini', label: 'Gemini' }, { value: 'custom', label: 'Custom' }])
+const tOpts = computed(() => {
+  const all = t('admin.accounts.allTypes')
+  // 平台为「全部平台」时显示全部类型
+  const platform = props.filters.platform
+  if (!platform) {
+    return [
+      { value: '', label: all },
+      { value: 'oauth', label: t('admin.accounts.oauthType') },
+      { value: 'setup-token', label: t('admin.accounts.setupToken') },
+      { value: 'apikey', label: t('admin.accounts.apiKey') },
+      { value: 'service_account', label: t('admin.accounts.types.serviceAccount') || 'Vertex' },
+      { value: 'bedrock', label: 'AWS Bedrock' },
+      { value: 'antigravity', label: 'Antigravity' },
+      { value: 'aistudio-proxy', label: t('admin.accounts.gemini.providerAistudioProxy') || 'AI Studio' }
+    ]
+  }
+  if (platform === 'anthropic') {
+    return [
+      { value: '', label: all },
+      { value: 'oauth', label: t('admin.accounts.oauthType') },
+      { value: 'setup-token', label: t('admin.accounts.setupToken') },
+      { value: 'apikey', label: t('admin.accounts.apiKey') },
+      { value: 'bedrock', label: 'AWS Bedrock' }
+    ]
+  }
+  if (platform === 'openai') {
+    return [
+      { value: '', label: all },
+      { value: 'oauth', label: t('admin.accounts.oauthType') },
+      { value: 'apikey', label: t('admin.accounts.apiKey') }
+    ]
+  }
+  if (platform === 'gemini') {
+    return [
+      { value: '', label: all },
+      { value: 'oauth', label: t('admin.accounts.gemini.providerGemini') || 'Gemini OAuth' },
+      { value: 'apikey', label: t('admin.accounts.gemini.providerAistudioProxy') ? 'Gemini API Key' : 'API Key' },
+      { value: 'service_account', label: 'Vertex' },
+      { value: 'antigravity', label: 'Antigravity' },
+      { value: 'aistudio-proxy', label: t('admin.accounts.gemini.providerAistudioProxy') || 'AI Studio' }
+    ]
+  }
+  if (platform === 'custom') {
+    return [
+      { value: '', label: all },
+      { value: 'apikey', label: t('admin.accounts.apiKey') }
+    ]
+  }
+  return [{ value: '', label: all }]
+})
 const sOpts = computed(() => [{ value: '', label: t('admin.accounts.allStatus') }, { value: 'active', label: t('admin.accounts.status.active') }, { value: 'inactive', label: t('admin.accounts.status.inactive') }, { value: 'error', label: t('admin.accounts.status.error') }, { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') }, { value: 'temp_unschedulable', label: t('admin.accounts.status.tempUnschedulable') }, { value: 'unschedulable', label: t('admin.accounts.status.unschedulable') }])
 const privacyOpts = computed(() => [
   { value: '', label: t('admin.accounts.allPrivacyModes') },

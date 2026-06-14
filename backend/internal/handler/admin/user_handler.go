@@ -552,6 +552,66 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 	response.Success(c, gin.H{"affected": affected})
 }
 
+// BatchUpdateUsers 批量更新用户（状态 / 并发数 / 备注 / 分组）
+// POST /api/v1/admin/users/batch-update
+type BatchUpdateUsersRequest struct {
+	UserIDs        []int64  `json:"user_ids"`
+	UpdateStatus   *bool    `json:"update_status"`     // 是否更新 status
+	Status         *string  `json:"status"`            // active / inactive
+	UpdateConcurrency *bool `json:"update_concurrency"`
+	Concurrency    *int     `json:"concurrency"`
+	UpdateNotes    *bool    `json:"update_notes"`
+	Notes          *string  `json:"notes"`
+	UpdateGroups   *bool    `json:"update_groups"`
+	GroupIDs       *[]int64 `json:"group_ids"`
+}
+
+func (h *UserHandler) BatchUpdateUsers(c *gin.Context) {
+	var req BatchUpdateUsersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		response.BadRequest(c, "user_ids is required")
+		return
+	}
+	if len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids cannot exceed 500")
+		return
+	}
+
+	input := service.BatchUpdateUsersInput{}
+	if req.UpdateStatus != nil && *req.UpdateStatus && req.Status != nil {
+		st := *req.Status
+		if st != "active" && st != "inactive" {
+			response.BadRequest(c, "status must be 'active' or 'inactive'")
+			return
+		}
+		input.Status = &st
+	}
+	if req.UpdateConcurrency != nil && *req.UpdateConcurrency && req.Concurrency != nil {
+		if *req.Concurrency < 0 {
+			response.BadRequest(c, "concurrency cannot be negative")
+			return
+		}
+		input.Concurrency = req.Concurrency
+	}
+	if req.UpdateNotes != nil && *req.UpdateNotes {
+		input.Notes = req.Notes
+	}
+	if req.UpdateGroups != nil && *req.UpdateGroups && req.GroupIDs != nil {
+		input.AllowedGroups = req.GroupIDs
+	}
+
+	result, err := h.adminService.BatchUpdateUsers(c.Request.Context(), req.UserIDs, input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // GetUserPlatformQuotas GET /admin/users/:id/platform-quotas
 // admin 视角：D14 lazy 归零 + 暴露 *_window_start 调试字段
 func (h *UserHandler) GetUserPlatformQuotas(c *gin.Context) {

@@ -33,9 +33,7 @@
                 @click="selectSettingsTab(tab.key)"
                 @keydown="handleSettingsTabKeydown($event, tab.key)"
               >
-                <span class="settings-tab-icon">
-                  <Icon :name="tab.icon" size="sm" />
-                </span>
+                <Icon :name="tab.icon" size="sm" class="settings-tab-icon" />
                 <span class="settings-tab-label">{{
                   t(`admin.settings.tabs.${tab.key}`)
                 }}</span>
@@ -784,6 +782,106 @@
                     </svg>
                     {{
                       rectifierSaving ? t("common.saving") : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+          <!-- Authenticity Detection Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.authenticity.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.authenticity.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="authenticityLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- Master Toggle (passive detection) -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.authenticity.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.authenticity.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="authenticityForm.enabled" />
+                </div>
+
+                <!-- Passive threshold -->
+                <div
+                  v-if="authenticityForm.enabled"
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >{{
+                        t("admin.settings.authenticity.threshold")
+                      }}</label
+                    >
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.authenticity.thresholdHint") }}
+                    </p>
+                    <input
+                      v-model.number="authenticityForm.passive_threshold"
+                      type="number"
+                      min="1"
+                      max="100"
+                      class="mt-2 w-32 rounded-md border border-gray-300 px-3 py-1.5 text-sm dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <!-- Save Button -->
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveAuthenticitySettings"
+                    :disabled="authenticitySaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="authenticitySaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      authenticitySaving ? t("common.saving") : t("common.save")
                     }}
                   </button>
                 </div>
@@ -5152,8 +5250,9 @@
         </div>
         <!-- /Tab: Login Agreement -->
 
-	        <!-- Tab: Features (功能开关) -->
-        <div v-show="activeTab === 'features'" class="space-y-6">
+	        <!-- Tab: Features (功能开关) — 已迁移到「模块市场」的内置功能卡片。
+	             保留表单字段以参与设置加载/保存，但不再在设置页显示。 -->
+	        <div v-show="false" class="space-y-6" aria-hidden="true">
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -6785,7 +6884,6 @@ const paymentMethodsHref = computed(() =>
 type SettingsTab =
   | "general"
   | "agreement"
-  | "features"
   | "themes"
   | "security"
   | "users"
@@ -6797,7 +6895,6 @@ const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
-  { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "themes" as SettingsTab, icon: "sparkles" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
@@ -6914,6 +7011,14 @@ const rectifierForm = reactive({
   thinking_budget_enabled: true,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
+});
+
+// Claude 模型真伪检测设置
+const authenticityLoading = ref(true);
+const authenticitySaving = ref(false);
+const authenticityForm = reactive({
+  enabled: true,
+  passive_threshold: 3,
 });
 
 // Beta Policy 状态
@@ -8755,6 +8860,37 @@ async function saveRectifierSettings() {
   }
 }
 
+// Authenticity 方法
+async function loadAuthenticitySettings() {
+  authenticityLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getAuthenticitySettings();
+    Object.assign(authenticityForm, settings);
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    authenticityLoading.value = false;
+  }
+}
+
+async function saveAuthenticitySettings() {
+  authenticitySaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateAuthenticitySettings({
+      enabled: authenticityForm.enabled,
+      passive_threshold: authenticityForm.passive_threshold,
+    });
+    Object.assign(authenticityForm, updated);
+    appStore.showSuccess(t("admin.settings.authenticity.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.authenticity.saveFailed")),
+    );
+  } finally {
+    authenticitySaving.value = false;
+  }
+}
+
 const betaPolicyActionOptions = computed(() => [
   { value: "pass", label: t("admin.settings.betaPolicy.actionPass") },
   { value: "filter", label: t("admin.settings.betaPolicy.actionFilter") },
@@ -9291,6 +9427,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
+  loadAuthenticitySettings();
   loadBetaPolicySettings();
   loadProviders();
 });
@@ -9697,7 +9834,12 @@ watch(
 }
 
 .settings-tab {
-  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+  @apply relative flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-medium text-gray-600 outline-none transition-all duration-200 ease-out dark:text-gray-300;
+}
+
+.settings-tab:hover,
+.settings-tab:focus-visible {
+  @apply text-gray-900 dark:text-white;
 }
 
 @media (min-width: 768px) {
@@ -9708,60 +9850,31 @@ watch(
   .settings-tab {
     @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
   }
-
-  .settings-tab-icon {
-    @apply h-6 w-6;
-  }
-}
-
-.settings-tab::before {
-  @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
-  content: "";
-  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
-}
-
-.settings-tab:hover::before,
-.settings-tab:focus-visible::before {
-  opacity: 1;
 }
 
 .settings-tab:focus-visible {
   @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
 
+/* Active tab: 新版 LightBridge segmented 风格 —— 白色凸起胶囊，去掉旧的红→蓝渐变下划线 */
 .settings-tab-active {
-  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
+  @apply bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300;
   box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.08),
-    0 1px 0 rgb(255 255 255 / 0.92) inset;
-}
-
-.settings-tab-active::before {
-  opacity: 0;
-}
-
-.settings-tab-active::after {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.25rem;
-  left: 0.75rem;
-  height: 2px;
-  border-radius: 9999px;
-  content: "";
-  background: linear-gradient(90deg, #e42313, #0ea5e9);
+    0 8px 18px rgb(15 23 42 / 0.07),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
 
 .settings-tab-icon {
-  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors duration-200 dark:text-gray-400;
+  @apply h-4 w-4 shrink-0 text-gray-400 transition-colors duration-200 dark:text-gray-500;
 }
 
 .settings-tab:hover .settings-tab-icon,
 .settings-tab:focus-visible .settings-tab-icon {
-  @apply text-gray-700 dark:text-gray-200;
+  @apply text-gray-600 dark:text-gray-300;
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+  @apply text-primary-600 dark:text-primary-300;
 }
 
 .settings-tab-label {
@@ -9779,10 +9892,6 @@ watch(
   box-shadow:
     0 16px 36px rgb(0 0 0 / 0.28),
     0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-
-.dark .settings-tab::before {
-  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
 }
 
 .dark .settings-tab-active {

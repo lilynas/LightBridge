@@ -55,6 +55,9 @@ type ChannelMonitorRepository interface {
 	LoadAggregationWatermark(ctx context.Context) (*time.Time, error)
 	// UpdateAggregationWatermark 写 watermark（UPSERT 到 id=1）。
 	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
+
+	// AggregateDailyAvailability 返回最近 days 天每天的全局可用率聚合（基于 daily rollups）。
+	AggregateDailyAvailability(ctx context.Context, days int) ([]*DailyAvailabilityPoint, error)
 }
 
 // ChannelMonitorService 渠道监控管理服务。
@@ -230,10 +233,40 @@ func (s *ChannelMonitorService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// GetRecentAvailability 返回最近 days 天每天的全局可用率（含今天，缺失天补零）。
+func (s *ChannelMonitorService) GetRecentAvailability(ctx context.Context, days int) ([]*DailyAvailabilityPoint, error) {
+	if days <= 0 {
+		days = 30
+	}
+	if days > 90 {
+		days = 90
+	}
+	points, err := s.repo.AggregateDailyAvailability(ctx, days)
+	if err != nil {
+		return nil, err
+	}
+	// 补齐缺失天：构建按日期的 map，再填充 [今天-days+1, 今天] 区间
+	byDate := make(map[string]*DailyAvailabilityPoint, len(points))
+	for _, p := range points {
+		byDate[p.Date.Format("2006-01-02")] = p
+	}
+	out := make([]*DailyAvailabilityPoint, 0, days)
+	now := time.Now().UTC()
+	for i := days - 1; i >= 0; i-- {
+		day := time.Date(now.Year(), now.Month(), now.Day()-i, 0, 0, 0, 0, time.UTC)
+		key := day.Format("2006-01-02")
+		if p, ok := byDate[key]; ok {
+			out = append(out, p)
+		} else {
+			out = append(out, &DailyAvailabilityPoint{Date: day, TotalChecks: 0, OkCount: 0, Availability: 0})
+		}
+	}
+	return out, nil
+}
+
 // ListHistory 列出某个监控最近的检测历史。
 // model 为空表示返回所有模型；limit <= 0 时使用默认值，超过上限会被截断。
-func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error) {
-	if _, err := s.repo.GetByID(ctx, id); err != nil {
+func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error) {	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		return nil, err
 	}
 	if limit <= 0 {

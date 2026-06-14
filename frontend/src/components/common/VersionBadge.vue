@@ -390,7 +390,10 @@
         :version="latestVersion"
         :body="releaseInfo?.body"
         :html-url="releaseInfo?.html_url"
+        :can-upgrade="hasUpdate"
+        :upgrading="updating"
         @close="upgradeChangesOpen = false"
+        @upgrade="handleUpgradeFromDialog"
       />
     </template>
 
@@ -489,6 +492,11 @@ async function handleUpdate() {
   } finally {
     updating.value = false
   }
+}
+
+function handleUpgradeFromDialog() {
+  upgradeChangesOpen.value = false
+  handleUpdate()
 }
 
 async function handleRestart() {

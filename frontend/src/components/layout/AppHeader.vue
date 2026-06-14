@@ -23,6 +23,9 @@
 
       <!-- Right: Announcements + Docs + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
+        <!-- 时间范围按钮（仅仪表盘 / 管理控制台显示） -->
+        <TimeRangeButton v-if="showTimeRangeButton" />
+
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -217,6 +220,7 @@ import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import TimeRangeButton from '@/components/layout/TimeRangeButton.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const router = useRouter()
@@ -226,6 +230,10 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
+
+// 时间范围按钮仅在仪表盘 / 管理控制台页面显示
+const TIME_RANGE_ROUTES = new Set(['AdminDashboard', 'AdminOps'])
+const showTimeRangeButton = computed(() => TIME_RANGE_ROUTES.has(String(route.name || '')))
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)

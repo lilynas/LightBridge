@@ -369,6 +369,30 @@ export async function resetPlatformQuotaWindow(
   return data
 }
 
+export interface BatchUpdateUsersResult {
+  total: number
+  success: number
+  failed: number
+  failed_ids: number[]
+}
+
+export interface BatchUpdateUsersRequest {
+  user_ids: number[]
+  update_status?: boolean
+  status?: 'active' | 'inactive'
+  update_concurrency?: boolean
+  concurrency?: number
+  update_notes?: boolean
+  notes?: string
+  update_groups?: boolean
+  group_ids?: number[]
+}
+
+export async function batchUpdateUsers(payload: BatchUpdateUsersRequest): Promise<BatchUpdateUsersResult> {
+  const { data } = await apiClient.post<BatchUpdateUsersResult>('/admin/users/batch-update', payload)
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -386,6 +410,7 @@ export const usersAPI = {
   getPlatformQuotas,
   updatePlatformQuotas,
   resetPlatformQuotaWindow,
+  batchUpdateUsers,
 }
 
 export default usersAPI

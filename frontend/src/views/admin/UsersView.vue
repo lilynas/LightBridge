@@ -242,6 +242,27 @@
 
       <!-- Users Table -->
       <template #table>
+        <!-- 批量操作栏 -->
+        <div
+          v-if="selUserIds.length"
+          class="flex flex-wrap items-center gap-2 rounded-xl border border-primary-200 bg-primary-50/60 px-4 py-2.5 dark:border-primary-800/40 dark:bg-primary-900/10"
+        >
+          <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
+            {{ t('admin.users.selectedCount', { count: selUserIds.length }) }}
+          </span>
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            <button class="btn btn-secondary px-3 py-1.5 text-sm" @click="openBulkEdit">
+              {{ t('admin.users.bulkEdit') }}
+            </button>
+            <button class="btn px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20" @click="handleBulkDelete">
+              {{ t('common.delete') }}
+            </button>
+            <button class="btn btn-secondary px-3 py-1.5 text-sm" @click="clearUserSelection">
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+
         <DataTable
           :columns="columns"
           :data="sortedUsers"
@@ -253,6 +274,23 @@
           :sort-storage-key="USER_SORT_STORAGE_KEY"
           @sort="handleSort"
         >
+          <template #header-select>
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="allVisibleSelected"
+              @click.stop
+              @change="toggleSelectAllVisible($event)"
+            />
+          </template>
+          <template #cell-select="{ row }">
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="isSelected(row.id)"
+              @change="toggleSelUser(row.id)"
+            />
+          </template>
           <template #cell-email="{ value }">
             <div class="flex items-center gap-2">
               <div
@@ -734,6 +772,14 @@
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
+    <BulkEditUserModal
+      :show="showBulkEditModal"
+      :user-ids="selUserIds"
+      :groups="allGroups"
+      :submitting="bulkEditSubmitting"
+      @close="showBulkEditModal = false"
+      @submit="handleBulkEditSubmit"
+    />
   </AppLayout>
 </template>
 
@@ -742,6 +788,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -766,6 +813,7 @@ import PlatformCostCell from '@/components/user/PlatformCostCell.vue'
 import UserPlatformQuotaCell from '@/components/user/UserPlatformQuotaCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
+import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
@@ -823,6 +871,7 @@ const getAttributeValue = (userId: number, attrId: number): string => {
 
 // All possible columns (for column settings)
 const allColumns = computed<Column[]>(() => [
+  { key: 'select', label: '', sortable: false },
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
@@ -847,9 +896,9 @@ const allColumns = computed<Column[]>(() => [
   { key: 'actions', label: t('admin.users.columns.actions'), sortable: false }
 ])
 
-// Columns that can be toggled (exclude email and actions which are always visible)
+// Columns that can be toggled (exclude select, email and actions which are always visible)
 const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => col.key !== 'email' && col.key !== 'actions')
+  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'email' && col.key !== 'actions')
 )
 
 // Hidden columns (stored in Set - columns NOT in this set are visible)
@@ -977,12 +1026,74 @@ const hasVisibleAttributeColumns = computed(() =>
 // Filtered columns based on visibility
 const columns = computed<Column[]>(() =>
   allColumns.value.filter(col =>
-    col.key === 'email' || col.key === 'actions' || !hiddenColumns.has(col.key)
+    col.key === 'select' || col.key === 'email' || col.key === 'actions' || !hiddenColumns.has(col.key)
   )
 )
 
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
+
+// 多选 + 批量操作
+const {
+  selectedIds: selUserIds,
+  allVisibleSelected,
+  isSelected,
+  toggle: toggleSelUser,
+  clear: clearUserSelection,
+  toggleVisible: toggleAllVisibleUsers
+} = useTableSelection<AdminUser>({ rows: users, getId: (u) => u.id })
+const showBulkEditModal = ref(false)
+const bulkEditSubmitting = ref(false)
+const toggleSelectAllVisible = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  toggleAllVisibleUsers(target.checked)
+}
+const openBulkEdit = () => {
+  if (!selUserIds.value.length) return
+  showBulkEditModal.value = true
+}
+const handleBulkEditSubmit = async (payload: import('@/api/admin/users').BatchUpdateUsersRequest) => {
+  if (bulkEditSubmitting.value) return
+  bulkEditSubmitting.value = true
+  try {
+    const result = await adminAPI.users.batchUpdateUsers(payload)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.users.bulkEditPartial', { success: result.success, failed: result.failed }))
+    } else {
+      appStore.showSuccess(t('admin.users.bulkEditSuccess', { count: result.success }))
+    }
+    showBulkEditModal.value = false
+    clearUserSelection()
+    await loadUsers()
+  } catch (e: any) {
+    appStore.showError(e?.response?.data?.message || e?.message || t('common.error'))
+  } finally {
+    bulkEditSubmitting.value = false
+  }
+}
+const handleBulkDelete = async () => {
+  if (!selUserIds.value.length) return
+  if (!confirm(t('admin.users.bulkDeleteConfirm', { count: selUserIds.value.length }))) return
+  try {
+    let failed = 0
+    for (const id of [...selUserIds.value]) {
+      try {
+        await adminAPI.users.delete(id)
+      } catch {
+        failed++
+      }
+    }
+    if (failed > 0) {
+      appStore.showError(t('admin.users.bulkEditPartial', { success: selUserIds.value.length - failed, failed }))
+    } else {
+      appStore.showSuccess(t('admin.users.bulkDeleteSuccess', { count: selUserIds.value.length }))
+    }
+    clearUserSelection()
+    await loadUsers()
+  } catch (e: any) {
+    appStore.showError(e?.response?.data?.message || e?.message || t('common.error'))
+  }
+}
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {

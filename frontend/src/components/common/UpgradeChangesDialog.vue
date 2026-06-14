@@ -14,40 +14,50 @@
         </a>
       </div>
 
-      <div class="max-h-[56vh] space-y-3 overflow-y-auto pr-1">
-        <section
-          v-for="section in displaySections"
-          :key="section.key"
-          class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/40"
-        >
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full" :class="section.dotClass"></span>
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ section.title }}</h3>
-          </div>
-          <ul v-if="section.items.length" class="mt-3 space-y-2">
-            <li
-              v-for="(item, index) in section.items"
-              :key="`${section.key}-${index}`"
-              class="text-sm leading-6 text-gray-700 dark:text-dark-200"
-            >
-              {{ item }}
-            </li>
-          </ul>
-          <p v-else class="mt-3 text-sm text-gray-500 dark:text-dark-400">
-            {{ t('version.noSectionChanges') }}
-          </p>
-        </section>
-      </div>
+      <!-- 富文本 / Markdown 渲染：撤销原有固定分类，直接呈现 release body -->
+      <div
+        class="release-notes markdown-body max-h-[56vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-5 text-sm leading-6 text-gray-700 dark:border-dark-700 dark:bg-dark-900/40 dark:text-dark-200"
+        v-html="renderedBody"
+      ></div>
     </div>
 
     <template #footer>
-      <div class="flex justify-end">
+      <div class="flex items-center gap-2">
         <button
           type="button"
-          class="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-dark-800"
+          class="btn btn-secondary"
           @click="$emit('close')"
         >
-          {{ t('common.confirm') }}
+          {{ t('common.close') }}
+        </button>
+        <button
+          v-if="canUpgrade"
+          type="button"
+          class="btn btn-primary"
+          :disabled="upgrading"
+          @click="$emit('upgrade')"
+        >
+          <svg
+            v-if="upgrading"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          {{ upgrading ? t('version.upgrading') : t('version.startUpgrade') }}
         </button>
       </div>
     </template>
@@ -57,119 +67,90 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import BaseDialog from './BaseDialog.vue'
 
-type SectionKey = 'main' | 'features' | 'migration' | 'fixes'
-
-interface ParsedSection {
-  key: SectionKey
-  title: string
-  aliases: string[]
-  dotClass: string
-  items: string[]
-}
+marked.setOptions({
+  breaks: true,
+  gfm: true
+})
 
 const props = defineProps<{
   show: boolean
   version?: string
   body?: string
   htmlUrl?: string
+  /** 是否允许从该弹窗触发升级（例如已是最新版本时隐藏按钮） */
+  canUpgrade?: boolean
+  /** 升级进行中（按钮转圈 + 禁用） */
+  upgrading?: boolean
 }>()
 
 defineEmits<{
   (e: 'close'): void
+  (e: 'upgrade'): void
 }>()
 
 const { t } = useI18n()
 
-const sectionTemplates = computed<ParsedSection[]>(() => [
-  {
-    key: 'main',
-    title: t('version.sections.main'),
-    aliases: ['主要功能', 'main', 'main features', 'major', 'highlights'],
-    dotClass: 'bg-primary-500',
-    items: []
-  },
-  {
-    key: 'features',
-    title: t('version.sections.features'),
-    aliases: ['新增功能', '新增', 'features', 'new features', 'added'],
-    dotClass: 'bg-blue-500',
-    items: []
-  },
-  {
-    key: 'migration',
-    title: t('version.sections.migration'),
-    aliases: ['迁移板块', '迁移', 'migration', 'migrations'],
-    dotClass: 'bg-violet-500',
-    items: []
-  },
-  {
-    key: 'fixes',
-    title: t('version.sections.fixes'),
-    aliases: ['修复板块', '修复', 'fixes', 'bug fixes', 'fixed'],
-    dotClass: 'bg-green-500',
-    items: []
-  }
-])
-
-const displaySections = computed(() => parseReleaseBody(props.body || ''))
+const renderedBody = computed(() => {
+  const raw = (props.body || '').trim()
+  if (!raw) return `<p class="text-gray-500 dark:text-dark-400">${t('version.noReleaseNotes')}</p>`
+  const html = marked.parse(raw) as string
+  return DOMPurify.sanitize(html)
+})
 
 function displayVersion(version?: string): string {
   const normalized = String(version || '').trim().replace(/^v/i, '')
   return normalized ? `v${normalized}` : '--'
 }
-
-function parseReleaseBody(body: string): ParsedSection[] {
-  const sections = sectionTemplates.value.map((section) => ({ ...section, items: [] as string[] }))
-  let active: ParsedSection | null = null
-  const fallback: string[] = []
-
-  for (const rawLine of body.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue
-
-    const heading = line.match(/^#{1,4}\s+(.+?)\s*$/)
-    if (heading) {
-      active = matchSection(sections, heading[1])
-      continue
-    }
-
-    const label = line.match(/^(?:[-*]\s*)?(主要功能|新增功能|新增|迁移板块|迁移|修复板块|修复|Main(?: Features)?|Features|New Features|Added|Migration|Migrations|Fixes|Bug Fixes|Fixed)[:：]\s*(.*)$/i)
-    if (label) {
-      active = matchSection(sections, label[1])
-      const value = cleanItem(label[2])
-      if (active && value) active.items.push(value)
-      continue
-    }
-
-    const item = cleanItem(line)
-    if (!item) continue
-    if (active) {
-      active.items.push(item)
-    } else {
-      fallback.push(item)
-    }
-  }
-
-  if (!sections.some((section) => section.items.length) && fallback.length) {
-    sections.find((section) => section.key === 'features')?.items.push(...fallback)
-  }
-
-  return sections
-}
-
-function matchSection(sections: ParsedSection[], rawTitle: string): ParsedSection | null {
-  const title = rawTitle.replace(/[*_`#]/g, '').trim().toLowerCase()
-  return sections.find((section) => section.aliases.some((alias) => title.includes(alias.toLowerCase()))) || null
-}
-
-function cleanItem(raw: string): string {
-  return raw
-    .replace(/^[-*]\s+/, '')
-    .replace(/^\d+[.)]\s+/, '')
-    .replace(/^无$/, '')
-    .replace(/^none$/i, '')
-    .trim()
-}
 </script>
+
+<style scoped>
+.release-notes :deep(h1),
+.release-notes :deep(h2),
+.release-notes :deep(h3),
+.release-notes :deep(h4) {
+  @apply font-semibold text-gray-900 dark:text-white;
+}
+.release-notes :deep(h1) { @apply mb-3 text-lg; }
+.release-notes :deep(h2) { @apply mb-2 mt-4 text-base; }
+.release-notes :deep(h3) { @apply mb-2 mt-3 text-sm; }
+.release-notes :deep(h4) { @apply mb-1 mt-2 text-sm; }
+.release-notes :deep(p) { @apply my-2; }
+.release-notes :deep(ul) { @apply my-2 list-disc space-y-1 pl-5; }
+.release-notes :deep(ol) { @apply my-2 list-decimal space-y-1 pl-5; }
+.release-notes :deep(li) { @apply leading-6; }
+.release-notes :deep(a) {
+  @apply text-primary-600 hover:underline dark:text-primary-400;
+}
+.release-notes :deep(code) {
+  @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[13px] text-gray-800 dark:bg-dark-700 dark:text-dark-100;
+}
+.release-notes :deep(pre) {
+  @apply my-3 overflow-x-auto rounded-lg bg-gray-900 p-3 text-[13px] text-gray-100 dark:bg-black/50;
+}
+.release-notes :deep(pre code) {
+  @apply bg-transparent p-0 text-inherit;
+}
+.release-notes :deep(blockquote) {
+  @apply my-2 border-l-4 border-gray-200 pl-3 italic text-gray-600 dark:border-dark-600 dark:text-dark-300;
+}
+.release-notes :deep(hr) {
+  @apply my-4 border-gray-200 dark:border-dark-700;
+}
+.release-notes :deep(table) {
+  @apply my-3 w-full border-collapse text-sm;
+}
+.release-notes :deep(th),
+.release-notes :deep(td) {
+  @apply border border-gray-200 px-3 py-1.5 dark:border-dark-700;
+}
+.release-notes :deep(th) {
+  @apply bg-gray-50 font-medium dark:bg-dark-800;
+}
+.release-notes :deep(img) {
+  @apply max-w-full rounded;
+}
+</style>

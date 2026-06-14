@@ -218,35 +218,12 @@
 
         <!-- Charts Section -->
         <div class="space-y-6">
-          <!-- Date Range Filter -->
-          <div class="card p-4">
-            <div class="flex flex-wrap items-center gap-4">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.timeRange') }}:</span
-                >
-                <DateRangePicker
-                  v-model:start-date="startDate"
-                  v-model:end-date="endDate"
-                  @change="onDateRangeChange"
-                />
-              </div>
-              <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
-                {{ t('common.refresh') }}
-              </button>
-              <div class="ml-auto flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.granularity') }}:</span
-                >
-                <div class="w-28">
-                  <Select
-                    v-model="granularity"
-                    :options="granularityOptions"
-                    @change="loadChartData"
-                  />
-                </div>
-              </div>
-            </div>
+          <!-- 时间范围与颗粒度已迁移到顶部菜单栏的时间范围按钮 -->
+          <div class="flex items-center justify-end">
+            <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
+              <Icon name="refresh" size="sm" :stroke-width="2" :class="{ 'animate-spin': chartsLoading }" />
+              {{ t('common.refresh') }}
+            </button>
           </div>
 
           <!-- Charts Grid -->
@@ -293,12 +270,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useTimeRangeStore } from '@/stores/timeRange'
 
-const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type {
   DashboardStats,
@@ -310,8 +287,6 @@ import type {
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
-import DateRangePicker from '@/components/common/DateRangePicker.vue'
-import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 
@@ -340,6 +315,7 @@ ChartJS.register(
 
 const appStore = useAppStore()
 const router = useRouter()
+const { t } = useI18n()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
@@ -360,31 +336,23 @@ let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
 
-// Helper function to format date in local timezone
-const formatLocalDate = (date: Date): string => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-const getLast24HoursRangeDates = (): { start: string; end: string } => {
-  const end = new Date()
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-  return {
-    start: formatLocalDate(start),
-    end: formatLocalDate(end)
-  }
-}
-
 // Date range
-const granularity = ref<'day' | 'hour'>('hour')
-const defaultRange = getLast24HoursRangeDates()
-const startDate = ref(defaultRange.start)
-const endDate = ref(defaultRange.end)
+// 时间范围 / 颗粒度由顶部菜单栏的全局 store 驱动
+const timeRangeStore = useTimeRangeStore()
+const granularity = computed<'day' | 'hour'>({
+  get: () => timeRangeStore.granularity,
+  set: (v) => timeRangeStore.setGranularity(v)
+})
+const startDate = computed(() => timeRangeStore.startDate)
+const endDate = computed(() => timeRangeStore.endDate)
 
-// Granularity options for Select component
-const granularityOptions = computed(() => [
-  { value: 'day', label: t('admin.dashboard.day') },
-  { value: 'hour', label: t('admin.dashboard.hour') }
-])
+// 监听 store 变化，自动重新加载图表数据
+watch(
+  [() => timeRangeStore.startDate, () => timeRangeStore.endDate, () => timeRangeStore.granularity],
+  () => {
+    loadDashboardStats()
+  }
+)
 
 // Dark mode detection
 const isDarkMode = computed(() => {
@@ -566,27 +534,6 @@ const goToUserUsage = (item: UserSpendingRankingItem) => {
   })
 }
 
-// Date range change handler
-const onDateRangeChange = (range: {
-  startDate: string
-  endDate: string
-  preset: string | null
-}) => {
-  // Auto-select granularity based on date range
-  const start = new Date(range.startDate)
-  const end = new Date(range.endDate)
-  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-
-  // If range is 1 day, use hourly granularity
-  if (daysDiff <= 1) {
-    granularity.value = 'hour'
-  } else {
-    granularity.value = 'day'
-  }
-
-  loadChartData()
-}
-
 // Load data
 const loadDashboardSnapshot = async (includeStats: boolean) => {
   const currentSeq = ++chartLoadSeq
@@ -679,14 +626,6 @@ const loadUserSpendingRanking = async () => {
 const loadDashboardStats = async () => {
   await Promise.all([
     loadDashboardSnapshot(true),
-    loadUsersTrend(),
-    loadUserSpendingRanking()
-  ])
-}
-
-const loadChartData = async () => {
-  await Promise.all([
-    loadDashboardSnapshot(false),
     loadUsersTrend(),
     loadUserSpendingRanking()
   ])

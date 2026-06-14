@@ -416,6 +416,23 @@ func (h *ChannelMonitorHandler) History(c *gin.Context) {
 	response.Success(c, gin.H{"items": out})
 }
 
+// RecentAvailability GET /api/v1/admin/channel-monitors/availability?days=30
+// 返回最近 N 天每天的全局可用率，用于"最近可用性"网格组件。
+func (h *ChannelMonitorHandler) RecentAvailability(c *gin.Context) {
+	days := 30
+	if raw := strings.TrimSpace(c.Query("days")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			days = v
+		}
+	}
+	points, err := h.monitorService.GetRecentAvailability(c.Request.Context(), days)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"days": days, "points": points})
+}
+
 // parseHistoryLimit 解析 history 接口的 limit query。
 // 使用 service 包的统一上下限常量，避免在 handler 重复定义同名魔法值。
 func parseHistoryLimit(raw string) int {

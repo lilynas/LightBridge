@@ -1196,6 +1196,43 @@ export async function updateRectifierSettings(
   return data;
 }
 
+// ==================== Authenticity Settings ====================
+
+/**
+ * Claude model authenticity detection settings.
+ * Controls the passive SSE signature check and the suspicious threshold.
+ */
+export interface AuthenticitySettings {
+  enabled: boolean;
+  passive_threshold: number;
+}
+
+/**
+ * Get authenticity detection settings
+ * @returns Authenticity settings
+ */
+export async function getAuthenticitySettings(): Promise<AuthenticitySettings> {
+  const { data } = await apiClient.get<AuthenticitySettings>(
+    "/admin/settings/authenticity",
+  );
+  return data;
+}
+
+/**
+ * Update authenticity detection settings
+ * @param settings - Authenticity settings to update
+ * @returns Updated settings
+ */
+export async function updateAuthenticitySettings(
+  settings: AuthenticitySettings,
+): Promise<AuthenticitySettings> {
+  const { data } = await apiClient.put<AuthenticitySettings>(
+    "/admin/settings/authenticity",
+    settings,
+  );
+  return data;
+}
+
 // ==================== OpenAI Fast Policy Settings ====================
 
 /**
@@ -1348,6 +1385,8 @@ export const settingsAPI = {
   updateStreamTimeoutSettings,
   getRectifierSettings,
   updateRectifierSettings,
+  getAuthenticitySettings,
+  updateAuthenticitySettings,
   getBetaPolicySettings,
   updateBetaPolicySettings,
   getWebSearchEmulationConfig,

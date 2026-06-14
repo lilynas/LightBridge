@@ -5219,7 +5219,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if input.RequestStream {
-		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		// 被动真伪检测：仅对明确开启 thinking 的请求统计 signature 命中。
+		thinkingEnabled := isThinkingEnabledPayload(input.Body)
+		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel, thinkingEnabled)
 		if err != nil {
 			return nil, err
 		}
@@ -5318,6 +5320,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	account *Account,
 	startTime time.Time,
 	model string,
+	thinkingEnabled bool,
 ) (*streamingResult, error) {
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -5351,6 +5354,15 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	// 被动真伪检测：跟踪响应流中是否出现合法 thinking signature。
+	sigState := &thinkingSignatureState{enabled: thinkingEnabled}
+	// 流结束后做一次被动真伪评估（仅对完整成功流；断连/错误流不计，避免误判）。
+	defer func() {
+		if sigState == nil || !sigState.enabled || clientDisconnected || !sawTerminalEvent {
+			return
+		}
+		s.evaluateAuthenticityPassive(ctx, account, sigState)
+	}()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -5468,6 +5480,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					firstTokenMs = &ms
 				}
 				s.parseSSEUsagePassthrough(data, usage)
+				s.parseAuthenticityPassthrough(data, sigState)
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -6927,6 +6940,14 @@ func matchSignaturePatterns(respBody []byte, patterns []string) bool {
 // isThinkingBlockSignatureError 检测是否是thinking block相关错误
 // 这类错误可以通过过滤thinking blocks并重试来解决
 func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
+	return detectThinkingSignatureError(respBody)
+}
+
+// detectThinkingSignatureError 是 isThinkingBlockSignatureError 的包级实现，
+// 供真伪检测探针等不持有 *GatewayService 的代码复用。匹配逻辑保持一致：
+// 真 Anthropic 服务端会校验 thinking block 的 signature，伪造/篡改会返回
+// "Invalid signature in thinking block" 等错误（命中 "signature" 关键字）。
+func detectThinkingSignatureError(respBody []byte) bool {
 	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 	if msg == "" {
 		return false

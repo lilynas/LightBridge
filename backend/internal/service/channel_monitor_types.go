@@ -206,6 +206,14 @@ type ChannelMonitorAvailability struct {
 	AvgLatencyMs      *int
 }
 
+// DailyAvailabilityPoint 表示某一天的全局可用率聚合点（"最近可用性"网格用）。
+type DailyAvailabilityPoint struct {
+	Date         time.Time `json:"date"`
+	TotalChecks  int       `json:"total_checks"`
+	OkCount      int       `json:"ok_count"`
+	Availability float64   `json:"availability"` // 0..1
+}
+
 // MonitorStatusSummary 监控状态聚合（admin list 用，单次 repo 查询消除前端 N+1）。
 // PrimaryStatus / PrimaryLatencyMs 描述主模型最近状态；Availability7d 是主模型 7 天可用率；
 // ExtraModels 描述附加模型最近状态（用于 hover 展示）。

@@ -411,6 +411,14 @@ const (
 	SettingKeyRectifierSettings = "rectifier_settings"
 
 	// =========================
+	// Claude Authenticity Detection (模型真伪检测)
+	// =========================
+
+	// SettingKeyAuthenticitySettings stores JSON config for Claude authenticity detection
+	// (passive SSE signature check + suspicious threshold).
+	SettingKeyAuthenticitySettings = "authenticity_settings"
+
+	// =========================
 	// Beta Policy Settings
 	// =========================
 
