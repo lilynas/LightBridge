@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -488,10 +487,7 @@ func privacyRulesSignature(cfg *PrivacyFilterConfig) string {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		b.WriteString(id)
-		b.WriteByte('=')
-		b.WriteString(strconv.FormatBool(cfg.BuiltinRules[id]))
-		b.WriteByte(';')
+		fmt.Fprintf(&b, "%s=%t;", id, cfg.BuiltinRules[id])
 	}
 	b.WriteString("|custom|")
 	for _, r := range cfg.CustomRules {
@@ -499,7 +495,7 @@ func privacyRulesSignature(cfg *PrivacyFilterConfig) string {
 			continue
 		}
 		b.WriteString(r.Pattern)
-		b.WriteByte('\x00')
+		b.WriteByte(0)
 		b.WriteString(r.Replacement)
 		b.WriteByte('\n')
 	}

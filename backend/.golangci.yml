@@ -84,6 +84,22 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        # Close / cleanup in defer 场景惯用忽略
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Stmt).Close
+        # strings.Builder / bytes.Buffer 写入永不返回错误
+        - (*strings.Builder).WriteString
+        - (*strings.Builder).WriteByte
+        - (*strings.Builder).WriteRune
+        - (*bytes.Buffer).Write
+        - (*bytes.Buffer).WriteString
+        - (*bytes.Buffer).WriteByte
+        # 清理操作
+        - os.RemoveAll
       # Display function signature instead of selector.
       # Default: false
       verbose: true

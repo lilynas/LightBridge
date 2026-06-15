@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -178,8 +179,8 @@ func (h *LightBridgeConnectHandler) SyncQuota(c *gin.Context) {
 	// Sync quota
 	quotaInfo, err := h.lbcService.SyncNewAPIQuota(c.Request.Context(), &config)
 	if err != nil {
-		// Log failed sync
-		h.db.Exec(`
+		// Log failed sync (best-effort)
+		_, _ = h.db.Exec(`
 			INSERT INTO lightbridge_connect_quota_logs
 			(account_id, sync_type, sync_success, error_message)
 			VALUES ($1, $2, $3, $4)
@@ -204,8 +205,8 @@ func (h *LightBridgeConnectHandler) SyncQuota(c *gin.Context) {
 		return
 	}
 
-	// Log successful sync
-	h.db.Exec(`
+	// Log successful sync (best-effort)
+	_, _ = h.db.Exec(`
 		INSERT INTO lightbridge_connect_quota_logs
 		(account_id, balance_before, balance_after, change_amount, sync_type, sync_success)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -214,19 +215,19 @@ func (h *LightBridgeConnectHandler) SyncQuota(c *gin.Context) {
 	// Check for alerts
 	alert := h.lbcService.CheckQuotaAlert(&config, oldBalance, quotaInfo.Balance)
 	if alert != nil {
-		// Save alert
-		h.db.Exec(`
+		// Save alert (best-effort)
+		_, _ = h.db.Exec(`
 			INSERT INTO lightbridge_connect_alerts
 			(account_id, alert_type, severity, message, metadata)
 			VALUES ($1, $2, $3, $4, $5)
 		`, accountID, alert.Type, alert.Severity, alert.Message, "{}")
 
-		// Send alert
-		go h.lbcService.SendAlert(c.Request.Context(), accountID, &config, alert)
+		// Send alert (best-effort)
+		go func() { _ = h.lbcService.SendAlert(context.Background(), accountID, &config, alert) }()
 
 		// Auto-disable if exhausted and configured
 		if alert.Type == "quota_exhausted" && config.Alert != nil && config.Alert.AutoDisableOnLow {
-			h.db.Exec(`
+			_, _ = h.db.Exec(`
 				UPDATE accounts
 				SET status = 'paused', updated_at = NOW()
 				WHERE id = $1

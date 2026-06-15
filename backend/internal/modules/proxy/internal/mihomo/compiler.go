@@ -59,7 +59,8 @@ func Compile(profile Profile, nodes []proxynode.Node, runtime RuntimeConfig) ([]
 			return nil, err
 		}
 		proxies = append(proxies, compiled)
-		proxyNames = append(proxyNames, compiled["name"].(string))
+		name, _ := compiled["name"].(string)
+		proxyNames = append(proxyNames, name)
 	}
 
 	groupName := fmt.Sprintf("LB-PROFILE-%d", profile.ID)

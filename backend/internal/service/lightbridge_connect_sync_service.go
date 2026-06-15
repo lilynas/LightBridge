@@ -140,8 +140,8 @@ func (s *LightBridgeConnectSyncService) syncAccount(ctx context.Context, account
 	// 同步余额
 	quotaInfo, err := s.lbcService.SyncNewAPIQuota(ctx, config)
 	if err != nil {
-		// 记录失败日志
-		s.db.ExecContext(ctx, `
+		// 记录失败日志（best-effort，忽略日志写入错误）
+		_, _ = s.db.ExecContext(ctx, `
 			INSERT INTO lightbridge_connect_quota_logs
 			(account_id, sync_type, sync_success, error_message)
 			VALUES ($1, $2, $3, $4)
@@ -166,8 +166,8 @@ func (s *LightBridgeConnectSyncService) syncAccount(ctx context.Context, account
 		return false
 	}
 
-	// 记录成功日志
-	s.db.ExecContext(ctx, `
+	// 记录成功日志（best-effort）
+	_, _ = s.db.ExecContext(ctx, `
 		INSERT INTO lightbridge_connect_quota_logs
 		(account_id, balance_before, balance_after, change_amount, sync_type, sync_success)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -176,15 +176,15 @@ func (s *LightBridgeConnectSyncService) syncAccount(ctx context.Context, account
 	// 检查是否需要触发警报
 	alert := s.lbcService.CheckQuotaAlert(config, oldBalance, quotaInfo.Balance)
 	if alert != nil {
-		// 保存警报
-		s.db.ExecContext(ctx, `
+		// 保存警报（best-effort）
+		_, _ = s.db.ExecContext(ctx, `
 			INSERT INTO lightbridge_connect_alerts
 			(account_id, alert_type, severity, message, metadata)
 			VALUES ($1, $2, $3, $4, $5)
 		`, accountID, alert.Type, alert.Severity, alert.Message, "{}")
 
-		// 发送警报（异步）
-		go s.lbcService.SendAlert(context.Background(), accountID, config, alert)
+		// 发送警报（异步，best-effort）
+		go func() { _ = s.lbcService.SendAlert(context.Background(), accountID, config, alert) }()
 
 		// 自动禁用账号（如果余额耗尽且配置了自动禁用）
 		if alert.Type == "quota_exhausted" && config.Alert != nil && config.Alert.AutoDisableOnLow {
