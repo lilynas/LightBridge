@@ -1543,6 +1543,36 @@
         </div>
       </div>
 
+      <!-- Custom 自动透传开关（仅 OpenAI Responses / Anthropic Messages 协议） -->
+      <div
+        v-if="customPassthroughApplicable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.custom.passthrough') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.custom.passthroughDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="customPassthroughEnabled = !customPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              customPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                customPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
       <div
         v-if="account?.platform === 'anthropic' && account?.type === 'apikey' && webSearchGlobalEnabled"
@@ -2625,6 +2655,17 @@ const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
 const anthropicPassthroughEnabled = ref(false)
+// Custom 自动透传开关（仅 OpenAI / Anthropic 协议）
+const customPassthroughEnabled = ref(false)
+const customProtocol = computed(() => {
+  const extra = props.account?.extra as Record<string, unknown> | undefined
+  return typeof extra?.protocol === 'string' ? extra.protocol : ''
+})
+const customPassthroughApplicable = computed(() => {
+  if (props.account?.platform !== 'custom') return false
+  // 仅 OpenAI Responses / Anthropic Messages 协议有对应的透传转发实现
+  return customProtocol.value === 'openai_responses' || customProtocol.value === 'anthropic_messages'
+})
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -3002,6 +3043,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexImageGenerationBridgeMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
+  // Load Custom passthrough toggle（openai/anthropic 协议共用两个开关键）
+  customPassthroughEnabled.value = false
+  if (newAccount.platform === 'custom') {
+    customPassthroughEnabled.value =
+      extra?.openai_passthrough === true ||
+      extra?.openai_oauth_passthrough === true ||
+      extra?.anthropic_passthrough === true
+  }
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
@@ -4186,6 +4235,29 @@ const handleSubmit = async () => {
         }
       }
 
+      updatePayload.extra = newExtra
+    }
+
+    // For Custom accounts, handle 自动透传 in extra（按协议归属写入对应开关键）
+    if (props.account.platform === 'custom') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      const isAnthropicProtocol = customProtocol.value === 'anthropic_messages'
+      if (customPassthroughApplicable.value && customPassthroughEnabled.value) {
+        if (isAnthropicProtocol) {
+          newExtra.anthropic_passthrough = true
+          delete newExtra.openai_passthrough
+          delete newExtra.openai_oauth_passthrough
+        } else {
+          newExtra.openai_passthrough = true
+          delete newExtra.anthropic_passthrough
+        }
+      } else {
+        delete newExtra.anthropic_passthrough
+        delete newExtra.openai_passthrough
+        delete newExtra.openai_oauth_passthrough
+      }
       updatePayload.extra = newExtra
     }
 

@@ -4271,7 +4271,10 @@ export default {
         baseUrlHint: '自定义上游端点地址，例如 https://api.example.com/v1',
         pleaseSelectProtocol: '请选择协议类型',
         pleaseEnterBaseUrl: '请输入 Base URL',
-        pleaseEnterApiKey: '请输入 API Key'
+        pleaseEnterApiKey: '请输入 API Key',
+        passthrough: '自动透传（仅替换认证）',
+        passthroughDesc:
+          '开启后，该 Custom 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。仅对 OpenAI Responses 与 Anthropic Messages 协议生效。'
       },
       // LightBridge Connect (New API 深度集成)
       lightBridgeConnect: {

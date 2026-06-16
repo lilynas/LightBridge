@@ -4144,7 +4144,10 @@ export default {
         baseUrlHint: 'Custom upstream endpoint, e.g., https://api.example.com/v1',
         pleaseSelectProtocol: 'Please select a protocol',
         pleaseEnterBaseUrl: 'Please enter Base URL',
-        pleaseEnterApiKey: 'Please enter API Key'
+        pleaseEnterApiKey: 'Please enter API Key',
+        passthrough: 'Auto passthrough (auth only)',
+        passthroughDesc:
+          'When enabled, this Custom account passes requests and responses through, replacing only the credentials while preserving billing/concurrency/audit and required security filtering; disable anytime to roll back. Applies to the OpenAI Responses and Anthropic Messages protocols only.'
       },
       // LightBridge Connect (New API Deep Integration)
       lightBridgeConnect: {

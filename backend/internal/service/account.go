@@ -1589,8 +1589,9 @@ func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
 // IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用"自动透传（仅替换认证）"。
 // 字段：accounts.extra.anthropic_passthrough。
 // 字段缺失或类型不正确时，按 false（关闭）处理。
+// 注意：使用 IsAnthropic() 以覆盖 Custom（anthropic_messages 协议）账号。
 func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+	if a == nil || !a.IsAnthropic() || a.Type != AccountTypeAPIKey || a.Extra == nil {
 		return false
 	}
 	enabled, ok := a.Extra["anthropic_passthrough"].(bool)

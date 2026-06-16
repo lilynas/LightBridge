@@ -91,8 +91,11 @@ const isSearchable = computed(() => {
 const filteredGroups = computed(() => {
   let result: AdminGroup[] = props.groups
   if (props.platform) {
-    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-    if (props.platform === 'antigravity' && props.mixedScheduling) {
+    // custom 账户不受分组类型限制：可加入任意分组
+    if (props.platform === 'custom') {
+      // 不做平台过滤，保留所有分组
+    } else if (props.platform === 'antigravity' && props.mixedScheduling) {
+      // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
       result = result.filter(
         (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
       )

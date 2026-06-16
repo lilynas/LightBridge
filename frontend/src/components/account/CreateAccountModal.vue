@@ -329,6 +329,36 @@
         />
       </div>
 
+      <!-- Custom 自动透传开关（仅 OpenAI Responses / Anthropic Messages 协议） -->
+      <div
+        v-if="form.platform === 'custom' && customPassthroughApplicable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.custom.passthrough') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.custom.passthroughDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="customPassthroughEnabled = !customPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              customPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                customPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- LightBridge Connect Configuration (for New API and compatible services) -->
       <div v-if="form.platform === 'custom' && shouldShowLightBridgeConnect">
         <LightBridgeConnectConfig
@@ -3766,6 +3796,14 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const customPassthroughEnabled = ref(false)
+// Custom 账号：仅 OpenAI Responses / Anthropic Messages 协议支持自动透传。
+// 这两个协议有对应的“仅替换认证”透传转发实现；chat_completions / embeddings /
+// gemini 协议走各自的转换转发路径，不处理透传，故不提供开关。
+const customPassthroughApplicable = computed(() => {
+  if (form.platform !== 'custom') return false
+  return form.customProtocol === 'openai_responses' || form.customProtocol === 'anthropic_messages'
+})
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -4322,6 +4360,9 @@ watch(
       anthropicPassthroughEnabled.value = false
       webSearchEmulationMode.value = 'default'
     }
+    if (newPlatform !== 'custom') {
+      customPassthroughEnabled.value = false
+    }
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
@@ -4770,6 +4811,7 @@ const resetForm = () => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAllowClaudeCodeEnabled.value = false
   anthropicPassthroughEnabled.value = false
+  customPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
   windowCostEnabled.value = false
@@ -5021,6 +5063,15 @@ const handleSubmit = async () => {
 
     const extra: Record<string, unknown> = {
       protocol: form.customProtocol
+    }
+
+    // 自动透传（仅替换认证）：按协议归属写入对应开关键
+    if (customPassthroughApplicable.value && customPassthroughEnabled.value) {
+      if (form.customProtocol === 'anthropic_messages') {
+        extra.anthropic_passthrough = true
+      } else {
+        extra.openai_passthrough = true
+      }
     }
 
     await createAccountAndFinish('custom', 'apikey', credentials, extra)
