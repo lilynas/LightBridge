@@ -379,6 +379,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/error-analysis',
+    name: 'AdminErrorAnalysis',
+    component: () => import('@/views/admin/ops/ErrorAnalysisView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Error Analysis',
+      titleKey: 'admin.ops.errorAnalysis.title',
+      descriptionKey: 'admin.ops.errorAnalysis.description'
+    }
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

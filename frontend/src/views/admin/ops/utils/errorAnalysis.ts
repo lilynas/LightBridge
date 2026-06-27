@@ -1,0 +1,349 @@
+import type { OpsErrorDetail, OpsErrorLog } from '@/api/admin/ops'
+
+export type ErrorAnalysisStepState = 'passed' | 'failed' | 'warning' | 'skipped' | 'pending'
+
+export type ErrorAnalysisStepKey =
+  | 'request_intake'
+  | 'auth'
+  | 'routing'
+  | 'account_scheduler'
+  | 'provider_adapter'
+  | 'upstream'
+  | 'response'
+
+export type ErrorAnalysisRootCause =
+  | 'no_available_account'
+  | 'auth_forbidden'
+  | 'client_request'
+  | 'provider_upstream'
+  | 'platform_internal'
+  | 'network'
+  | 'unknown'
+
+export interface ErrorAnalysisEvidence {
+  key: string
+  value: string
+  tone?: 'neutral' | 'good' | 'warning' | 'danger'
+}
+
+export interface ErrorAnalysisStep {
+  key: ErrorAnalysisStepKey
+  module: string
+  state: ErrorAnalysisStepState
+  evidence: ErrorAnalysisEvidence[]
+}
+
+export interface ErrorAnalysisResult {
+  rootCause: ErrorAnalysisRootCause
+  rootModule: string
+  confidence: 'high' | 'medium' | 'low'
+  failedStep: ErrorAnalysisStepKey
+  steps: ErrorAnalysisStep[]
+  evidence: ErrorAnalysisEvidence[]
+  suggestionKeys: string[]
+}
+
+const NO_AVAILABLE_ACCOUNT_RE = /no\s+available\s+accounts?|无可用账号/i
+const MODULE_PROVIDER_RE = /module provider|provider registry|provider id|adapter/i
+const NETWORK_RE = /timeout|deadline|connection refused|connection reset|dial tcp|tls|dns|network/i
+
+function textOf(detail: OpsErrorDetail | OpsErrorLog | null | undefined): string {
+  if (!detail) return ''
+  return [
+    detail.message,
+    'error_body' in detail ? detail.error_body : '',
+    'upstream_error_message' in detail ? detail.upstream_error_message : '',
+    'upstream_error_detail' in detail ? detail.upstream_error_detail : '',
+    'upstream_errors' in detail ? detail.upstream_errors : ''
+  ].filter(Boolean).join('\n')
+}
+
+function normalize(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function hasNoAvailableAccount(detail: OpsErrorDetail | null): boolean {
+  return NO_AVAILABLE_ACCOUNT_RE.test(textOf(detail))
+}
+
+function hasNetworkSignal(detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): boolean {
+  if (NETWORK_RE.test(textOf(detail))) return true
+  return upstreamErrors.some((item) => NETWORK_RE.test(textOf(item)))
+}
+
+function isProviderBridgeFailure(detail: OpsErrorDetail | null): boolean {
+  return MODULE_PROVIDER_RE.test(textOf(detail))
+}
+
+function hasUpstreamAttempt(detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): boolean {
+  if (upstreamErrors.length > 0) return true
+  if (detail?.upstream_status_code != null) return true
+  if (String(detail?.upstream_error_message || '').trim()) return true
+  if (String(detail?.upstream_error_detail || '').trim()) return true
+  return false
+}
+
+function isCustomProviderContext(detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): boolean {
+  if (!detail) return false
+  if (normalize(detail.platform) === 'custom') return true
+  if (normalize(detail.upstream_endpoint).includes('custom')) return true
+  return upstreamErrors.some((item) => normalize(item.platform) === 'custom')
+}
+
+function determineRootCause(detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): ErrorAnalysisRootCause {
+  if (!detail) return 'unknown'
+
+  const phase = normalize(detail.phase)
+  const owner = normalize(detail.error_owner)
+  const source = normalize(detail.error_source)
+  const status = detail.status_code || 0
+  const upstreamAttempted = hasUpstreamAttempt(detail, upstreamErrors)
+
+  if (hasNoAvailableAccount(detail)) return 'no_available_account'
+  if (phase === 'routing' && status === 503 && !upstreamAttempted) return 'no_available_account'
+  if (status === 503 && !detail.account_id && !upstreamAttempted) return 'no_available_account'
+
+  if (phase === 'auth' || (status === 403 && owner !== 'provider' && !upstreamAttempted)) {
+    return 'auth_forbidden'
+  }
+
+  if (owner === 'client' || source === 'client_request' || phase === 'request') {
+    return 'client_request'
+  }
+
+  if (hasNetworkSignal(detail, upstreamErrors)) return 'network'
+
+  if (phase === 'upstream' || owner === 'provider' || upstreamAttempted) {
+    return 'provider_upstream'
+  }
+
+  if (phase === 'internal' || owner === 'platform' || status >= 500) {
+    return 'platform_internal'
+  }
+
+  return 'unknown'
+}
+
+function failedStepForCause(cause: ErrorAnalysisRootCause, detail: OpsErrorDetail | null): ErrorAnalysisStepKey {
+  if (cause === 'auth_forbidden') return 'auth'
+  if (cause === 'client_request') return normalize(detail?.phase) === 'routing' ? 'routing' : 'request_intake'
+  if (cause === 'no_available_account') return 'account_scheduler'
+  if (cause === 'provider_upstream' || cause === 'network') {
+    return isProviderBridgeFailure(detail) ? 'provider_adapter' : 'upstream'
+  }
+  if (cause === 'platform_internal') return 'response'
+  return 'response'
+}
+
+function stateForStep(
+  key: ErrorAnalysisStepKey,
+  failedStep: ErrorAnalysisStepKey,
+  detail: OpsErrorDetail | null,
+  upstreamErrors: OpsErrorDetail[]
+): ErrorAnalysisStepState {
+  const order: ErrorAnalysisStepKey[] = [
+    'request_intake',
+    'auth',
+    'routing',
+    'account_scheduler',
+    'provider_adapter',
+    'upstream',
+    'response'
+  ]
+  const failedIdx = order.indexOf(failedStep)
+  const idx = order.indexOf(key)
+  const upstreamAttempted = hasUpstreamAttempt(detail, upstreamErrors)
+
+  if (idx < failedIdx) return 'passed'
+  if (key === failedStep) return 'failed'
+
+  if (failedStep === 'account_scheduler' && (key === 'provider_adapter' || key === 'upstream')) {
+    return 'skipped'
+  }
+  if (key === 'upstream' && upstreamAttempted) return 'warning'
+  if (key === 'response') return 'warning'
+  return idx > failedIdx ? 'pending' : 'passed'
+}
+
+function pushEvidence(out: ErrorAnalysisEvidence[], key: string, value: unknown, tone?: ErrorAnalysisEvidence['tone']) {
+  const str = String(value ?? '').trim()
+  if (!str) return
+  out.push({ key, value: str, tone })
+}
+
+function compactRequestId(detail: OpsErrorDetail | null): string {
+  return String(detail?.request_id || detail?.client_request_id || '').trim()
+}
+
+function modelLabel(detail: OpsErrorDetail | null): string {
+  if (!detail) return ''
+  const requested = String(detail.requested_model || '').trim()
+  const upstream = String(detail.upstream_model || '').trim()
+  if (requested && upstream && requested !== upstream) return `${requested} -> ${upstream}`
+  return upstream || requested || String(detail.model || '').trim()
+}
+
+function buildStepEvidence(
+  key: ErrorAnalysisStepKey,
+  detail: OpsErrorDetail | null,
+  upstreamErrors: OpsErrorDetail[]
+): ErrorAnalysisEvidence[] {
+  const evidence: ErrorAnalysisEvidence[] = []
+  if (!detail) return evidence
+
+  switch (key) {
+    case 'request_intake':
+      pushEvidence(evidence, 'request_id', compactRequestId(detail))
+      pushEvidence(evidence, 'endpoint', detail.inbound_endpoint || detail.request_path)
+      pushEvidence(evidence, 'request_type', detail.stream ? 'stream' : String(detail.request_type ?? 'sync'))
+      break
+    case 'auth':
+      pushEvidence(evidence, 'user', detail.user_email || detail.user_id)
+      pushEvidence(evidence, 'api_key_id', detail.api_key_id)
+      pushEvidence(evidence, 'client_ip', detail.client_ip)
+      break
+    case 'routing':
+      pushEvidence(evidence, 'platform', detail.platform)
+      pushEvidence(evidence, 'group', detail.group_name || detail.group_id)
+      pushEvidence(evidence, 'model', modelLabel(detail))
+      break
+    case 'account_scheduler':
+      pushEvidence(evidence, 'account', detail.account_name || detail.account_id || 'none', detail.account_id ? 'neutral' : 'warning')
+      pushEvidence(evidence, 'status', detail.status_code, detail.status_code >= 500 ? 'danger' : 'warning')
+      if (hasNoAvailableAccount(detail)) pushEvidence(evidence, 'scheduler_result', 'No available accounts', 'danger')
+      if (isCustomProviderContext(detail, upstreamErrors)) pushEvidence(evidence, 'provider_kind', 'custom', 'warning')
+      break
+    case 'provider_adapter':
+      pushEvidence(evidence, 'provider_module', isCustomProviderContext(detail, upstreamErrors) ? 'custom provider adapter' : 'built-in provider adapter')
+      pushEvidence(evidence, 'upstream_endpoint', detail.upstream_endpoint)
+      pushEvidence(evidence, 'selected_account', detail.account_name || detail.account_id)
+      break
+    case 'upstream':
+      pushEvidence(evidence, 'attempts', upstreamErrors.length || (detail.upstream_status_code != null ? 1 : 0), upstreamErrors.length ? 'warning' : 'neutral')
+      pushEvidence(evidence, 'upstream_status', detail.upstream_status_code)
+      pushEvidence(evidence, 'upstream_message', detail.upstream_error_message)
+      break
+    case 'response':
+      pushEvidence(evidence, 'client_status', detail.status_code, detail.status_code >= 500 ? 'danger' : 'warning')
+      pushEvidence(evidence, 'message', detail.message)
+      break
+  }
+
+  return evidence
+}
+
+function moduleForStep(key: ErrorAnalysisStepKey): string {
+  switch (key) {
+    case 'request_intake':
+      return 'server.routes.gateway + ops_error_logger'
+    case 'auth':
+      return 'middleware.api_key_auth + subscription_guard'
+    case 'routing':
+      return 'gateway_handler + model_routing'
+    case 'account_scheduler':
+      return 'openai_account_scheduler + scheduling_platform'
+    case 'provider_adapter':
+      return 'provider_module_bridge / custom_provider_adapter'
+    case 'upstream':
+      return 'upstream_http_client + provider_runtime'
+    case 'response':
+      return 'response_writer + error_passthrough'
+  }
+}
+
+function rootModule(cause: ErrorAnalysisRootCause, failedStep: ErrorAnalysisStepKey): string {
+  if (cause === 'no_available_account') return 'openai_account_scheduler'
+  if (cause === 'auth_forbidden') return 'middleware.api_key_auth'
+  if (cause === 'client_request') return 'gateway_request_validator'
+  if (cause === 'provider_upstream') return 'upstream_http_client'
+  if (cause === 'network') return 'upstream_http_client'
+  if (cause === 'platform_internal') return 'gateway_service'
+  return moduleForStep(failedStep)
+}
+
+function confidenceFor(cause: ErrorAnalysisRootCause, detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): ErrorAnalysisResult['confidence'] {
+  if (!detail) return 'low'
+  if (cause === 'no_available_account' && hasNoAvailableAccount(detail)) return 'high'
+  if (cause === 'provider_upstream' && hasUpstreamAttempt(detail, upstreamErrors)) return 'high'
+  if (cause === 'auth_forbidden' && normalize(detail.phase) === 'auth') return 'high'
+  if (cause === 'network' && hasNetworkSignal(detail, upstreamErrors)) return 'high'
+  if (cause === 'unknown') return 'low'
+  return 'medium'
+}
+
+function suggestionKeysFor(cause: ErrorAnalysisRootCause, detail: OpsErrorDetail | null, upstreamErrors: OpsErrorDetail[]): string[] {
+  const custom = isCustomProviderContext(detail, upstreamErrors)
+
+  if (cause === 'no_available_account') {
+    return custom
+      ? [
+          'customCheckAccountGroup',
+          'customCheckProtocol',
+          'customCheckModelScope',
+          'customCheckAccountAvailability',
+          'customNoUpstreamAttempt'
+        ]
+      : ['checkAccountGroup', 'checkModelScope', 'checkAccountAvailability', 'checkRateLimitOrTempUnsched']
+  }
+
+  if (cause === 'auth_forbidden') return ['checkApiKeyPermission', 'checkUserGroupAccess', 'checkSubscriptionAndBalance']
+  if (cause === 'client_request') return ['checkRequestEndpoint', 'checkRequestModel', 'checkRequestPayload']
+  if (cause === 'provider_upstream') return ['checkProviderStatus', 'checkProviderCredential', 'checkProviderModelPermission']
+  if (cause === 'network') return ['checkProxyNetwork', 'checkProviderBaseUrl', 'checkTlsFingerprint']
+  if (cause === 'platform_internal') return ['checkSystemLogs', 'checkGatewayConfig', 'checkRecentDeployment']
+  return ['inspectRawError', 'compareNearbyRequests']
+}
+
+export function buildErrorAnalysis(
+  detail: OpsErrorDetail | null,
+  upstreamErrors: OpsErrorDetail[] = []
+): ErrorAnalysisResult {
+  const cause = determineRootCause(detail, upstreamErrors)
+  const failedStep = failedStepForCause(cause, detail)
+  const stepKeys: ErrorAnalysisStepKey[] = [
+    'request_intake',
+    'auth',
+    'routing',
+    'account_scheduler',
+    'provider_adapter',
+    'upstream',
+    'response'
+  ]
+
+  const steps = stepKeys.map((key) => ({
+    key,
+    module: moduleForStep(key),
+    state: stateForStep(key, failedStep, detail, upstreamErrors),
+    evidence: buildStepEvidence(key, detail, upstreamErrors)
+  }))
+
+  const evidence: ErrorAnalysisEvidence[] = []
+  if (detail) {
+    pushEvidence(evidence, 'status', detail.status_code, detail.status_code >= 500 ? 'danger' : 'warning')
+    pushEvidence(evidence, 'phase', detail.phase)
+    pushEvidence(evidence, 'owner', detail.error_owner)
+    pushEvidence(evidence, 'source', detail.error_source)
+    pushEvidence(evidence, 'request_id', compactRequestId(detail))
+    pushEvidence(evidence, 'platform', detail.platform)
+    pushEvidence(evidence, 'group', detail.group_name || detail.group_id)
+    pushEvidence(evidence, 'model', modelLabel(detail))
+    pushEvidence(evidence, 'upstream_attempts', upstreamErrors.length, upstreamErrors.length ? 'warning' : 'neutral')
+  }
+
+  return {
+    rootCause: cause,
+    rootModule: rootModule(cause, failedStep),
+    confidence: confidenceFor(cause, detail, upstreamErrors),
+    failedStep,
+    steps,
+    evidence,
+    suggestionKeys: suggestionKeysFor(cause, detail, upstreamErrors)
+  }
+}
+
+export function shortErrorMessage(detail: OpsErrorLog | OpsErrorDetail | null | undefined): string {
+  const message = String(detail?.message || '').trim()
+  if (!message) return ''
+  if (message.length <= 160) return message
+  return `${message.slice(0, 157)}...`
+}

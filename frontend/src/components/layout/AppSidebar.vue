@@ -647,6 +647,21 @@ const ShieldIcon = {
     )
 }
 
+const ErrorAnalysisIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M12 9v3.75m0 3.75h.008v.008H12V16.5zM10.29 3.86L1.82 18a2.25 2.25 0 001.93 3.4h16.5a2.25 2.25 0 001.93-3.4L13.71 3.86a2.25 2.25 0 00-3.42 0z'
+        })
+      ]
+    )
+}
+
 const PriceTagIcon = {
   render: () =>
     h(
@@ -768,6 +783,7 @@ const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
+    { path: '/admin/error-analysis', label: t('nav.errorAnalysis'), icon: ErrorAnalysisIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     {
