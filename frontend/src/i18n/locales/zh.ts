@@ -408,6 +408,12 @@ export default {
     privacyFilter: '隐私过滤',
   },
 
+  docs: {
+    documentList: '文档列表',
+    toc: '目录',
+    noToc: '暂无目录',
+  },
+
   // Auth
   auth: {
     welcomeBack: '欢迎回来',

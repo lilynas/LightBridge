@@ -348,6 +348,17 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'customPage.title',
     }
   },
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/docs/DocsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Docs',
+      titleKey: 'nav.docs'
+    }
+  },
 
   // ==================== Admin Routes ====================
   {

@@ -408,6 +408,12 @@ export default {
     privacyFilter: 'Privacy Filter',
   },
 
+  docs: {
+    documentList: 'Document list',
+    toc: 'Contents',
+    noToc: 'No headings yet',
+  },
+
   // Auth
   auth: {
     welcomeBack: 'Welcome Back',
