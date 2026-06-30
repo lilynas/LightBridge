@@ -173,11 +173,53 @@ func TestUpdateServicePreviewProductionSameNumberAreInstallable(t *testing.T) {
 	require.Equal(t, "0.2.4-preview", info.LatestVersion)
 }
 
+func TestUpdateServiceDetectsPreviewPatchUpdate(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{
+			release: &GitHubRelease{
+				TagName:    "v0.2.9-preview.1",
+				Name:       "v0.2.9-preview.1",
+				Prerelease: true,
+			},
+		},
+		"0.2.9-preview",
+		"release",
+	)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.True(t, info.HasUpdate)
+	require.Equal(t, "0.2.9-preview.1", info.LatestVersion)
+}
+
 func TestParseVersionStripsPrereleaseSuffix(t *testing.T) {
 	require.Equal(t, [3]int{0, 2, 4}, parseVersion("0.2.4-preview"))
 	require.Equal(t, [3]int{0, 2, 4}, parseVersion("v0.2.4-rc.1"))
 	require.Equal(t, [3]int{1, 2, 3}, parseVersion("1.2.3+build.5"))
-	require.Equal(t, 0, compareVersions("0.2.4-preview", "0.2.4"))
+}
+
+func TestCompareVersionsHandlesPrereleaseIdentifiers(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    int
+	}{
+		{name: "preview patch is newer", current: "0.2.9-preview", latest: "0.2.9-preview.1", want: -1},
+		{name: "next patch preview is newer", current: "0.2.9-preview.1", latest: "0.2.10-preview", want: -1},
+		{name: "release is newer than preview", current: "0.2.4-preview", latest: "0.2.4", want: -1},
+		{name: "preview is older than release", current: "0.2.4", latest: "0.2.4-preview", want: 1},
+		{name: "numeric prerelease segments sort numerically", current: "0.2.4-rc.10", latest: "0.2.4-rc.2", want: 1},
+		{name: "build metadata is ignored", current: "1.2.3+build.1", latest: "1.2.3+build.2", want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, compareVersions(tt.current, tt.latest))
+		})
+	}
 }
 
 func TestSelectUpdateAssetPreviewPrefersIncrementalBinary(t *testing.T) {

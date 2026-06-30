@@ -1,5 +1,6 @@
 import gettingStarted from './content/getting-started.md?raw'
 import release029Preview1 from './content/release-0.2.9-preview.1.md?raw'
+import release0210Preview from './content/release-0.2.10-preview.md?raw'
 
 export interface LightBridgeDoc {
   id: string
@@ -16,6 +17,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '入门',
     description: 'LightBridge 模块与功能文档入口',
     content: gettingStarted,
+  },
+  {
+    id: 'release-0.2.10-preview',
+    title: '0.2.10-preview 版本更新',
+    group: '版本更新',
+    description: '分组调度修复与预览版升级检测修复',
+    content: release0210Preview,
   },
   {
     id: 'release-0.2.9-preview.1',

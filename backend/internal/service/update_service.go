@@ -654,10 +654,10 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	_ = s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 }
 
-// compareVersions compares two semantic versions
+// compareVersions compares semantic versions, including prerelease identifiers.
 func compareVersions(current, latest string) int {
-	currentParts := parseVersion(current)
-	latestParts := parseVersion(latest)
+	currentParts, currentPrerelease := parseSemanticVersion(current)
+	latestParts, latestPrerelease := parseSemanticVersion(latest)
 
 	for i := 0; i < 3; i++ {
 		if currentParts[i] < latestParts[i] {
@@ -667,7 +667,7 @@ func compareVersions(current, latest string) int {
 			return 1
 		}
 	}
-	return 0
+	return comparePrerelease(currentPrerelease, latestPrerelease)
 }
 
 // normalizeVersionString 去除前缀 v 并裁掉首尾空白，用于完整版本字符串（含预发布后缀）的精确比较。
@@ -676,9 +676,18 @@ func normalizeVersionString(v string) string {
 }
 
 func parseVersion(v string) [3]int {
-	v = strings.TrimPrefix(v, "v")
-	// 去除预发布/构建后缀（如 0.2.4-preview、0.2.4+build），仅保留 MAJOR.MINOR.PATCH 用于数值比较。
-	if idx := strings.IndexAny(v, "-+"); idx >= 0 {
+	main, _ := parseSemanticVersion(v)
+	return main
+}
+
+func parseSemanticVersion(v string) ([3]int, string) {
+	v = normalizeVersionString(v)
+	if idx := strings.IndexByte(v, '+'); idx >= 0 {
+		v = v[:idx]
+	}
+	prerelease := ""
+	if idx := strings.IndexByte(v, '-'); idx >= 0 {
+		prerelease = v[idx+1:]
 		v = v[:idx]
 	}
 	parts := strings.Split(v, ".")
@@ -688,5 +697,79 @@ func parseVersion(v string) [3]int {
 			result[i] = parsed
 		}
 	}
-	return result
+	return result, prerelease
+}
+
+func comparePrerelease(current, latest string) int {
+	if current == latest {
+		return 0
+	}
+	if current == "" {
+		return 1
+	}
+	if latest == "" {
+		return -1
+	}
+
+	currentParts := strings.Split(current, ".")
+	latestParts := strings.Split(latest, ".")
+	maxLen := len(currentParts)
+	if len(latestParts) > maxLen {
+		maxLen = len(latestParts)
+	}
+	for i := 0; i < maxLen; i++ {
+		if i >= len(currentParts) {
+			return -1
+		}
+		if i >= len(latestParts) {
+			return 1
+		}
+		if cmp := comparePrereleaseIdentifier(currentParts[i], latestParts[i]); cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
+}
+
+func comparePrereleaseIdentifier(current, latest string) int {
+	currentNum, currentIsNum := parseNumericPrereleaseIdentifier(current)
+	latestNum, latestIsNum := parseNumericPrereleaseIdentifier(latest)
+	if currentIsNum && latestIsNum {
+		if currentNum < latestNum {
+			return -1
+		}
+		if currentNum > latestNum {
+			return 1
+		}
+		return 0
+	}
+	if currentIsNum {
+		return -1
+	}
+	if latestIsNum {
+		return 1
+	}
+	if current < latest {
+		return -1
+	}
+	if current > latest {
+		return 1
+	}
+	return 0
+}
+
+func parseNumericPrereleaseIdentifier(v string) (int, bool) {
+	if v == "" {
+		return 0, false
+	}
+	for _, r := range v {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }
