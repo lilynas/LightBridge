@@ -2,6 +2,7 @@ import gettingStarted from './content/getting-started.md?raw'
 import lightbridgeRouter from './content/lightbridge-router.md?raw'
 import release029Preview1 from './content/release-0.2.9-preview.1.md?raw'
 import release0210Preview from './content/release-0.2.10-preview.md?raw'
+import release0212Preview from './content/release-0.2.12-preview.md?raw'
 
 export interface LightBridgeDoc {
   id: string
@@ -25,6 +26,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '核心能力',
     description: '全协议消息路由、透传模式与混合分组调度说明',
     content: lightbridgeRouter,
+  },
+  {
+    id: 'release-0.2.12-preview',
+    title: '0.2.12 版本更新',
+    group: '版本更新',
+    description: '预览版版本信息同步与上游致谢说明补齐',
+    content: release0212Preview,
   },
   {
     id: 'release-0.2.10-preview',
