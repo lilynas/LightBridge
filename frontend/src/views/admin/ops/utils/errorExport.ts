@@ -1,5 +1,5 @@
 // frontend/src/views/admin/ops/utils/errorExport.ts
-import type { OpsErrorDetail, OpsErrorLog } from '@/api/admin/ops'
+import type { OpsErrorDetail } from '@/api/admin/ops'
 import type { ErrorAnalysisResult, ErrorAnalysisAccountDiagnostic } from './errorAnalysis'
 import { accountDisplayLabel } from './errorAnalysis'
 
