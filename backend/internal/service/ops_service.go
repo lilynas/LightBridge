@@ -385,6 +385,16 @@ func (s *OpsService) BatchUpdateErrorReadStatus(ctx context.Context, filter *Ops
 	return s.opsRepo.BatchUpdateErrorReadStatus(ctx, filter, isRead)
 }
 
+func (s *OpsService) BatchDeleteErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (int64, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return 0, err
+	}
+	if s.opsRepo == nil {
+		return 0, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+	}
+	return s.opsRepo.BatchDeleteErrorLogs(ctx, filter)
+}
+
 func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
 	bytesLen = len(raw)
 	if len(raw) == 0 {

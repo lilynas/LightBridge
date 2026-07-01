@@ -669,6 +669,124 @@ func (h *OpsHandler) BatchMarkRequestErrorsRead(c *gin.Context) {
 	response.Success(c, gin.H{"affected": affected})
 }
 
+// BatchDeleteRequestErrors batch-deletes request errors matching filter criteria.
+// DELETE /api/v1/admin/ops/request-errors/batch
+func (h *OpsHandler) BatchDeleteRequestErrors(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 500 {
+		pageSize = 500
+	}
+	startTime, endTime, err := parseOpsTimeRange(c, "1h")
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+	if !startTime.IsZero() {
+		filter.StartTime = &startTime
+	}
+	if !endTime.IsZero() {
+		filter.EndTime = &endTime
+	}
+	filter.View = parseOpsViewParam(c)
+	filter.Phase = strings.TrimSpace(c.Query("phase"))
+	filter.Owner = strings.TrimSpace(c.Query("error_owner"))
+	filter.Source = strings.TrimSpace(c.Query("error_source"))
+	filter.Query = strings.TrimSpace(c.Query("q"))
+	filter.UserQuery = strings.TrimSpace(c.Query("user_query"))
+
+	if strings.EqualFold(strings.TrimSpace(filter.Phase), "upstream") {
+		filter.Phase = ""
+	}
+
+	if platform := strings.TrimSpace(c.Query("platform")); platform != "" {
+		filter.Platform = platform
+	}
+	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		filter.GroupID = &id
+	}
+	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return
+		}
+		filter.AccountID = &id
+	}
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
+	}
+
+	if v := strings.TrimSpace(c.Query("resolved")); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true", "yes":
+			b := true
+			filter.Resolved = &b
+		case "0", "false", "no":
+			b := false
+			filter.Resolved = &b
+		default:
+			response.BadRequest(c, "Invalid resolved")
+			return
+		}
+	}
+	if v := strings.TrimSpace(c.Query("is_read")); v != "" {
+		switch v {
+		case "true", "1":
+			t := true
+			filter.IsRead = &t
+		case "false", "0":
+			f := false
+			filter.IsRead = &f
+		}
+	}
+	if statusCodesStr := strings.TrimSpace(c.Query("status_codes")); statusCodesStr != "" {
+		parts := strings.Split(statusCodesStr, ",")
+		out := make([]int, 0, len(parts))
+		for _, part := range parts {
+			p := strings.TrimSpace(part)
+			if p == "" {
+				continue
+			}
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 0 {
+				response.BadRequest(c, "Invalid status_codes")
+				return
+			}
+			out = append(out, n)
+		}
+		filter.StatusCodes = out
+	}
+
+	deleted, err := h.opsService.BatchDeleteErrorLogs(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"deleted": deleted})
+}
+
 // ==================== Existing endpoints ====================
 
 // ListRequestDetails returns a request-level list (success + error) for drill-down.
