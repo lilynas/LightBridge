@@ -73,6 +73,10 @@ func (m *opsRepoMock) UpdateErrorResolution(ctx context.Context, errorID int64, 
 	return nil
 }
 
+func (m *opsRepoMock) BatchUpdateErrorReadStatus(ctx context.Context, filter *OpsErrorLogFilter, isRead bool) (int64, error) {
+	return 0, nil
+}
+
 func (m *opsRepoMock) GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error) {
 	return &OpsWindowStats{}, nil
 }

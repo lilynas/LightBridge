@@ -549,6 +549,123 @@ LIMIT 1`
 	return &out, nil
 }
 
+func (r *opsRepository) BatchUpdateErrorReadStatus(ctx context.Context, filter *service.OpsErrorLogFilter, isRead bool) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, fmt.Errorf("nil ops repository")
+	}
+	if filter == nil {
+		filter = &service.OpsErrorLogFilter{}
+	}
+
+	// Build WHERE clauses mirroring buildOpsErrorLogsWhere but without the "e." alias
+	// since the UPDATE target is the bare table name.
+	clauses := make([]string, 0, 12)
+	args := make([]any, 0, 12)
+	clauses = append(clauses, "1=1")
+
+	phaseFilter := strings.TrimSpace(strings.ToLower(filter.Phase))
+	resolvedFilter := filter.Resolved
+
+	if phaseFilter != "upstream" {
+		clauses = append(clauses, "COALESCE(status_code, 0) >= 400")
+	}
+	if filter.StartTime != nil && !filter.StartTime.IsZero() {
+		args = append(args, filter.StartTime.UTC())
+		clauses = append(clauses, "created_at >= $"+itoa(len(args)))
+	}
+	if filter.EndTime != nil && !filter.EndTime.IsZero() {
+		args = append(args, filter.EndTime.UTC())
+		clauses = append(clauses, "created_at < $"+itoa(len(args)))
+	}
+	if p := strings.TrimSpace(filter.Platform); p != "" {
+		args = append(args, p)
+		clauses = append(clauses, "platform = $"+itoa(len(args)))
+	}
+	if filter.GroupID != nil && *filter.GroupID > 0 {
+		args = append(args, *filter.GroupID)
+		clauses = append(clauses, "group_id = $"+itoa(len(args)))
+	}
+	if filter.AccountID != nil && *filter.AccountID > 0 {
+		args = append(args, *filter.AccountID)
+		clauses = append(clauses, "account_id = $"+itoa(len(args)))
+	}
+	if filter.UserID != nil && *filter.UserID > 0 {
+		args = append(args, *filter.UserID)
+		clauses = append(clauses, "user_id = $"+itoa(len(args)))
+	}
+	if phaseFilter != "" {
+		args = append(args, phaseFilter)
+		clauses = append(clauses, "error_phase = $"+itoa(len(args)))
+	}
+	if owner := strings.TrimSpace(strings.ToLower(filter.Owner)); owner != "" {
+		args = append(args, owner)
+		clauses = append(clauses, "LOWER(COALESCE(error_owner,'')) = $"+itoa(len(args)))
+	}
+	if source := strings.TrimSpace(strings.ToLower(filter.Source)); source != "" {
+		args = append(args, source)
+		clauses = append(clauses, "LOWER(COALESCE(error_source,'')) = $"+itoa(len(args)))
+	}
+	if resolvedFilter != nil {
+		args = append(args, *resolvedFilter)
+		clauses = append(clauses, "COALESCE(resolved,false) = $"+itoa(len(args)))
+	}
+	if filter.IsRead != nil {
+		args = append(args, *filter.IsRead)
+		clauses = append(clauses, "COALESCE(is_read,false) = $"+itoa(len(args)))
+	}
+
+	view := strings.ToLower(strings.TrimSpace(filter.View))
+	switch view {
+	case "", "errors":
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+	case "excluded":
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = true")
+	case "all":
+	default:
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+	}
+	if len(filter.StatusCodes) > 0 {
+		args = append(args, pq.Array(filter.StatusCodes))
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
+	} else if filter.StatusCodesOther {
+		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529}
+		args = append(args, pq.Array(known))
+		clauses = append(clauses, "NOT (COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+"))")
+	}
+	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
+		args = append(args, rid)
+		clauses = append(clauses, "COALESCE(request_id,'') = $"+itoa(len(args)))
+	}
+	if crid := strings.TrimSpace(filter.ClientRequestID); crid != "" {
+		args = append(args, crid)
+		clauses = append(clauses, "COALESCE(client_request_id,'') = $"+itoa(len(args)))
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		like := "%" + q + "%"
+		args = append(args, like)
+		n := itoa(len(args))
+		clauses = append(clauses, "(request_id ILIKE $"+n+" OR client_request_id ILIKE $"+n+" OR error_message ILIKE $"+n+")")
+	}
+	if userQuery := strings.TrimSpace(filter.UserQuery); userQuery != "" {
+		like := "%" + userQuery + "%"
+		args = append(args, like)
+		n := itoa(len(args))
+		clauses = append(clauses, "EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND u.email ILIKE $"+n+")")
+	}
+
+	args = append(args, isRead)
+	query := "UPDATE ops_error_logs SET is_read = $" + itoa(len(args))
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *opsRepository) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("nil ops repository")

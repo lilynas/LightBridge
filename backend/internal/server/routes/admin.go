@@ -214,6 +214,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/request-errors/:id", h.Admin.Ops.GetRequestError)
 		ops.GET("/request-errors/:id/upstream-errors", h.Admin.Ops.ListRequestErrorUpstreamErrors)
 		ops.PUT("/request-errors/:id/resolve", h.Admin.Ops.ResolveRequestError)
+		ops.PUT("/request-errors/mark-read", h.Admin.Ops.BatchMarkRequestErrorsRead)
 
 		// Upstream errors (independent upstream failures)
 		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)

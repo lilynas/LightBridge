@@ -17,6 +17,7 @@ type OpsRepository interface {
 	InsertSystemLogCleanupAudit(ctx context.Context, input *OpsSystemLogCleanupAudit) error
 
 	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error
+	BatchUpdateErrorReadStatus(ctx context.Context, filter *OpsErrorLogFilter, isRead bool) (int64, error)
 
 	// Lightweight window stats (for realtime WS / quick sampling).
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
