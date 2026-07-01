@@ -33,8 +33,28 @@
             </button>
           </div>
         </div>
-        <div class="w-36">
-          <Select :model-value="timeRange" :options="timeRangeOptions" @update:model-value="timeRange = String($event || '24h')" />
+        <div class="flex items-center gap-1.5">
+          <input
+            v-model="startTime"
+            type="datetime-local"
+            class="input w-[200px] text-xs"
+            :title="t('admin.ops.errorAnalysis.startTime')"
+          />
+          <span class="text-xs text-gray-400">~</span>
+          <input
+            v-model="endTime"
+            type="datetime-local"
+            class="input w-[200px] text-xs"
+            :title="t('admin.ops.errorAnalysis.endTime')"
+          />
+          <button
+            type="button"
+            class="btn btn-secondary px-2"
+            :title="t('admin.ops.errorAnalysis.resetTimeRange')"
+            @click="resetTimeRange"
+          >
+            <Icon name="refresh" size="xs" />
+          </button>
         </div>
         <div class="w-32">
           <Select :model-value="statusCodeFilter" :options="statusOptions" @update:model-value="statusCodeFilter = String($event || '')" />
@@ -464,7 +484,7 @@ import { useDebounceFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import Select from '@/components/common/Select.vue'
+
 import { useAppStore } from '@/stores'
 import { adminAPI } from '@/api/admin'
 import { opsAPI, type OpsErrorDetail, type OpsErrorLog, type OpsErrorListQueryParams } from '@/api/admin/ops'
@@ -492,7 +512,18 @@ const requestErrors = ref<OpsErrorLog[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
-const timeRange = ref('24h')
+function formatDatetimeLocal(date: Date): string {
+  return date.toISOString().slice(0, 16)
+}
+
+function getDefaultStartTime(): string {
+  const d = new Date()
+  d.setHours(d.getHours() - 24)
+  return formatDatetimeLocal(d)
+}
+
+const startTime = ref(getDefaultStartTime())
+const endTime = ref(formatDatetimeLocal(new Date()))
 const statusCodeFilter = ref('')
 const searchQuery = ref('')
 const userFilter = ref('')
@@ -509,15 +540,10 @@ let listFetchSeq = 0
 let detailFetchSeq = 0
 let schedulerAccountFetchSeq = 0
 
-const timeRangeOptions = computed(() => [
-  { value: '5m', label: t('admin.ops.timeRange.5m') },
-  { value: '30m', label: t('admin.ops.timeRange.30m') },
-  { value: '1h', label: t('admin.ops.timeRange.1h') },
-  { value: '6h', label: t('admin.ops.timeRange.6h') },
-  { value: '24h', label: t('admin.ops.timeRange.24h') },
-  { value: '7d', label: t('admin.ops.timeRange.7d') },
-  { value: '30d', label: t('admin.ops.timeRange.30d') }
-])
+function resetTimeRange() {
+  startTime.value = getDefaultStartTime()
+  endTime.value = formatDatetimeLocal(new Date())
+}
 
 const statusOptions = computed(() => [
   { value: '', label: t('common.all') },
@@ -553,7 +579,8 @@ async function fetchRequestErrors(options: { keepSelection?: boolean } = {}) {
     const params: OpsErrorListQueryParams = {
       page: page.value,
       page_size: pageSize.value,
-      time_range: timeRange.value,
+      start_time: new Date(startTime.value).toISOString(),
+      end_time: new Date(endTime.value).toISOString(),
       view: 'all'
     }
     if (statusCodeFilter.value) params.status_codes = statusCodeFilter.value
@@ -672,7 +699,7 @@ const debouncedSearch = useDebounceFn(() => {
 watch(searchQuery, () => debouncedSearch())
 watch(userFilter, () => debouncedSearch())
 
-watch([timeRange, statusCodeFilter], () => {
+watch([startTime, endTime, statusCodeFilter], () => {
   page.value = 1
   fetchRequestErrors({ keepSelection: false })
 })
