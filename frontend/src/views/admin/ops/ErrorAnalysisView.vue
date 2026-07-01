@@ -39,6 +39,15 @@
         <div class="w-32">
           <Select :model-value="statusCodeFilter" :options="statusOptions" @update:model-value="statusCodeFilter = String($event || '')" />
         </div>
+        <button
+          type="button"
+          class="btn btn-secondary"
+          :disabled="loadingList || exportingAll || total === 0"
+          @click="handleExportAll"
+        >
+          <Icon name="download" size="sm" />
+          <span>{{ exportingAll ? t('admin.ops.errorAnalysis.exporting') : t('admin.ops.errorAnalysis.exportAll') }}</span>
+        </button>
         <button type="button" class="btn btn-secondary" :disabled="loadingList" @click="fetchRequestErrors({ keepSelection: false })">
           <Icon name="refresh" size="sm" :class="loadingList ? 'animate-spin' : ''" />
           <span>{{ t('common.refresh') }}</span>
@@ -471,6 +480,8 @@ import {
   type ErrorAnalysisStepState
 } from './utils/errorAnalysis'
 import { resolvePrimaryResponseBody } from './utils/errorDetailResponse'
+import { exportBatchErrorsTXT } from './utils/errorExport'
+import type { ErrorExportData } from './utils/errorExport'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -492,6 +503,7 @@ const correlatedUpstreamErrors = ref<OpsErrorDetail[]>([])
 const showRaw = ref(false)
 const loadingSchedulerAccounts = ref(false)
 const schedulerAccounts = ref<Account[]>([])
+const exportingAll = ref(false)
 
 let listFetchSeq = 0
 let detailFetchSeq = 0
@@ -706,6 +718,40 @@ function clearUserFilter() {
   if (!userFilter.value) return
   userFilter.value = ''
   page.value = 1
+}
+
+async function handleExportAll() {
+  if (requestErrors.value.length === 0) {
+    appStore.showError(t('admin.ops.errorAnalysis.exportEmpty'))
+    return
+  }
+  exportingAll.value = true
+  try {
+    const dataList: ErrorExportData[] = []
+    for (const item of requestErrors.value) {
+      try {
+        const [detail, upstream] = await Promise.all([
+          opsAPI.getRequestErrorDetail(item.id),
+          opsAPI.listRequestErrorUpstreamErrors(item.id, { page: 1, page_size: 100, view: 'all' }, { include_detail: true })
+        ])
+        const analysisResult = buildErrorAnalysis(detail, upstream.items || [])
+        dataList.push({
+          detail,
+          analysis: analysisResult,
+          upstreamErrors: upstream.items || [],
+          version: appStore.currentVersion,
+        })
+      } catch {
+        // Skip failed items
+      }
+    }
+    exportBatchErrorsTXT(dataList, appStore.currentVersion)
+    appStore.showSuccess(t('admin.ops.errorAnalysis.exportSuccess'))
+  } catch {
+    appStore.showError(t('admin.ops.errorAnalysis.exportFailed'))
+  } finally {
+    exportingAll.value = false
+  }
 }
 
 function statusClass(code: number | null | undefined): string {

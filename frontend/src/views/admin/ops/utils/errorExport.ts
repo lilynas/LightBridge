@@ -6,7 +6,7 @@ import { accountDisplayLabel } from './errorAnalysis'
 const SEPARATOR = '─'.repeat(48)
 const DOUBLE_SEPARATOR = '='.repeat(60)
 
-interface ErrorExportData {
+export interface ErrorExportData {
   detail: OpsErrorDetail
   analysis: ErrorAnalysisResult
   schedulerDiagnostics?: ErrorAnalysisAccountDiagnostic[]
