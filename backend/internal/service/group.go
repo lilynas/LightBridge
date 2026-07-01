@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -75,6 +76,10 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+	// UpstreamProtocols is derived from accounts currently bound to the group.
+	// It replaces the old "group platform" UI/filtering semantics without adding
+	// another persisted group field.
+	UpstreamProtocols []string
 }
 
 func (g *Group) IsActive() bool {
@@ -83,6 +88,43 @@ func (g *Group) IsActive() bool {
 
 func (g *Group) IsSubscriptionType() bool {
 	return g.SubscriptionType == SubscriptionTypeSubscription
+}
+
+func AccountUpstreamProtocols(account *Account) []string {
+	if account == nil {
+		return nil
+	}
+	supported := account.SupportedTargetProtocols()
+	protocols := make([]string, 0, len(supported))
+	seen := make(map[string]struct{}, len(supported))
+	for _, proto := range supported {
+		proto = strings.TrimSpace(proto)
+		if !IsMessageProtocol(proto) {
+			continue
+		}
+		if _, ok := seen[proto]; ok {
+			continue
+		}
+		seen[proto] = struct{}{}
+		protocols = append(protocols, proto)
+	}
+	sort.Strings(protocols)
+	return protocols
+}
+
+func NormalizeGroupUpstreamProtocolFilter(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case CustomProtocolOpenAIResponses, PlatformOpenAI:
+		return CustomProtocolOpenAIResponses
+	case CustomProtocolOpenAIChatCompletions:
+		return CustomProtocolOpenAIChatCompletions
+	case CustomProtocolAnthropicMessages, PlatformAnthropic, "claude":
+		return CustomProtocolAnthropicMessages
+	case CustomProtocolGemini, PlatformAntigravity:
+		return CustomProtocolGemini
+	default:
+		return strings.TrimSpace(value)
+	}
 }
 
 func (g *Group) HasDailyLimit() bool {

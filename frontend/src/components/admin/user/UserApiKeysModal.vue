@@ -86,6 +86,7 @@
           <GroupOptionItem
             :name="group.name"
             :platform="group.platform"
+            :upstream-protocols="group.upstream_protocols"
             :subscription-type="group.subscription_type"
             :rate-multiplier="group.rate_multiplier"
             :description="group.description"

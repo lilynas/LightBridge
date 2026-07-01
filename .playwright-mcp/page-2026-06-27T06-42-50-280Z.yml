@@ -1,0 +1,97 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - navigation [ref=e5]:
+      - link "Logo LightBridge" [ref=e6] [cursor=pointer]:
+        - /url: /home
+        - img "Logo" [ref=e8]
+        - generic [ref=e9]: LightBridge
+      - generic [ref=e10]:
+        - link "查看文档" [ref=e11] [cursor=pointer]:
+          - /url: /docs
+          - img [ref=e12]
+        - button "🇨🇳 ZH" [ref=e15] [cursor=pointer]:
+          - generic [ref=e16]: 🇨🇳
+          - generic [ref=e17]: ZH
+          - img [ref=e18]
+        - button "切换到深色模式" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+        - link "登录" [ref=e23] [cursor=pointer]:
+          - /url: /login
+  - main [ref=e24]:
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]: 一个密钥，畅用多个 AI 模型
+        - heading "LightBridge" [level=1] [ref=e31]
+        - paragraph [ref=e32]: 无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务
+        - generic [ref=e33]:
+          - link "立即开始" [ref=e34] [cursor=pointer]:
+            - /url: /login
+            - text: 立即开始
+            - img [ref=e35]
+          - link "查看文档" [ref=e37] [cursor=pointer]:
+            - /url: /docs
+            - img [ref=e38]
+            - text: 查看文档
+      - generic [ref=e42]:
+        - generic [ref=e48]: LightBridge API
+        - generic [ref=e49]:
+          - generic [ref=e50]: $ curl -X POST /v1/chat/completions
+          - generic [ref=e51]: "routing: claude -> gpt -> gemini"
+          - generic [ref=e52]: 200 OK unified response ready
+          - generic [ref=e54]: $
+    - generic [ref=e57]:
+      - generic [ref=e58]:
+        - img [ref=e59]
+        - heading "一键接入" [level=2] [ref=e61]
+        - paragraph [ref=e62]: 获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。
+      - generic [ref=e63]:
+        - img [ref=e64]
+        - heading "稳定可靠" [level=2] [ref=e66]
+        - paragraph [ref=e67]: 智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。
+      - generic [ref=e68]:
+        - img [ref=e69]
+        - heading "用多少付多少" [level=2] [ref=e71]
+        - paragraph [ref=e72]: 按实际使用量计费，支持设置配额上限，团队用量一目了然。
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]:
+          - heading "已支持的 AI 模型" [level=2] [ref=e77]
+          - paragraph [ref=e78]: 一个 API，多种选择
+        - link "文档" [ref=e79] [cursor=pointer]:
+          - /url: /docs
+          - img [ref=e80]
+          - text: 文档
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - generic [ref=e84]: C
+          - generic [ref=e85]:
+            - generic [ref=e86]: Claude
+            - generic [ref=e87]: 已支持
+        - generic [ref=e88]:
+          - generic [ref=e89]: G
+          - generic [ref=e90]:
+            - generic [ref=e91]: GPT
+            - generic [ref=e92]: 已支持
+        - generic [ref=e93]:
+          - generic [ref=e94]: G
+          - generic [ref=e95]:
+            - generic [ref=e96]: Gemini
+            - generic [ref=e97]: 已支持
+        - generic [ref=e98]:
+          - generic [ref=e99]: A
+          - generic [ref=e100]:
+            - generic [ref=e101]: Antigravity
+            - generic [ref=e102]: 已支持
+        - generic [ref=e103]:
+          - generic [ref=e104]: +
+          - generic [ref=e105]:
+            - generic [ref=e106]: 更多
+            - generic [ref=e107]: 即将推出
+  - contentinfo [ref=e108]:
+    - generic [ref=e109]:
+      - paragraph [ref=e110]: © 2026 LightBridge. 保留所有权利。
+      - generic [ref=e111]:
+        - link "文档" [ref=e112] [cursor=pointer]:
+          - /url: /docs
+        - link "GitHub" [ref=e113] [cursor=pointer]:
+          - /url: https://github.com/WilliamWang1721/LightBridge

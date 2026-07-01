@@ -4,13 +4,28 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey } from '@/types'
+import type { ApiKey, User } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
   auto_granted_group_access: boolean
   granted_group_id?: number
   granted_group_name?: string
+}
+
+export interface ApiKeyOwnerLookupResult {
+  api_key: ApiKey
+  user: User
+}
+
+/**
+ * Find the owner of an API key.
+ * @param key - Full API key value
+ * @returns API key and owning user
+ */
+export async function lookupOwner(key: string): Promise<ApiKeyOwnerLookupResult> {
+  const { data } = await apiClient.post<ApiKeyOwnerLookupResult>('/admin/api-keys/lookup', { key })
+  return data
 }
 
 /**
@@ -27,6 +42,7 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
 }
 
 export const apiKeysAPI = {
+  lookupOwner,
   updateApiKeyGroup
 }
 

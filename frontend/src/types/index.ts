@@ -488,6 +488,7 @@ export interface PaginationConfig {
 // ==================== API Key & Group Types ====================
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'custom'
+export type GroupUpstreamProtocol = 'openai_responses' | 'openai_chat_completions' | 'anthropic_messages' | 'gemini'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -503,6 +504,7 @@ export interface Group {
   name: string
   description: string | null
   platform: GroupPlatform
+  upstream_protocols?: GroupUpstreamProtocol[]
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
@@ -590,6 +592,7 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  user?: User
 }
 
 export interface CreateApiKeyRequest {

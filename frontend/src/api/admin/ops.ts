@@ -1075,6 +1075,7 @@ export type OpsErrorListQueryParams = {
   platform?: string
   group_id?: number | null
   account_id?: number | null
+  user_id?: number | null
 
   phase?: string
   error_owner?: string
@@ -1083,6 +1084,7 @@ export type OpsErrorListQueryParams = {
   view?: OpsErrorListView
 
   q?: string
+  user_query?: string
   status_codes?: string
   status_codes_other?: string
 }

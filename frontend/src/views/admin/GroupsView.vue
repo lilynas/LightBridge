@@ -22,9 +22,9 @@
               />
             </div>
             <Select
-              v-model="filters.platform"
-              :options="platformFilterOptions"
-              :placeholder="t('admin.groups.allPlatforms')"
+              v-model="filters.upstream_protocol"
+              :options="upstreamProtocolFilterOptions"
+              :placeholder="t('admin.groups.allUpstreams')"
               class="w-44"
               @change="loadGroups"
             />
@@ -96,21 +96,21 @@
             }}</span>
           </template>
 
-          <template #cell-platform="{ value }">
-            <span
-              :class="[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-              ]"
+          <template #cell-upstream_protocols="{ row }">
+            <div
+              v-if="row.upstream_protocols?.length"
+              class="flex flex-wrap gap-1.5"
             >
-              <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
+              <span
+                v-for="protocol in row.upstream_protocols"
+                :key="protocol"
+                :class="protocolBadgeClass(protocol)"
+              >
+                {{ protocolLabel(protocol) }}
+              </span>
+            </div>
+            <span v-else class="text-xs text-gray-400 dark:text-gray-500">
+              {{ t("admin.groups.upstreamProtocols.none") }}
             </span>
           </template>
 
@@ -380,18 +380,6 @@
             class="input"
             :placeholder="t('admin.groups.optionalDescription')"
           ></textarea>
-        </div>
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.platform")
-          }}</label>
-          <Select
-            v-model="createForm.platform"
-            :options="platformOptions"
-            data-tour="group-form-platform"
-            @change="createForm.copy_accounts_from_group_ids = []"
-          />
-          <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
@@ -750,14 +738,7 @@
         </div>
 
         <!-- 图片生成计费配置 -->
-        <div
-          v-if="
-            createForm.platform === 'antigravity' ||
-            createForm.platform === 'gemini' ||
-            createForm.platform === 'openai'
-          "
-          class="border-t pt-4"
-        >
+        <div class="border-t pt-4">
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
@@ -853,8 +834,8 @@
           </div>
         </div>
 
-        <!-- 支持的模型系列（仅 antigravity 平台） -->
-        <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- 支持的模型系列 -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.supportedScopes.title") }}
@@ -927,8 +908,8 @@
           </p>
         </div>
 
-        <!-- MCP XML 协议注入（仅 antigravity 平台） -->
-        <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- MCP XML 协议注入 -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.mcpXml.title") }}
@@ -1655,18 +1636,6 @@
             class="input"
           ></textarea>
         </div>
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.platform")
-          }}</label>
-          <Select
-            v-model="editForm.platform"
-            :options="platformOptions"
-            :disabled="true"
-            data-tour="group-form-platform"
-          />
-          <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
-        </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2027,14 +1996,7 @@
         </div>
 
         <!-- 图片生成计费配置 -->
-        <div
-          v-if="
-            editForm.platform === 'antigravity' ||
-            editForm.platform === 'gemini' ||
-            editForm.platform === 'openai'
-          "
-          class="border-t pt-4"
-        >
+        <div class="border-t pt-4">
           <label
             class="block mb-2 font-medium text-gray-700 dark:text-gray-300"
           >
@@ -2130,8 +2092,8 @@
           </div>
         </div>
 
-        <!-- 支持的模型系列（仅 antigravity 平台） -->
-        <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- 支持的模型系列 -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.supportedScopes.title") }}
@@ -2204,8 +2166,8 @@
           </p>
         </div>
 
-        <!-- MCP XML 协议注入（仅 antigravity 平台） -->
-        <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- MCP XML 协议注入 -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.mcpXml.title") }}
@@ -2934,20 +2896,22 @@
               <div class="font-medium text-gray-900 dark:text-white">
                 {{ group.name }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
+              <div class="flex flex-wrap gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                 <span
+                  v-for="protocol in group.upstream_protocols"
+                  :key="protocol"
+                  :class="protocolBadgeClass(protocol)"
+                >
+                  {{ protocolLabel(protocol) }}
+                </span>
+                <span
+                  v-if="!group.upstream_protocols?.length"
                   :class="[
                     'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                    group.platform === 'anthropic'
-                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                      : group.platform === 'openai'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : group.platform === 'antigravity'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                    'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-300',
                   ]"
                 >
-                  {{ t("admin.groups.platforms." + group.platform) }}
+                  {{ t("admin.groups.upstreamProtocols.none") }}
                 </span>
               </div>
             </div>
@@ -3020,7 +2984,12 @@ import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
+import type {
+  AdminGroup,
+  GroupPlatform,
+  GroupUpstreamProtocol,
+  SubscriptionType,
+} from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -3030,7 +2999,6 @@ import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
-import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
@@ -3055,7 +3023,6 @@ import {
   setModelsListCandidates,
 } from "./groupsModelsList";
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
-import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -3064,9 +3031,9 @@ const onboardingStore = useOnboardingStore();
 const columns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
   {
-    key: "platform",
-    label: t("admin.groups.columns.platform"),
-    sortable: true,
+    key: "upstream_protocols",
+    label: t("admin.groups.columns.upstreams"),
+    sortable: false,
   },
   {
     key: "billing_type",
@@ -3111,19 +3078,21 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") },
 ]);
 
-const platformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-]);
-
-const platformFilterOptions = computed(() => [
-  { value: "", label: t("admin.groups.allPlatforms") },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
+const upstreamProtocolFilterOptions = computed(() => [
+  { value: "", label: t("admin.groups.allUpstreams") },
+  {
+    value: "openai_responses",
+    label: t("admin.groups.upstreamProtocols.openai_responses"),
+  },
+  {
+    value: "openai_chat_completions",
+    label: t("admin.groups.upstreamProtocols.openai_chat_completions"),
+  },
+  {
+    value: "anthropic_messages",
+    label: t("admin.groups.upstreamProtocols.anthropic_messages"),
+  },
+  { value: "gemini", label: t("admin.groups.upstreamProtocols.gemini") },
 ]);
 
 const editStatusOptions = computed(() => [
@@ -3135,6 +3104,22 @@ const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
+
+const protocolLabel = (protocol: GroupUpstreamProtocol | string) =>
+  t(`admin.groups.upstreamProtocols.${protocol}`);
+
+const protocolBadgeClass = (protocol: GroupUpstreamProtocol | string) => [
+  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+  protocol === "openai_responses"
+    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+    : protocol === "openai_chat_completions"
+      ? "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400"
+      : protocol === "anthropic_messages"
+        ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+        : protocol === "gemini"
+          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+          : "bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-300",
+];
 
 // 降级分组选项（创建时）- 未启用 claude_code_only 的活跃分组
 const fallbackGroupOptions = computed(() => {
@@ -3248,7 +3233,7 @@ const capacityMap = ref<
 >(new Map());
 const searchQuery = ref("");
 const filters = reactive({
-  platform: "",
+  upstream_protocol: "",
   status: "",
   is_exclusive: "",
 });
@@ -3542,15 +3527,18 @@ const resetModelsListState = (
 const loadModelsListCandidates = async (
   mode: "create" | "edit",
   groupID: number,
-  platform: GroupPlatform,
+  upstreamProtocol?: GroupUpstreamProtocol,
 ) => {
-  const request = { mode, groupID, platform };
+  const request = { mode, groupID, upstreamProtocol };
   const requestID = modelsListCandidatesTracker.next(request);
   const state = mode === "create" ? createModelsListState : editModelsListState;
   const loadingRef = mode === "create" ? createModelsListLoading : editModelsListLoading;
   loadingRef.value = true;
   try {
-    const models = await adminAPI.groups.getModelsListCandidates(groupID, platform);
+    const models = await adminAPI.groups.getModelsListCandidates(
+      groupID,
+      upstreamProtocol,
+    );
     if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
       return;
     }
@@ -3747,7 +3735,8 @@ const loadGroups = async () => {
       pagination.page,
       pagination.page_size,
       {
-        platform: (filters.platform as GroupPlatform) || undefined,
+        upstream_protocol:
+          (filters.upstream_protocol as GroupUpstreamProtocol) || undefined,
         status: filters.status as any,
         is_exclusive: filters.is_exclusive
           ? filters.is_exclusive === "true"
@@ -3866,7 +3855,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const openCreateModal = () => {
   showCreateModal.value = true;
-  loadModelsListCandidates("create", 0, createForm.platform);
+  loadModelsListCandidates("create", 0);
 };
 
 const closeCreateModal = () => {
@@ -3956,10 +3945,7 @@ const handleCreateGroup = async () => {
         createModelRoutingRules.value,
       ),
       models_list_config: buildModelsListConfig(createModelsListState),
-      supported_model_scopes: normalizeSupportedModelScopesForPlatform(
-        createForm.platform,
-        createForm.supported_model_scopes,
-      ),
+      supported_model_scopes: createForm.supported_model_scopes,
       messages_dispatch_model_config: messagesDispatchFormStateToConfig({
         allow_messages_dispatch: createForm.allow_messages_dispatch,
         opus_mapped_model: createForm.opus_mapped_model,
@@ -3999,7 +3985,7 @@ const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
   editForm.name = group.name;
   editForm.description = group.description || "";
-  editForm.platform = group.platform;
+  editForm.platform = group.platform || "anthropic";
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
@@ -4044,7 +4030,7 @@ const handleEdit = async (group: AdminGroup) => {
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
   );
-  loadModelsListCandidates("edit", group.id, group.platform);
+  loadModelsListCandidates("edit", group.id);
   showEditModal.value = true;
 };
 
@@ -4092,10 +4078,7 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       models_list_config: buildModelsListConfig(editModelsListState),
-      supported_model_scopes: normalizeSupportedModelScopesForPlatform(
-        editForm.platform,
-        editForm.supported_model_scopes,
-      ),
+      supported_model_scopes: editForm.supported_model_scopes,
       messages_dispatch_model_config: messagesDispatchFormStateToConfig({
         allow_messages_dispatch: editForm.allow_messages_dispatch,
         opus_mapped_model: editForm.opus_mapped_model,
@@ -4193,24 +4176,6 @@ watch(
   },
 );
 
-watch(
-  () => createForm.platform,
-  (newVal) => {
-    resetModelsListState(createModelsListState);
-    loadModelsListCandidates("create", 0, newVal);
-  },
-);
-
-watch(
-  () => editForm.platform,
-  (newVal) => {
-    if (editingGroup.value) {
-      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
-      loadModelsListCandidates("edit", editingGroup.value.id, newVal);
-    }
-  },
-);
-
 // 点击外部关闭账号搜索下拉框
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
@@ -4268,7 +4233,7 @@ const saveSortOrder = async () => {
 
 onMounted(() => {
   loadGroups();
-  loadModelsListCandidates("create", 0, createForm.platform);
+  loadModelsListCandidates("create", 0);
   document.addEventListener("click", handleClickOutside);
 });
 

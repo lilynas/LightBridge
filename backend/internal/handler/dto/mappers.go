@@ -190,6 +190,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
+		UpstreamProtocols:               append([]string(nil), g.UpstreamProtocols...),
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
@@ -201,8 +202,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	}
 	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
 	out := &Account{
-		ID:   a.ID,
-		Name: a.Name,
+		ID:    a.ID,
+		Name:  a.Name,
 		Notes: a.Notes,
 		// 对外暴露 EffectivePlatform：Antigravity 账号 DB 中 platform=="gemini"，
 		// 但 API/前端仍以别名 "antigravity" 呈现，保持前端展示/筛选逻辑不变。

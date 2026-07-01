@@ -1670,18 +1670,13 @@ func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, erro
 }
 
 func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error) {
-	platform = strings.TrimSpace(platform)
+	platform = NormalizeGroupUpstreamProtocolFilter(platform)
 	if id > 0 {
 		group, err := s.groupRepo.GetByIDLite(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		if platform == "" {
-			platform = group.Platform
-		}
-	}
-	if platform == "" {
-		platform = PlatformAnthropic
+		_ = group
 	}
 
 	candidates := defaultModelsListCandidateIDs(platform)
@@ -1715,29 +1710,59 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 }
 
 func defaultModelsListCandidateIDs(platform string) []string {
-	switch platform {
-	case PlatformOpenAI:
+	switch NormalizeGroupUpstreamProtocolFilter(platform) {
+	case CustomProtocolOpenAIResponses, CustomProtocolOpenAIChatCompletions:
 		return openai.DefaultModelIDs()
-	case PlatformGemini:
+	case CustomProtocolGemini:
 		ids := make([]string, 0, len(geminicli.DefaultModels))
 		for _, model := range geminicli.DefaultModels {
 			ids = append(ids, model.ID)
 		}
 		return ids
-	case PlatformAntigravity:
-		models := antigravity.DefaultModels()
-		ids := make([]string, 0, len(models))
-		for _, model := range models {
-			ids = append(ids, model.ID)
-		}
-		return ids
-	default:
+	case CustomProtocolAnthropicMessages:
 		ids := make([]string, 0, len(claude.DefaultModels))
 		for _, model := range claude.DefaultModels {
 			ids = append(ids, model.ID)
 		}
 		return ids
+	default:
+		return allDefaultModelsListCandidateIDs()
 	}
+}
+
+func allDefaultModelsListCandidateIDs() []string {
+	seen := make(map[string]struct{})
+	var ids []string
+	add := func(values []string) {
+		for _, id := range values {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	add(openai.DefaultModelIDs())
+	claudeIDs := make([]string, 0, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		claudeIDs = append(claudeIDs, model.ID)
+	}
+	add(claudeIDs)
+	geminiIDs := make([]string, 0, len(geminicli.DefaultModels))
+	for _, model := range geminicli.DefaultModels {
+		geminiIDs = append(geminiIDs, model.ID)
+	}
+	add(geminiIDs)
+	antigravityIDs := make([]string, 0, len(antigravity.DefaultModels()))
+	for _, model := range antigravity.DefaultModels() {
+		antigravityIDs = append(antigravityIDs, model.ID)
+	}
+	add(antigravityIDs)
+	return ids
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {

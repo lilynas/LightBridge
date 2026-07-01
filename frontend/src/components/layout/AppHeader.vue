@@ -32,10 +32,11 @@
         <!-- Docs Link -->
         <router-link
           to="/docs"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:scale-105 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
+          :title="t('nav.docs')"
+          :aria-label="t('nav.docs')"
         >
-          <Icon name="book" size="sm" />
-          <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
+          <Icon name="book" size="md" />
         </router-link>
 
         <!-- Subscription Progress (for users with active subscriptions) -->

@@ -2093,6 +2093,7 @@ export default {
       sortOrderUpdated: 'Sort order updated',
       failedToUpdateSortOrder: 'Failed to update sort order',
       allPlatforms: 'All Platforms',
+      allUpstreams: 'All Upstreams',
       allStatus: 'All Status',
       allGroups: 'All Groups',
       exclusive: 'Exclusive',
@@ -2101,6 +2102,7 @@ export default {
       columns: {
         name: 'Name',
         platform: 'Platform',
+        upstreams: 'Upstreams',
         rateMultiplier: 'Rate Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
@@ -2196,6 +2198,13 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+      },
+      upstreamProtocols: {
+        openai_responses: 'OpenAI Responses',
+        openai_chat_completions: 'OpenAI Chat',
+        anthropic_messages: 'Claude Messages',
+        gemini: 'Gemini',
+        none: 'No upstreams'
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",

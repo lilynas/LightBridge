@@ -1,0 +1,49 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "LightBridge LightBridge" [ref=e6] [cursor=pointer]:
+        - /url: /home
+        - img "LightBridge" [ref=e8]
+        - generic [ref=e9]: LightBridge
+      - link "前往控制台" [ref=e10] [cursor=pointer]:
+        - /url: /login
+  - generic [ref=e11]:
+    - complementary [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: 文档列表
+        - button "收起" [ref=e15] [cursor=pointer]:
+          - img [ref=e16]
+      - navigation "文档列表" [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: 入门
+          - button "文档中心" [ref=e22] [cursor=pointer]
+    - main [ref=e23]:
+      - article [ref=e24]:
+        - heading "LightBridge 文档中心" [level=1] [ref=e25]
+        - paragraph [ref=e26]: 欢迎来到 LightBridge 文档中心。这里会逐步沉淀项目各个模块与功能的使用说明，包含控制台操作、管理员配置、渠道管理、支付订阅、模块市场等内容。
+        - heading "文档维护方式" [level=2] [ref=e27]
+        - paragraph [ref=e28]: 文档使用 Markdown 编写，支持常见语法：标题、段落、列表、表格、代码块、引用和图片。
+        - code [ref=e30]: "![图片说明](./images/example.png)"
+        - paragraph [ref=e31]:
+          - text: 后续新增文档时，可以在
+          - code [ref=e32]: frontend/src/docs/content/
+          - text: 中添加 Markdown 文件，并在
+          - code [ref=e33]: frontend/src/docs/index.ts
+          - text: 中注册它。
+        - heading "建议结构" [level=2] [ref=e34]
+        - list [ref=e35]:
+          - listitem [ref=e36]: 用户控制台：API Key、用量查询、充值/订阅、个人资料。
+          - listitem [ref=e37]: 管理控制台：用户、分组、渠道、账号、系统设置。
+          - listitem [ref=e38]: 运维与风控：运维监控、错误分析、隐私过滤、风控中心。
+          - listitem [ref=e39]: 扩展能力：模块市场、自定义页面、外部集成。
+        - heading "图片支持" [level=2] [ref=e40]
+        - paragraph [ref=e41]: Markdown 中可以直接插入远程图片，也可以使用前端资源路径。图片会在阅读区内自适应宽度展示。
+        - heading "下一步" [level=2] [ref=e42]
+        - paragraph [ref=e43]: 你可以从这篇入口文档开始，把 LightBridge 的模块说明逐步拆成多篇文档，左侧列表会负责导航，右侧目录会自动从正文标题生成。
+    - complementary [ref=e44]:
+      - navigation "目录" [ref=e45]:
+        - generic [ref=e46]: 目录
+        - button "文档维护方式" [ref=e47] [cursor=pointer]
+        - button "建议结构" [ref=e48] [cursor=pointer]
+        - button "图片支持" [ref=e49] [cursor=pointer]
+        - button "下一步" [ref=e50] [cursor=pointer]

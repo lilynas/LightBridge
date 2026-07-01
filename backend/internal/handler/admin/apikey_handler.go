@@ -28,6 +28,35 @@ type AdminUpdateAPIKeyGroupRequest struct {
 	ResetRateLimitUsage *bool  `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 }
 
+type AdminLookupAPIKeyOwnerRequest struct {
+	Key string `json:"key"`
+}
+
+// FindOwner handles finding the user that owns an API key.
+// POST /api/v1/admin/api-keys/lookup
+func (h *AdminAPIKeyHandler) FindOwner(c *gin.Context) {
+	var req AdminLookupAPIKeyOwnerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	apiKey, user, err := h.adminService.FindAPIKeyOwner(c.Request.Context(), req.Key)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	resp := struct {
+		APIKey *dto.APIKey `json:"api_key"`
+		User   *dto.User   `json:"user"`
+	}{
+		APIKey: dto.APIKeyFromService(apiKey),
+		User:   dto.UserFromServiceShallow(user),
+	}
+	response.Success(c, resp)
+}
+
 // UpdateGroup handles updating an API key's admin-managed fields.
 // PUT /api/v1/admin/api-keys/:id
 func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {

@@ -69,8 +69,12 @@ func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, i
 	panic("unexpected")
 }
 
-func (s *userRepoStubForGroupUpdate) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (s *userRepoStubForGroupUpdate) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStubForGroupUpdate) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
+func (s *userRepoStubForGroupUpdate) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
 func (s *userRepoStubForGroupUpdate) ExistsByEmail(context.Context, string) (bool, error) {
 	panic("unexpected")
 }
@@ -107,6 +111,9 @@ func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Co
 type apiKeyRepoStubForGroupUpdate struct {
 	key       *APIKey
 	getErr    error
+	getByKey  *APIKey
+	keyErr    error
+	lastKey   string
 	updateErr error
 	updated   *APIKey // captures what was passed to Update
 }
@@ -132,8 +139,20 @@ func (s *apiKeyRepoStubForGroupUpdate) Create(context.Context, *APIKey) error { 
 func (s *apiKeyRepoStubForGroupUpdate) GetKeyAndOwnerID(context.Context, int64) (string, int64, error) {
 	panic("unexpected")
 }
-func (s *apiKeyRepoStubForGroupUpdate) GetByKey(context.Context, string) (*APIKey, error) {
-	panic("unexpected")
+func (s *apiKeyRepoStubForGroupUpdate) GetByKey(_ context.Context, key string) (*APIKey, error) {
+	s.lastKey = key
+	if s.keyErr != nil {
+		return nil, s.keyErr
+	}
+	if s.getByKey != nil {
+		clone := *s.getByKey
+		return &clone, nil
+	}
+	if s.key != nil && s.key.Key == key {
+		clone := *s.key
+		return &clone, nil
+	}
+	return nil, ErrAPIKeyNotFound
 }
 func (s *apiKeyRepoStubForGroupUpdate) GetByKeyForAuth(context.Context, string) (*APIKey, error) {
 	panic("unexpected")
@@ -535,4 +554,26 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+func TestAdminService_FindAPIKeyOwner_TrimsAndReturnsOwner(t *testing.T) {
+	user := &User{ID: 42, Email: "owner@example.com", Status: StatusActive}
+	existing := &APIKey{ID: 1, UserID: user.ID, Key: "sk-test", Name: "main", User: user}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{getByKey: existing}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo}
+
+	apiKey, owner, err := svc.FindAPIKeyOwner(context.Background(), "  sk-test  ")
+	require.NoError(t, err)
+	require.Equal(t, "sk-test", apiKeyRepo.lastKey)
+	require.Equal(t, int64(1), apiKey.ID)
+	require.NotNil(t, owner)
+	require.Equal(t, user.Email, owner.Email)
+}
+
+func TestAdminService_FindAPIKeyOwner_EmptyKey(t *testing.T) {
+	svc := &adminServiceImpl{apiKeyRepo: &apiKeyRepoStubForGroupUpdate{}}
+
+	_, _, err := svc.FindAPIKeyOwner(context.Background(), "   ")
+	require.Error(t, err)
+	require.Equal(t, "API_KEY_REQUIRED", infraerrors.Reason(err))
 }

@@ -353,7 +353,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Docs',
     component: () => import('@/views/docs/DocsView.vue'),
     meta: {
-      requiresAuth: true,
+      requiresAuth: false,
       requiresAdmin: false,
       title: 'Docs',
       titleKey: 'nav.docs'

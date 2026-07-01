@@ -2151,6 +2151,7 @@ export default {
       columns: {
         name: '名称',
         platform: '平台',
+        upstreams: '上游',
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
@@ -2225,6 +2226,13 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
       },
+      upstreamProtocols: {
+        openai_responses: 'OpenAI Responses',
+        openai_chat_completions: 'OpenAI Chat',
+        anthropic_messages: 'Claude Messages',
+        gemini: 'Gemini',
+        none: '暂无上游'
+      },
       saving: '保存中...',
       noGroups: '暂无分组',
       noGroupsDescription: '创建分组以更好地管理 API 密钥和费率。',
@@ -2235,6 +2243,7 @@ export default {
       failedToSave: '保存分组失败',
       failedToDelete: '删除分组失败',
       allPlatforms: '全部平台',
+      allUpstreams: '全部上游',
       allStatus: '全部状态',
       allGroups: '全部分组',
       exclusiveFilter: '专属',

@@ -46,3 +46,24 @@ func TestBuildOpsErrorLogsWhere_UserQueryUsesExistsSubquery(t *testing.T) {
 		t.Fatalf("where should include EXISTS user email condition: %s", where)
 	}
 }
+
+func TestBuildOpsErrorLogsWhere_UserIDUsesQualifiedColumn(t *testing.T) {
+	userID := int64(42)
+	filter := &service.OpsErrorLogFilter{
+		UserID: &userID,
+	}
+
+	where, args := buildOpsErrorLogsWhere(filter)
+	if where == "" {
+		t.Fatalf("where should not be empty")
+	}
+	if len(args) != 1 {
+		t.Fatalf("args len = %d, want 1", len(args))
+	}
+	if args[0] != userID {
+		t.Fatalf("arg = %v, want %v", args[0], userID)
+	}
+	if !strings.Contains(where, "e.user_id = $") {
+		t.Fatalf("where should include qualified user_id condition: %s", where)
+	}
+}

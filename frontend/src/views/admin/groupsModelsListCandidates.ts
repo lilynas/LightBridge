@@ -1,11 +1,11 @@
-import type { GroupPlatform } from "@/types";
+import type { GroupUpstreamProtocol } from "@/types";
 
 export type ModelsListCandidatesMode = "create" | "edit";
 
 export interface ModelsListCandidatesRequest {
   mode: ModelsListCandidatesMode;
   groupID: number;
-  platform: GroupPlatform;
+  upstreamProtocol?: GroupUpstreamProtocol;
 }
 
 export interface ModelsListCandidatesTracker {
@@ -34,7 +34,7 @@ export const createModelsListCandidatesTracker = (): ModelsListCandidatesTracker
       return (
         current?.id === requestID &&
         current.request.groupID === request.groupID &&
-        current.request.platform === request.platform
+        current.request.upstreamProtocol === request.upstreamProtocol
       );
     },
   };

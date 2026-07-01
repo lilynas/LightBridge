@@ -90,3 +90,32 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 	require.Nil(t, group.GetImagePrice("2K"))
 	require.Nil(t, group.GetImagePrice("4K"))
 }
+
+func TestAccountUpstreamProtocols_DerivesMessageProtocolsFromAccountCapabilities(t *testing.T) {
+	openAI := &Account{Platform: PlatformOpenAI}
+	require.Equal(t, []string{
+		CustomProtocolOpenAIChatCompletions,
+		CustomProtocolOpenAIResponses,
+	}, AccountUpstreamProtocols(openAI))
+
+	antigravity := &Account{Platform: PlatformGemini, SubPlatform: SubPlatformAntigravity}
+	require.Equal(t, []string{
+		CustomProtocolAnthropicMessages,
+		CustomProtocolGemini,
+	}, AccountUpstreamProtocols(antigravity))
+
+	customEmbedding := &Account{
+		Platform: PlatformCustom,
+		Extra: map[string]any{
+			"protocol": CustomProtocolOpenAIEmbeddings,
+		},
+	}
+	require.Empty(t, AccountUpstreamProtocols(customEmbedding))
+}
+
+func TestNormalizeGroupUpstreamProtocolFilter_LegacyAliases(t *testing.T) {
+	require.Equal(t, CustomProtocolOpenAIResponses, NormalizeGroupUpstreamProtocolFilter(PlatformOpenAI))
+	require.Equal(t, CustomProtocolAnthropicMessages, NormalizeGroupUpstreamProtocolFilter("claude"))
+	require.Equal(t, CustomProtocolGemini, NormalizeGroupUpstreamProtocolFilter(PlatformAntigravity))
+	require.Equal(t, CustomProtocolOpenAIChatCompletions, NormalizeGroupUpstreamProtocolFilter(CustomProtocolOpenAIChatCompletions))
+}

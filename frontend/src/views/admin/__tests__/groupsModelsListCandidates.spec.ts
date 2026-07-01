@@ -5,17 +5,17 @@ import {
 } from "../groupsModelsListCandidates";
 
 describe("groupsModelsListCandidates", () => {
-  it("rejects stale candidate responses after a newer platform request starts", () => {
+  it("rejects stale candidate responses after a newer upstream request starts", () => {
     const tracker = createModelsListCandidatesTracker();
     const first = {
       mode: "create" as const,
       groupID: 0,
-      platform: "openai" as const,
+      upstreamProtocol: "openai_responses" as const,
     };
     const second = {
       mode: "create" as const,
       groupID: 0,
-      platform: "anthropic" as const,
+      upstreamProtocol: "anthropic_messages" as const,
     };
 
     const firstID = tracker.next(first);
@@ -25,17 +25,17 @@ describe("groupsModelsListCandidates", () => {
     expect(tracker.isCurrent(secondID, second)).toBe(true);
   });
 
-  it("rejects responses for a previous edit group even with the same platform", () => {
+  it("rejects responses for a previous edit group even with the same upstream", () => {
     const tracker = createModelsListCandidatesTracker();
     const first = {
       mode: "edit" as const,
       groupID: 10,
-      platform: "openai" as const,
+      upstreamProtocol: "openai_responses" as const,
     };
     const second = {
       mode: "edit" as const,
       groupID: 11,
-      platform: "openai" as const,
+      upstreamProtocol: "openai_responses" as const,
     };
 
     const firstID = tracker.next(first);
@@ -49,12 +49,12 @@ describe("groupsModelsListCandidates", () => {
     const editRequest = {
       mode: "edit" as const,
       groupID: 10,
-      platform: "openai" as const,
+      upstreamProtocol: "openai_responses" as const,
     };
     const createRequest = {
       mode: "create" as const,
       groupID: 0,
-      platform: "anthropic" as const,
+      upstreamProtocol: "anthropic_messages" as const,
     };
 
     const editID = tracker.next(editRequest);

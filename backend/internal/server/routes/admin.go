@@ -149,6 +149,7 @@ func registerPrivacyFilterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
+		apiKeys.POST("/lookup", h.Admin.APIKey.FindOwner)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 	}
 }

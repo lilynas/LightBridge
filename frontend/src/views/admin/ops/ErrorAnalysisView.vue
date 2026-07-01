@@ -13,6 +13,26 @@
             />
           </div>
         </div>
+        <div class="min-w-[200px] flex-1 sm:max-w-xs">
+          <div class="relative">
+            <Icon name="user" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              v-model="userFilter"
+              type="text"
+              class="input w-full pl-9 pr-9 text-sm"
+              :placeholder="t('admin.ops.errorAnalysis.userFilterPlaceholder')"
+            />
+            <button
+              v-if="userFilter"
+              type="button"
+              class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              :title="t('admin.ops.errorAnalysis.clearUserFilter')"
+              @click="clearUserFilter"
+            >
+              <Icon name="x" size="xs" />
+            </button>
+          </div>
+        </div>
         <div class="w-36">
           <Select :model-value="timeRange" :options="timeRangeOptions" @update:model-value="timeRange = String($event || '24h')" />
         </div>
@@ -93,6 +113,15 @@
                   <span v-if="item.group_name || item.group_id" class="max-w-[130px] truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-dark-700 dark:text-dark-200">
                     {{ item.group_name || item.group_id }}
                   </span>
+                  <button
+                    v-if="item.user_email || item.user_id"
+                    type="button"
+                    class="max-w-[180px] truncate rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                    :title="t('admin.ops.errorAnalysis.filterByUser')"
+                    @click.stop="filterByUser(item)"
+                  >
+                    {{ userDisplayLabel(item) }}
+                  </button>
                 </div>
               </button>
             </template>
@@ -455,6 +484,7 @@ const pageSize = ref(10)
 const timeRange = ref('24h')
 const statusCodeFilter = ref('')
 const searchQuery = ref('')
+const userFilter = ref('')
 
 const selectedErrorId = ref<number | null>(null)
 const selectedDetail = ref<OpsErrorDetail | null>(null)
@@ -516,6 +546,8 @@ async function fetchRequestErrors(options: { keepSelection?: boolean } = {}) {
     }
     if (statusCodeFilter.value) params.status_codes = statusCodeFilter.value
     if (searchQuery.value.trim()) params.q = searchQuery.value.trim()
+    const userFilterParams = resolveUserFilterParams(userFilter.value)
+    Object.assign(params, userFilterParams)
 
     const res = await opsAPI.listRequestErrors(params)
     if (fetchSeq !== listFetchSeq) return
@@ -626,6 +658,7 @@ const debouncedSearch = useDebounceFn(() => {
 }, 350)
 
 watch(searchQuery, () => debouncedSearch())
+watch(userFilter, () => debouncedSearch())
 
 watch([timeRange, statusCodeFilter], () => {
   page.value = 1
@@ -641,6 +674,38 @@ function displayModel(item: OpsErrorLog | OpsErrorDetail): string {
   const upstream = String(item.upstream_model || '').trim()
   if (requested && upstream && requested !== upstream) return `${requested} -> ${upstream}`
   return upstream || requested || String(item.model || '').trim()
+}
+
+function resolveUserFilterParams(value: string): Pick<OpsErrorListQueryParams, 'user_id' | 'user_query'> {
+  const normalized = value.trim()
+  if (!normalized) return {}
+  if (/^\d+$/.test(normalized)) {
+    const id = Number(normalized)
+    if (Number.isSafeInteger(id) && id > 0) return { user_id: id }
+  }
+  return { user_query: normalized }
+}
+
+function userDisplayLabel(item: OpsErrorLog | OpsErrorDetail): string {
+  return item.user_email || (item.user_id != null ? `#${item.user_id}` : '-')
+}
+
+function filterByUser(item: OpsErrorLog | OpsErrorDetail) {
+  const next = item.user_id != null ? String(item.user_id) : item.user_email
+  if (!next) return
+  if (userFilter.value === next) {
+    page.value = 1
+    fetchRequestErrors({ keepSelection: false })
+    return
+  }
+  userFilter.value = next
+  page.value = 1
+}
+
+function clearUserFilter() {
+  if (!userFilter.value) return
+  userFilter.value = ''
+  page.value = 1
 }
 
 function statusClass(code: number | null | undefined): string {

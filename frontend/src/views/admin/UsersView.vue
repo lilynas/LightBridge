@@ -229,6 +229,14 @@
                 <Icon name="cog" size="sm" class="md:mr-1.5" />
                 <span class="hidden md:inline">{{ t('admin.users.attributes.configButton') }}</span>
               </button>
+              <button
+                @click="openApiKeyLookup"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.lookupApiKeyOwner')"
+              >
+                <Icon name="key" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.users.lookupApiKeyOwner') }}</span>
+              </button>
             </div>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
@@ -772,6 +780,43 @@
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
+    <BaseDialog
+      :show="showApiKeyLookupModal"
+      :title="t('admin.users.lookupApiKeyOwner')"
+      width="normal"
+      @close="closeApiKeyLookup"
+    >
+      <form class="space-y-4" @submit.prevent="handleLookupApiKeyOwner">
+        <div>
+          <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-dark-300">
+            {{ t('admin.users.apiKey') }}
+          </label>
+          <input
+            v-model="apiKeyLookupValue"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            class="input font-mono"
+            :placeholder="t('admin.users.apiKeyLookupPlaceholder')"
+          />
+        </div>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeApiKeyLookup">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" class="btn btn-primary" :disabled="apiKeyLookupLoading">
+            <Icon
+              v-if="apiKeyLookupLoading"
+              name="refresh"
+              size="sm"
+              class="mr-2 animate-spin"
+            />
+            <Icon v-else name="search" size="sm" class="mr-2" />
+            {{ t('admin.users.lookup') }}
+          </button>
+        </div>
+      </form>
+    </BaseDialog>
     <BulkEditUserModal
       :show="showBulkEditModal"
       :user-ids="selUserIds"
@@ -804,6 +849,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import Select from '@/components/common/Select.vue'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
@@ -1344,12 +1390,15 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
+const showApiKeyLookupModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
+const apiKeyLookupValue = ref('')
+const apiKeyLookupLoading = ref(false)
 
 const handlePlatformQuota = (user: AdminUser) => {
   platformQuotaUser.value = user
@@ -1742,6 +1791,44 @@ const handleToggleStatus = async (user: AdminUser) => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
+  }
+}
+
+const openApiKeyLookup = () => {
+  apiKeyLookupValue.value = ''
+  showApiKeyLookupModal.value = true
+}
+
+const closeApiKeyLookup = () => {
+  if (apiKeyLookupLoading.value) return
+  showApiKeyLookupModal.value = false
+  apiKeyLookupValue.value = ''
+}
+
+const handleLookupApiKeyOwner = async () => {
+  const key = apiKeyLookupValue.value.trim()
+  if (!key) {
+    appStore.showError(t('admin.users.apiKeyRequired'))
+    return
+  }
+
+  apiKeyLookupLoading.value = true
+  try {
+    const result = await adminAPI.apiKeys.lookupOwner(key)
+    const user = result.user as AdminUser
+    viewingUser.value = {
+      ...user,
+      notes: user.notes ?? '',
+      last_used_at: user.last_used_at ?? null
+    }
+    showApiKeyLookupModal.value = false
+    apiKeyLookupValue.value = ''
+    showApiKeysModal.value = true
+  } catch (error: any) {
+    const message = error?.message || error?.response?.data?.detail || t('admin.users.apiKeyOwnerNotFound')
+    appStore.showError(message)
+  } finally {
+    apiKeyLookupLoading.value = false
   }
 }
 

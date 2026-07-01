@@ -192,6 +192,27 @@ func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, pag
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 }
 
+func (s *stubAdminService) FindAPIKeyOwner(ctx context.Context, key string) (*service.APIKey, *service.User, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, nil, service.ErrAPIKeyNotFound
+	}
+	for i := range s.apiKeys {
+		if s.apiKeys[i].Key == key {
+			apiKey := s.apiKeys[i]
+			for j := range s.users {
+				if s.users[j].ID == apiKey.UserID {
+					user := s.users[j]
+					apiKey.User = &user
+					return &apiKey, &user, nil
+				}
+			}
+			return &apiKey, apiKey.User, nil
+		}
+	}
+	return nil, nil, service.ErrAPIKeyNotFound
+}
+
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userID}, nil
 }

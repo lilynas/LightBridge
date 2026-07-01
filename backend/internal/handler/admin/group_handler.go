@@ -165,7 +165,10 @@ type UpdateGroupRequest struct {
 // GET /api/v1/admin/groups
 func (h *GroupHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	platform := c.Query("platform")
+	platform := c.Query("upstream_protocol")
+	if platform == "" {
+		platform = c.Query("platform")
+	}
 	status := c.Query("status")
 	search := c.Query("search")
 	// 标准化和验证 search 参数
@@ -199,7 +202,10 @@ func (h *GroupHandler) List(c *gin.Context) {
 // GetAll handles getting all active groups without pagination
 // GET /api/v1/admin/groups/all
 func (h *GroupHandler) GetAll(c *gin.Context) {
-	platform := c.Query("platform")
+	platform := c.Query("upstream_protocol")
+	if platform == "" {
+		platform = c.Query("platform")
+	}
 
 	var groups []service.Group
 	var err error
@@ -252,7 +258,7 @@ func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 	models, err := h.adminService.GetGroupModelsListCandidates(
 		c.Request.Context(),
 		groupID,
-		c.Query("platform"),
+		firstNonEmpty(c.Query("upstream_protocol"), c.Query("platform")),
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -260,6 +266,15 @@ func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"models": models})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // Create handles creating a new group

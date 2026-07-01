@@ -5,14 +5,23 @@
       class="flex min-w-0 flex-1 flex-col items-start"
       :title="description || undefined"
     >
-      <!-- Row 1: platform badge (name bold) -->
+      <!-- Row 1: group name and upstream protocols -->
       <GroupBadge
         :name="name"
-        :platform="platform"
+        :platform="upstreamProtocols?.length ? undefined : platform"
         :subscription-type="subscriptionType"
         :show-rate="false"
         class="groupOptionItemBadge"
       />
+      <div v-if="upstreamProtocols?.length" class="mt-1 flex flex-wrap gap-1">
+        <span
+          v-for="protocol in upstreamProtocols"
+          :key="protocol"
+          :class="protocolBadgeClass(protocol)"
+        >
+          {{ protocolLabel(protocol) }}
+        </span>
+      </div>
       <!-- Row 2: description with top spacing -->
       <span
         v-if="description"
@@ -52,11 +61,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
-import type { SubscriptionType, GroupPlatform } from '@/types'
+import { useI18n } from 'vue-i18n'
+import type { SubscriptionType, GroupPlatform, GroupUpstreamProtocol } from '@/types'
 
 interface Props {
   name: string
-  platform: GroupPlatform
+  platform?: GroupPlatform
+  upstreamProtocols?: GroupUpstreamProtocol[]
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null
@@ -71,6 +82,7 @@ const props = withDefaults(defineProps<Props>(), {
   showCheckmark: true,
   userRateMultiplier: null
 })
+const { t } = useI18n()
 
 // Whether user has a custom rate different from default
 const hasCustomRate = computed(() => {
@@ -81,6 +93,22 @@ const hasCustomRate = computed(() => {
     props.userRateMultiplier !== props.rateMultiplier
   )
 })
+
+const protocolLabel = (protocol: GroupUpstreamProtocol | string) =>
+  t(`admin.groups.upstreamProtocols.${protocol}`)
+
+const protocolBadgeClass = (protocol: GroupUpstreamProtocol | string) => [
+  'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+  protocol === 'openai_responses'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    : protocol === 'openai_chat_completions'
+      ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+      : protocol === 'anthropic_messages'
+        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+        : protocol === 'gemini'
+          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+          : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-300'
+]
 
 // Rate pill color matches platform badge color
 const ratePillClass = computed(() => {

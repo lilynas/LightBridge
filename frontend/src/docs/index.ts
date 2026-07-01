@@ -1,4 +1,5 @@
 import gettingStarted from './content/getting-started.md?raw'
+import lightbridgeRouter from './content/lightbridge-router.md?raw'
 import release029Preview1 from './content/release-0.2.9-preview.1.md?raw'
 import release0210Preview from './content/release-0.2.10-preview.md?raw'
 
@@ -17,6 +18,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '入门',
     description: 'LightBridge 模块与功能文档入口',
     content: gettingStarted,
+  },
+  {
+    id: 'lightbridge-router',
+    title: 'LightBridge Router',
+    group: '核心能力',
+    description: '全协议消息路由、透传模式与混合分组调度说明',
+    content: lightbridgeRouter,
   },
   {
     id: 'release-0.2.10-preview',

@@ -136,6 +136,14 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		}
 		filter.AccountID = &id
 	}
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
+	}
 
 	if v := strings.TrimSpace(c.Query("resolved")); v != "" {
 		switch strings.ToLower(v) {
@@ -236,6 +244,14 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 			return
 		}
 		filter.AccountID = &id
+	}
+	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &id
 	}
 
 	if v := strings.TrimSpace(c.Query("resolved")); v != "" {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -100,6 +101,9 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 		out.AccountCount = c.Total
 		out.ActiveAccountCount = c.Active
 		out.RateLimitedAccountCount = c.RateLimited
+	}
+	if upstreams, upstreamErr := r.loadUpstreamProtocols(ctx, []int64{out.ID}); upstreamErr == nil {
+		out.UpstreamProtocols = upstreams[out.ID]
 	}
 	return out, nil
 }
@@ -230,7 +234,14 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 	q := r.client.Group.Query()
 
 	if platform != "" {
-		q = q.Where(group.PlatformEQ(platform))
+		groupIDs, err := r.groupIDsForUpstreamProtocol(ctx, platform)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(groupIDs) == 0 {
+			return nil, paginationResultFromTotal(0, params), nil
+		}
+		q = q.Where(group.IDIn(groupIDs...))
 	}
 	if status != "" {
 		q = q.Where(group.StatusEQ(status))
@@ -266,15 +277,15 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	groupIDs := make([]int64, 0, len(groups))
+	loadedGroupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
-		groupIDs = append(groupIDs, g.ID)
+		loadedGroupIDs = append(loadedGroupIDs, g.ID)
 	}
 
-	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	counts, err := r.loadAccountCounts(ctx, loadedGroupIDs)
 	if err == nil {
 		for i := range outGroups {
 			c := counts[outGroups[i].ID]
@@ -283,6 +294,7 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applyUpstreamProtocols(ctx, outGroups, loadedGroupIDs)
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
@@ -370,6 +382,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 			outGroups[idx] = *g
 		}
 	}
+	r.applyUpstreamProtocols(ctx, outGroups, pageIDs)
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
@@ -437,15 +450,15 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 		return nil, err
 	}
 
-	groupIDs := make([]int64, 0, len(groups))
+	loadedGroupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
-		groupIDs = append(groupIDs, g.ID)
+		loadedGroupIDs = append(loadedGroupIDs, g.ID)
 	}
 
-	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	counts, err := r.loadAccountCounts(ctx, loadedGroupIDs)
 	if err == nil {
 		for i := range outGroups {
 			c := counts[outGroups[i].ID]
@@ -454,28 +467,36 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applyUpstreamProtocols(ctx, outGroups, loadedGroupIDs)
 
 	return outGroups, nil
 }
 
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
+	groupIDs, err := r.groupIDsForUpstreamProtocol(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
 	groups, err := r.client.Group.Query().
-		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
+		Where(group.StatusEQ(service.StatusActive), group.IDIn(groupIDs...)).
 		Order(dbent.Asc(group.FieldSortOrder), dbent.Asc(group.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	groupIDs := make([]int64, 0, len(groups))
+	activeGroupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
 		g := groupEntityToService(groups[i])
 		outGroups = append(outGroups, *g)
-		groupIDs = append(groupIDs, g.ID)
+		activeGroupIDs = append(activeGroupIDs, g.ID)
 	}
 
-	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	counts, err := r.loadAccountCounts(ctx, activeGroupIDs)
 	if err == nil {
 		for i := range outGroups {
 			c := counts[outGroups[i].ID]
@@ -484,6 +505,7 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applyUpstreamProtocols(ctx, outGroups, activeGroupIDs)
 
 	return outGroups, nil
 }
@@ -735,6 +757,134 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 	}
 
 	return counts, nil
+}
+
+func (r *groupRepository) applyUpstreamProtocols(ctx context.Context, groups []service.Group, groupIDs []int64) {
+	upstreams, err := r.loadUpstreamProtocols(ctx, groupIDs)
+	if err != nil {
+		logger.LegacyPrintf("repository.group", "load upstream protocols failed: err=%v", err)
+		return
+	}
+	for i := range groups {
+		groups[i].UpstreamProtocols = upstreams[groups[i].ID]
+	}
+}
+
+func (r *groupRepository) groupIDsForUpstreamProtocol(ctx context.Context, rawProtocol string) ([]int64, error) {
+	target := service.NormalizeGroupUpstreamProtocolFilter(rawProtocol)
+	if target == "" {
+		return nil, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT ag.group_id, a.platform, COALESCE(a.sub_platform, ''), COALESCE(a.extra, '{}'::jsonb)::text
+		FROM account_groups ag
+		JOIN accounts a ON a.id = ag.account_id
+		JOIN groups g ON g.id = ag.group_id
+		WHERE a.deleted_at IS NULL
+		  AND g.deleted_at IS NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	seen := make(map[int64]struct{})
+	for rows.Next() {
+		groupID, protocols, err := scanGroupAccountUpstreamProtocols(rows)
+		if err != nil {
+			return nil, err
+		}
+		for _, proto := range protocols {
+			if proto == target {
+				seen[groupID] = struct{}{}
+				break
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+type groupAccountUpstreamScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanGroupAccountUpstreamProtocols(scanner groupAccountUpstreamScanner) (int64, []string, error) {
+	var groupID int64
+	var platform string
+	var subPlatform string
+	var rawExtra string
+	if err := scanner.Scan(&groupID, &platform, &subPlatform, &rawExtra); err != nil {
+		return 0, nil, err
+	}
+	var extra map[string]any
+	if strings.TrimSpace(rawExtra) != "" {
+		_ = json.Unmarshal([]byte(rawExtra), &extra)
+	}
+	account := &service.Account{
+		Platform:    strings.TrimSpace(platform),
+		SubPlatform: strings.TrimSpace(subPlatform),
+		Extra:       extra,
+	}
+	return groupID, service.AccountUpstreamProtocols(account), nil
+}
+
+func (r *groupRepository) loadUpstreamProtocols(ctx context.Context, groupIDs []int64) (map[int64][]string, error) {
+	result := make(map[int64][]string, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return result, nil
+	}
+	for _, id := range groupIDs {
+		result[id] = nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT ag.group_id, a.platform, COALESCE(a.sub_platform, ''), COALESCE(a.extra, '{}'::jsonb)::text
+		FROM account_groups ag
+		JOIN accounts a ON a.id = ag.account_id
+		WHERE ag.group_id = ANY($1)
+		  AND a.deleted_at IS NULL
+		ORDER BY ag.group_id, a.id
+	`, pq.Array(groupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	seen := make(map[int64]map[string]struct{}, len(groupIDs))
+	for rows.Next() {
+		groupID, protocols, err := scanGroupAccountUpstreamProtocols(rows)
+		if err != nil {
+			return nil, err
+		}
+		if seen[groupID] == nil {
+			seen[groupID] = make(map[string]struct{})
+		}
+		for _, proto := range protocols {
+			proto = strings.TrimSpace(proto)
+			if proto == "" {
+				continue
+			}
+			if _, ok := seen[groupID][proto]; ok {
+				continue
+			}
+			seen[groupID][proto] = struct{}{}
+			result[groupID] = append(result[groupID], proto)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for id := range result {
+		sort.Strings(result[id])
+	}
+	return result, nil
 }
 
 // GetAccountIDsByGroupIDs 获取多个分组的所有账号 ID（去重）

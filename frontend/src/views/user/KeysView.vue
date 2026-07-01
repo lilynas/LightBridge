@@ -416,6 +416,7 @@
                 v-if="option"
                 :name="(option as unknown as GroupOption).label"
                 :platform="(option as unknown as GroupOption).platform"
+                :upstream-protocols="(option as unknown as GroupOption).upstreamProtocols"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
@@ -1021,6 +1022,7 @@
             <GroupOptionItem
               :name="option.label"
               :platform="option.platform"
+              :upstream-protocols="option.upstreamProtocols"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
               :user-rate-multiplier="option.userRate"
@@ -1090,6 +1092,7 @@ interface GroupOption {
   userRate: number | null
   subscriptionType: SubscriptionType
   platform: GroupPlatform
+  upstreamProtocols?: Group['upstream_protocols']
 }
 
 const appStore = useAppStore()
@@ -1247,7 +1250,8 @@ const groupOptions = computed(() =>
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
-    platform: group.platform
+    platform: group.platform,
+    upstreamProtocols: group.upstream_protocols
   }))
 )
 

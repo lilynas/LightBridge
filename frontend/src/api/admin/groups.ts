@@ -7,6 +7,7 @@ import { apiClient } from '../client'
 import type {
   AdminGroup,
   GroupPlatform,
+  GroupUpstreamProtocol,
   CreateGroupRequest,
   UpdateGroupRequest,
   PaginatedResponse
@@ -24,6 +25,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     platform?: GroupPlatform
+    upstream_protocol?: GroupUpstreamProtocol
     status?: 'active' | 'inactive'
     is_exclusive?: boolean
     search?: string
@@ -47,20 +49,19 @@ export async function list(
 
 /**
  * Get all active groups (without pagination)
- * @param platform - Optional platform filter
+ * @param upstreamProtocol - Optional upstream protocol filter
  * @returns List of all active groups
  */
-export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
+export async function getAll(upstreamProtocol?: GroupPlatform | GroupUpstreamProtocol): Promise<AdminGroup[]> {
   const { data } = await apiClient.get<AdminGroup[]>('/admin/groups/all', {
-    params: platform ? { platform } : undefined
+    params: upstreamProtocol ? { upstream_protocol: upstreamProtocol } : undefined
   })
   return data
 }
 
 /**
- * Get active groups by platform
- * @param platform - Platform to filter by
- * @returns List of groups for the specified platform
+ * Backward-compatible alias for old platform filters.
+ * The backend maps platform aliases to upstream protocols.
  */
 export async function getByPlatform(platform: GroupPlatform): Promise<AdminGroup[]> {
   return getAll(platform)
@@ -78,16 +79,16 @@ export async function getById(id: number): Promise<AdminGroup> {
 
 /**
  * Get candidate models for custom /v1/models list.
- * id=0 returns platform default models for create flow.
+ * id=0 returns protocol defaults for create flow. Empty protocol returns all defaults.
  */
 export async function getModelsListCandidates(
   id: number,
-  platform?: GroupPlatform
+  upstreamProtocol?: GroupPlatform | GroupUpstreamProtocol
 ): Promise<string[]> {
   const { data } = await apiClient.get<{ models: string[] }>(
     `/admin/groups/${id}/models-list-candidates`,
     {
-      params: platform ? { platform } : undefined
+      params: upstreamProtocol ? { upstream_protocol: upstreamProtocol } : undefined
     }
   )
   return data.models || []

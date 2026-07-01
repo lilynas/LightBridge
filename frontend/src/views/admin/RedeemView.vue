@@ -325,6 +325,7 @@
                       v-if="option"
                       :name="(option as unknown as GroupOption).label"
                       :platform="(option as unknown as GroupOption).platform"
+                      :upstream-protocols="(option as unknown as GroupOption).upstreamProtocols"
                       :subscription-type="(option as unknown as GroupOption).subscriptionType"
                       :rate-multiplier="(option as unknown as GroupOption).rate"
                     />
@@ -644,6 +645,7 @@ interface GroupOption {
   label: string
   description: string | null
   platform: GroupPlatform
+  upstreamProtocols?: Group['upstream_protocols']
   subscriptionType: SubscriptionType
   rate: number
 }
@@ -662,6 +664,7 @@ const subscriptionGroupOptions = computed(() => {
       label: g.name,
       description: g.description,
       platform: g.platform,
+      upstreamProtocols: g.upstream_protocols,
       subscriptionType: g.subscription_type,
       rate: g.rate_multiplier
     }))

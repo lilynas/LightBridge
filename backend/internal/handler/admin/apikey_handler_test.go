@@ -20,8 +20,64 @@ func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc)
+	router.POST("/api/v1/admin/api-keys/lookup", h.FindOwner)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
 	return router
+}
+
+func TestAdminAPIKeyHandler_FindOwner(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/lookup", bytes.NewBufferString(`{"key":"sk-test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			APIKey struct {
+				ID     int64  `json:"id"`
+				Key    string `json:"key"`
+				UserID int64  `json:"user_id"`
+			} `json:"api_key"`
+			User struct {
+				ID    int64  `json:"id"`
+				Email string `json:"email"`
+			} `json:"user"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, int64(10), resp.Data.APIKey.ID)
+	require.Equal(t, "sk-test", resp.Data.APIKey.Key)
+	require.Equal(t, int64(1), resp.Data.User.ID)
+	require.Equal(t, "user@example.com", resp.Data.User.Email)
+}
+
+func TestAdminAPIKeyHandler_FindOwner_EmptyKey(t *testing.T) {
+	router := setupAPIKeyHandler(&emptyKeyErrorService{stubAdminService: newStubAdminService()})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/lookup", bytes.NewBufferString(`{"key":"  "}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "API_KEY_REQUIRED")
+}
+
+func TestAdminAPIKeyHandler_FindOwner_NotFound(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/api-keys/lookup", bytes.NewBufferString(`{"key":"missing"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {
@@ -239,4 +295,12 @@ type failingUpdateGroupService struct {
 
 func (f *failingUpdateGroupService) AdminUpdateAPIKeyGroupID(_ context.Context, _ int64, _ *int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
 	return nil, f.err
+}
+
+type emptyKeyErrorService struct {
+	*stubAdminService
+}
+
+func (s *emptyKeyErrorService) FindAPIKeyOwner(context.Context, string) (*service.APIKey, *service.User, error) {
+	return nil, nil, infraerrors.BadRequest("API_KEY_REQUIRED", "api key is required")
 }
