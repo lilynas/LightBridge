@@ -200,6 +200,13 @@ pnpm build                  # Production build
 
 Contributions are welcome. Please read [`CLA.md`](CLA.md) before submitting a pull request, and follow the PR checklist in [`DEV_GUIDE.md`](DEV_GUIDE.md). Releases follow [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md).
 
+## Acknowledgements
+
+LightBridge references or uses code and implementation ideas from the following open-source projects:
+
+- [Sub2API](https://github.com/Wei-Shaw/sub2api)
+- [New API](https://github.com/QuantumNous/new-api)
+
 ## License
 
 LightBridge is licensed under the [GNU Lesser General Public License v3.0](LICENSE).
