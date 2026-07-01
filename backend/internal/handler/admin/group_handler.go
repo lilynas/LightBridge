@@ -258,7 +258,7 @@ func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 	models, err := h.adminService.GetGroupModelsListCandidates(
 		c.Request.Context(),
 		groupID,
-		firstNonEmpty(c.Query("upstream_protocol"), c.Query("platform")),
+		firstNonEmptyGroupQuery(c.Query("upstream_protocol"), c.Query("platform")),
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -268,7 +268,7 @@ func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 	response.Success(c, gin.H{"models": models})
 }
 
-func firstNonEmpty(values ...string) string {
+func firstNonEmptyGroupQuery(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value
