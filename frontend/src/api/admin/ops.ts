@@ -1087,6 +1087,8 @@ export type OpsErrorListQueryParams = {
   user_query?: string
   status_codes?: string
   status_codes_other?: string
+
+  is_read?: string
 }
 
 // Legacy unified endpoints
@@ -1131,6 +1133,16 @@ export async function updateRequestErrorResolved(errorId: number, resolved: bool
 
 export async function updateUpstreamErrorResolved(errorId: number, resolved: boolean): Promise<void> {
   await apiClient.put(`/admin/ops/upstream-errors/${errorId}/resolve`, { resolved })
+}
+
+export async function markRequestErrorsRead(params: OpsErrorListQueryParams, isRead: boolean): Promise<{ affected: number }> {
+  const { data } = await apiClient.put<{ affected: number }>('/admin/ops/request-errors/mark-read', { is_read: isRead }, { params })
+  return data
+}
+
+export async function deleteRequestErrorsBatch(params: OpsErrorListQueryParams): Promise<{ deleted: number }> {
+  const { data } = await apiClient.delete<{ deleted: number }>('/admin/ops/request-errors/batch', { params })
+  return data
 }
 
 export async function listRequestErrorUpstreamErrors(
@@ -1308,6 +1320,8 @@ export const opsAPI = {
   getUpstreamErrorDetail,
   updateRequestErrorResolved,
   updateUpstreamErrorResolved,
+  markRequestErrorsRead,
+  deleteRequestErrorsBatch,
   listRequestErrorUpstreamErrors,
 
   listRequestDetails,
