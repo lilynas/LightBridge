@@ -5364,7 +5364,8 @@ export default {
         suggestRequest: '⚠️ 客户端请求错误，建议：联系客户修正请求参数 / 手动标记已解决',
         suggestAuth: '⚠️ 认证失败，建议：检查 API Key 是否有效 / 联系客户更新凭证',
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
-        suggestGeneric: '查看详情了解更多信息'
+        suggestGeneric: '查看详情了解更多信息',
+        exportTXT: '导出 TXT'
       },
       errorAnalysis: {
         title: '错误分析',
@@ -5395,6 +5396,12 @@ export default {
         failedToLoadList: '加载失败请求列表失败',
         failedToLoadDetail: '加载错误分析详情失败',
         failedToLoadSchedulerAccounts: '加载调度账户诊断失败',
+        exportTXT: '导出 TXT',
+        exportAll: '导出全部',
+        exporting: '导出中...',
+        exportSuccess: '导出成功',
+        exportFailed: '导出失败',
+        exportEmpty: '当前没有可导出的错误数据',
         schedulerAccounts: {
           title: '当前分组下的所有账户',
           loading: '正在加载账户...',

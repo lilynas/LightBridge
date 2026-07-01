@@ -5205,7 +5205,8 @@ export default {
         suggestRequest: 'Client request error: ask customer to fix request parameters',
         suggestAuth: 'Auth failed: verify API key/credentials',
         suggestPlatform: 'Platform error: prioritize investigation and fix',
-        suggestGeneric: 'See details for more context'
+        suggestGeneric: 'See details for more context',
+        exportTXT: 'Export TXT'
       },
       errorAnalysis: {
         title: 'Error Analysis',
@@ -5236,6 +5237,12 @@ export default {
         failedToLoadList: 'Failed to load failed requests',
         failedToLoadDetail: 'Failed to load error analysis detail',
         failedToLoadSchedulerAccounts: 'Failed to load scheduler account diagnostics',
+        exportTXT: 'Export TXT',
+        exportAll: 'Export All',
+        exporting: 'Exporting...',
+        exportSuccess: 'Export successful',
+        exportFailed: 'Export failed',
+        exportEmpty: 'No error data to export',
         schedulerAccounts: {
           title: 'Accounts in Current Group',
           loading: 'Loading accounts...',
