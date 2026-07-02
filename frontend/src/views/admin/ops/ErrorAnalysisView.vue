@@ -473,8 +473,14 @@
                       <div class="mt-2 break-all text-xs font-semibold text-gray-700 dark:text-gray-200">
                         {{ item.account_name || item.account_id || '-' }}
                       </div>
-                      <div class="mt-1 line-clamp-3 text-xs text-gray-500 dark:text-gray-400">
+                      <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {{ shortErrorMessage(item) || '-' }}
+                      </div>
+                      <div v-if="item.upstream_error_detail || item.upstream_error_message" class="mt-2 rounded border border-amber-200 bg-amber-50 p-2 dark:border-amber-900/50 dark:bg-amber-900/10">
+                        <div class="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400">{{ t('admin.ops.errorAnalysis.upstreamErrorDetail') }}</div>
+                        <div class="mt-1 break-all text-xs text-amber-800 dark:text-amber-200">
+                          {{ item.upstream_error_detail || item.upstream_error_message }}
+                        </div>
                       </div>
                     </div>
                   </div>

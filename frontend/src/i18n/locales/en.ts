@@ -5248,6 +5248,7 @@ export default {
         suggestions: 'Suggestions',
         upstreamAttempts: 'Correlated Upstream Attempts',
         noUpstreamAttempts: 'No correlated upstream attempts found. For 503 No Available Account, this usually means the request failed during account scheduling before reaching the Custom provider upstream.',
+        upstreamErrorDetail: 'Upstream Error Detail',
         failedToLoadList: 'Failed to load failed requests',
         failedToLoadDetail: 'Failed to load error analysis detail',
         failedToLoadSchedulerAccounts: 'Failed to load scheduler account diagnostics',
@@ -5350,6 +5351,7 @@ export default {
           attempts: 'Attempts',
           upstream_status: 'Upstream Status',
           upstream_message: 'Upstream Message',
+          upstream_detail: 'Upstream Error Detail',
           client_status: 'Client Status',
           message: 'Message'
         },

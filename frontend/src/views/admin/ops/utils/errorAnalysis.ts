@@ -295,6 +295,7 @@ function buildStepEvidence(
       pushEvidence(evidence, 'attempts', upstreamErrors.length || (detail.upstream_status_code != null ? 1 : 0), upstreamErrors.length ? 'warning' : 'neutral')
       pushEvidence(evidence, 'upstream_status', detail.upstream_status_code)
       pushEvidence(evidence, 'upstream_message', detail.upstream_error_message)
+      pushEvidence(evidence, 'upstream_detail', detail.upstream_error_detail)
       break
     case 'response':
       pushEvidence(evidence, 'client_status', detail.status_code, detail.status_code >= 500 ? 'danger' : 'warning')
