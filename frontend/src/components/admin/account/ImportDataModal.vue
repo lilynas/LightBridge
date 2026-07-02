@@ -52,7 +52,7 @@
           <label class="input-label">{{ t('admin.accounts.dataImportGroups') }}</label>
           <select v-model="selectedGroupIds" multiple class="input min-h-28">
             <option v-for="group in groups" :key="group.id" :value="group.id">
-              {{ group.name }} · {{ group.platform }}
+              {{ group.name }}
             </option>
           </select>
           <p class="input-hint">{{ t('admin.accounts.dataImportGroupsHint') }}</p>
