@@ -279,7 +279,21 @@
               <div class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
                 <div v-for="ev in analysis.evidence" :key="`${ev.key}-${ev.value}`" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
                   <div class="text-[10px] font-bold uppercase text-gray-400">{{ evidenceLabel(ev.key) }}</div>
-                  <div :class="['mt-1 break-all text-xs font-semibold', evidenceToneClass(ev.tone)]">{{ ev.value }}</div>
+                  <div v-if="ev.key === 'group' && groupDetailUrl" class="mt-1">
+                    <router-link :to="groupDetailUrl" class="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
+                      {{ ev.value }}
+                      <Icon name="externalLink" size="xs" />
+                    </router-link>
+                  </div>
+                  <div v-else :class="['mt-1 break-all text-xs font-semibold', evidenceToneClass(ev.tone)]">{{ ev.value }}</div>
+                </div>
+                <div v-if="relayModeLabel" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+                  <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.errorAnalysis.evidence.relay_mode') }}</div>
+                  <div class="mt-1 inline-flex items-center gap-1">
+                    <span :class="['rounded px-1.5 py-0.5 text-[10px] font-black ring-1 ring-inset', relayModeLabel === 'router' ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-500/30' : relayModeLabel === 'passthrough' ? 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-500/30' : 'bg-purple-50 text-purple-700 ring-purple-600/20 dark:bg-purple-900/30 dark:text-purple-300 dark:ring-purple-500/30']">
+                      {{ relayModeDisplay }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -582,6 +596,27 @@ const analysis = computed(() => buildErrorAnalysis(selectedDetail.value, correla
 const primaryResponseBody = computed(() => resolvePrimaryResponseBody(selectedDetail.value, 'request'))
 const schedulerAccountDiagnostics = computed<ErrorAnalysisAccountDiagnostic[]>(() => diagnoseSchedulerAccounts(schedulerAccounts.value, selectedDetail.value))
 const availableSchedulerAccountCount = computed(() => schedulerAccountDiagnostics.value.filter((item) => item.available).length)
+
+const relayModeLabel = computed(() => {
+  if (schedulerAccounts.value.length === 0) return ''
+  const mode = (schedulerAccounts.value[0].extra as Record<string, unknown> | undefined)?.relay_mode as string | undefined
+  if (!mode) return 'router'
+  return mode
+})
+
+const relayModeDisplay = computed(() => {
+  const mode = relayModeLabel.value
+  switch (mode) {
+    case 'passthrough': return t('admin.ops.errorAnalysis.relayMode.passthrough')
+    case 'full_passthrough': return t('admin.ops.errorAnalysis.relayMode.fullPassthrough')
+    default: return t('admin.ops.errorAnalysis.relayMode.router')
+  }
+})
+
+const groupDetailUrl = computed(() => {
+  const gid = selectedDetail.value?.group_id
+  return gid ? `/admin/groups?id=${gid}` : ''
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const fromItem = computed(() => total.value === 0 ? 0 : (page.value - 1) * pageSize.value + 1)

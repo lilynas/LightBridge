@@ -5408,6 +5408,11 @@ export default {
         upstreamAttempts: '关联上游尝试',
         noUpstreamAttempts: '未发现关联上游尝试。若错误为 503 No Available Account，通常表示请求在账号调度阶段已经失败，还没有进入 Custom provider 上游调用。',
         upstreamErrorDetail: '上游错误详情',
+        relayMode: {
+          router: 'Router',
+          passthrough: '透传',
+          fullPassthrough: '完全透传'
+        },
         failedToLoadList: '加载失败请求列表失败',
         failedToLoadDetail: '加载错误分析详情失败',
         failedToLoadSchedulerAccounts: '加载调度账户诊断失败',
@@ -5511,6 +5516,7 @@ export default {
           upstream_status: '上游状态',
           upstream_message: '上游消息',
           upstream_detail: '上游错误详情',
+          relay_mode: '路由模式',
           client_status: '客户端状态',
           message: '消息'
         },
