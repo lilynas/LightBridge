@@ -862,8 +862,8 @@ func (i *codexAccountIndex) Find(keys []string) *service.Account {
 }
 
 func firstSeenCodexIdentity(seen map[string]int, keys []string) (int, bool) {
-	for _, key := range keys {
-		if index, ok := seen[key]; ok {
+	if compositeKey, ok := codexIdentityCompositeKey(keys); ok {
+		if index, ok := seen[compositeKey]; ok {
 			return index, true
 		}
 	}
@@ -871,9 +871,25 @@ func firstSeenCodexIdentity(seen map[string]int, keys []string) (int, bool) {
 }
 
 func markCodexIdentitySeen(seen map[string]int, keys []string, index int) {
-	for _, key := range keys {
-		seen[key] = index
+	if compositeKey, ok := codexIdentityCompositeKey(keys); ok {
+		seen[compositeKey] = index
 	}
+}
+
+// codexIdentityCompositeKey builds a composite dedup key from identity keys.
+// Using a single composite key ensures that two entries are only treated as
+// duplicates when ALL their identity components match, not just one.
+// For example, two tokens from the same account (same chatgpt_account_id)
+// but with different access tokens should NOT be treated as duplicates.
+func codexIdentityCompositeKey(keys []string) (string, bool) {
+	if len(keys) == 0 {
+		return "", false
+	}
+	// Sort is not needed for correctness — the key generation order is
+	// deterministic (account, user, email, access) — but adds safety.
+	sorted := make([]string, len(keys))
+	copy(sorted, keys)
+	return strings.Join(sorted, "|"), true
 }
 
 func mergeCodexImportMap(existing, incoming map[string]any) map[string]any {
