@@ -86,7 +86,7 @@
                 </div>
                 <p class="mt-1 truncate font-mono text-xs text-gray-500 dark:text-gray-400">{{ model.id }}</p>
               </div>
-              <span class="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+              <span class="shrink-0 rounded-full bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
                 {{ t('modelCatalog.sourceCount', { count: model.source_count }) }}
               </span>
             </div>
