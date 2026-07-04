@@ -375,7 +375,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
-    modelCatalog: 'Model Catalog',
+    modelCatalog: 'Model List',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     modules: 'Modules',
@@ -1077,7 +1077,7 @@ export default {
   },
 
   modelCatalog: {
-    title: 'Model Catalog',
+    title: 'Model List',
     description: 'View usable models, pricing, and usage modes from the current group and account catalog',
     searchPlaceholder: 'Search models, groups, or sources...',
     empty: 'No model catalog yet. Pull upstream models or maintain an account model list first.',

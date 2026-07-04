@@ -375,7 +375,7 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
-    modelCatalog: '模型目录',
+    modelCatalog: '模型列表',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     modules: '模块市场',
@@ -1081,7 +1081,7 @@ export default {
   },
 
   modelCatalog: {
-    title: '模型目录',
+    title: '模型列表',
     description: '查看当前分组和账号目录中可用的模型、费用与使用方式',
     searchPlaceholder: '搜索模型、分组或来源...',
     empty: '暂无模型目录，请先在账号中拉取上游模型或维护模型列表',
