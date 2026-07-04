@@ -160,6 +160,132 @@ func (a *Account) IsSchedulable() bool {
 	return true
 }
 
+// RestrictToModelList returns whether this account should reject routing for
+// models outside its persisted model list. Missing/invalid values default to
+// false so unknown models continue to pass through upstream.
+func (a *Account) RestrictToModelList() bool {
+	if a == nil {
+		return false
+	}
+	if a.Extra != nil {
+		if v, ok := a.Extra[AccountExtraKeyRestrictToModelList].(bool); ok {
+			return v
+		}
+	}
+	if a.Credentials != nil {
+		if v, ok := a.Credentials[AccountExtraKeyRestrictToModelList].(bool); ok {
+			return v
+		}
+	}
+	return false
+}
+
+// SupportedModelIDs returns the account's cached model catalog list. It accepts
+// both the new extra.supported_models cache and legacy credential-side model
+// lists, then falls back to exact self-mapping entries for migration safety.
+func (a *Account) SupportedModelIDs() []string {
+	if a == nil {
+		return nil
+	}
+	models := stringSliceFromRaw(a.extraValue(AccountExtraKeySupportedModels))
+	models = append(models, stringSliceFromRaw(a.credentialValue(AccountExtraKeySupportedModels))...)
+	models = append(models, stringSliceFromRaw(a.credentialValue("models"))...)
+	models = append(models, stringSliceFromRaw(a.credentialValue("model_list"))...)
+	if raw, ok := a.credentialValue("model_whitelist").([]any); ok {
+		models = append(models, stringSliceFromRaw(raw)...)
+	}
+	for from, to := range a.GetModelMapping() {
+		if from == to && !strings.Contains(from, "*") {
+			models = append(models, from)
+		}
+	}
+	return normalizeModelIDs(models)
+}
+
+func (a *Account) ModelCatalogSyncState() *AccountModelSyncState {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	raw, ok := a.Extra[AccountExtraKeyModelCatalogSync].(map[string]any)
+	if !ok {
+		return nil
+	}
+	state := &AccountModelSyncState{AccountID: a.ID}
+	state.Source, _ = raw["source"].(string)
+	state.Status, _ = raw["status"].(string)
+	if count, ok := raw["model_count"].(float64); ok {
+		state.ModelCount = int(count)
+	}
+	state.SyncBatchID, _ = raw["sync_batch_id"].(string)
+	state.ErrorMessage, _ = raw["error_message"].(string)
+	if s, _ := raw["last_synced_at"].(string); s != "" {
+		if parsed, err := time.Parse(time.RFC3339, s); err == nil {
+			state.LastSyncedAt = &parsed
+		}
+	}
+	if s, _ := raw["updated_at"].(string); s != "" {
+		if parsed, err := time.Parse(time.RFC3339, s); err == nil {
+			state.UpdatedAt = parsed
+		}
+	}
+	return state
+}
+
+func (a *Account) SupportsListedModel(requestedModel string) bool {
+	if a == nil {
+		return false
+	}
+	model := strings.TrimSpace(requestedModel)
+	if model == "" {
+		return true
+	}
+	models := a.SupportedModelIDs()
+	if len(models) == 0 {
+		return true
+	}
+	normalized := normalizeRequestedModelForLookup(a.Platform, model)
+	for _, candidate := range models {
+		if strings.EqualFold(candidate, model) || strings.EqualFold(candidate, normalized) {
+			return true
+		}
+		if matchWildcard(candidate, model) || (normalized != model && matchWildcard(candidate, normalized)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Account) extraValue(key string) any {
+	if a == nil || a.Extra == nil {
+		return nil
+	}
+	return a.Extra[key]
+}
+
+func (a *Account) credentialValue(key string) any {
+	if a == nil || a.Credentials == nil {
+		return nil
+	}
+	return a.Credentials[key]
+}
+
+func stringSliceFromRaw(raw any) []string {
+	switch v := raw.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func (a *Account) IsRateLimited() bool {
 	if a.RateLimitResetAt == nil {
 		return false
@@ -811,13 +937,17 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 	return matchWildcardMappingResult(mapping, requestedModel)
 }
 
-// IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
-// 如果未配置 mapping，返回 true（允许所有模型）
+// IsModelSupported preserves the historical hot-path API, but model_mapping is
+// no longer a whitelist by default. It only restricts when the explicit account
+// switch restrict_to_model_list is enabled.
 func (a *Account) IsModelSupported(requestedModel string) bool {
-	mapping := a.GetModelMapping()
-	if len(mapping) == 0 {
-		return true // 无映射 = 允许所有
+	if !a.RestrictToModelList() {
+		return true
 	}
+	if a.SupportsListedModel(requestedModel) {
+		return true
+	}
+	mapping := a.GetModelMapping()
 	if mappingSupportsRequestedModel(mapping, requestedModel) {
 		return true
 	}

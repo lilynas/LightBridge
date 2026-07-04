@@ -593,7 +593,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 
 			fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
-			platform := resolveOpsPlatform(apiKey, fallbackPlatform)
+			platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
 			requestID := c.Writer.Header().Get("X-Request-Id")
 			if requestID == "" {
@@ -758,9 +758,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				if apiKey.GroupID != nil {
 					entry.GroupID = apiKey.GroupID
 				}
-				// Prefer group platform if present (more stable than inferring from path).
-				if apiKey.Group != nil && apiKey.Group.Platform != "" {
-					entry.Platform = apiKey.Group.Platform
+				if platform := resolveOpsPlatform(c.Request.Context(), apiKey, entry.Platform); platform != "" {
+					entry.Platform = platform
 				}
 			}
 
@@ -818,7 +817,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
-		platform := resolveOpsPlatform(apiKey, fallbackPlatform)
+		platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
 		requestID := c.Writer.Header().Get("X-Request-Id")
 		if requestID == "" {
@@ -948,9 +947,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			if apiKey.GroupID != nil {
 				entry.GroupID = apiKey.GroupID
 			}
-			// Prefer group platform if present (more stable than inferring from path).
-			if apiKey.Group != nil && apiKey.Group.Platform != "" {
-				entry.Platform = apiKey.Group.Platform
+			if platform := resolveOpsPlatform(c.Request.Context(), apiKey, entry.Platform); platform != "" {
+				entry.Platform = platform
 			}
 		}
 
@@ -1066,11 +1064,11 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 	return parsedOpsError{Message: truncateString(string(body), 1024)}
 }
 
-func resolveOpsPlatform(apiKey *service.APIKey, fallback string) string {
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform != "" {
-		return apiKey.Group.Platform
+func resolveOpsPlatform(ctx context.Context, apiKey *service.APIKey, fallback string) string {
+	if platform := service.PlatformForRequest(ctx, fallback); platform != "" {
+		return platform
 	}
-	return fallback
+	return service.PlatformFromAPIKey(apiKey)
 }
 
 func guessPlatformFromPath(path string) string {

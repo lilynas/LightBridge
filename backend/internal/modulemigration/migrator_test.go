@@ -50,6 +50,44 @@ func TestSub2APIOpenAIAccountDetectionHonorsExplicitProvider(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "openai oauth with mislabeled gemini provider detected by openai_passthrough",
+			row: sourceRow{
+				"__source_kind":    SourceSub2API,
+				"platform":         "gemini",
+				"refresh_token":    "openai-rt",
+				"openai_passthrough": true,
+			},
+			want: true,
+		},
+		{
+			name: "openai oauth with mislabeled gemini provider detected by codex_cli_only",
+			row: sourceRow{
+				"__source_kind":  SourceSub2API,
+				"platform":       "gemini",
+				"refresh_token":  "openai-rt",
+				"codex_cli_only": true,
+			},
+			want: true,
+		},
+		{
+			name: "openai oauth with mislabeled gemini provider detected by sk key",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"platform":      "gemini",
+				"api_key":       "sk-openai-oauth",
+			},
+			want: true,
+		},
+		{
+			name: "anthropic key not misidentified as openai",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"provider":      "gemini",
+				"api_key":       "sk-ant-oauth",
+			},
+			want: false,
+		},
 	}
 
 	for _, tc := range cases {

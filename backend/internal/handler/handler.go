@@ -41,6 +41,7 @@ type AdminHandlers struct {
 	UITheme                *admin.UIThemeHandler
 	LightBridgeConnect     *admin.LightBridgeConnectHandler
 	AistudioProxy          *admin.AistudioProxyHandler
+	ModelCatalog           *admin.ModelCatalogHandler
 }
 
 // Handlers contains all HTTP handlers
@@ -61,6 +62,7 @@ type Handlers struct {
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
+	ModelCatalog     *ModelCatalogHandler
 	Module           *ModuleHandler
 	UIThemeAsset     *UIThemeAssetHandler
 }

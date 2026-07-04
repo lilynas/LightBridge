@@ -149,3 +149,51 @@ func TestSchedulingQueryPlatformsForMessageRequestIgnoresGroupPlatform(t *testin
 		schedulingQueryPlatformsForRequest(ctx, PlatformOpenAI, false),
 	)
 }
+
+func TestPlatformForRequest_UsesInboundBeforeGroupFallback(t *testing.T) {
+	require.Equal(t,
+		PlatformOpenAI,
+		PlatformForRequest(WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses), PlatformAnthropic),
+	)
+	require.Equal(t,
+		PlatformOpenAI,
+		PlatformForRequest(WithInboundProtocol(context.Background(), CustomProtocolOpenAIChatCompletions), PlatformGemini),
+	)
+	require.Equal(t,
+		PlatformGemini,
+		PlatformForRequest(WithInboundProtocol(context.Background(), CustomProtocolGemini), PlatformAnthropic),
+	)
+	require.Equal(t,
+		PlatformAnthropic,
+		PlatformForRequest(context.Background(), PlatformAnthropic),
+	)
+}
+
+func TestQuotaPlatform_UsesInboundBeforeGroupFallback(t *testing.T) {
+	apiKey := &APIKey{Group: &Group{Platform: PlatformAnthropic}}
+
+	require.Equal(t,
+		PlatformOpenAI,
+		QuotaPlatform(WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses), apiKey),
+	)
+	require.Equal(t,
+		PlatformGemini,
+		QuotaPlatform(WithInboundProtocol(context.Background(), CustomProtocolGemini), apiKey),
+	)
+	require.Equal(t,
+		PlatformAnthropic,
+		QuotaPlatform(context.Background(), apiKey),
+	)
+}
+
+func TestGatewayResolvePlatform_UsesInboundBeforeGroupFallback(t *testing.T) {
+	svc := &GatewayService{}
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+
+	platform, hasForcePlatform, err := svc.resolvePlatform(ctx, nil, &Group{Platform: PlatformAnthropic})
+
+	require.NoError(t, err)
+	require.False(t, hasForcePlatform)
+	require.Equal(t, PlatformOpenAI, platform)
+	require.Equal(t, SchedulerModeSingle, (&SchedulerSnapshotService{}).resolveMode(platform, hasForcePlatform))
+}

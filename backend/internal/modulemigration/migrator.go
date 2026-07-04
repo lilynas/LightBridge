@@ -689,20 +689,44 @@ func isOpenAIAccount(record accountRecord, row sourceRow) bool {
 	if provider == openAIProviderID {
 		return true
 	}
+	// Even when the provider is explicitly set to something else (e.g. "gemini"),
+	// check for OpenAI-specific fields that indicate this is actually an OpenAI
+	// account with a mislabeled provider. This handles the common case where
+	// Sub2API stored OpenAI OAuth accounts with incorrect provider/service values.
 	if explicit {
-		return false
+		return hasOpenAIIndicators(row, record)
 	}
 	if strings.EqualFold(stringFromAny(first(row, "provider", "service")), "openai") {
 		return true
 	}
-	if hasAny(row, "openai_passthrough", "codex_cli_only", "refresh_token", "access_token") {
-		return true
-	}
-	if key := stringFromAny(first(row, "api_key", "key", "sk")); strings.HasPrefix(key, "sk-") {
+	if hasOpenAIIndicators(row, record) {
 		return true
 	}
 	credentialsJSON, _ := json.Marshal(record.Credentials)
 	return strings.Contains(strings.ToLower(string(credentialsJSON)), "openai")
+}
+
+// hasOpenAIIndicators checks for fields that are characteristic of OpenAI accounts,
+// even if the provider is labeled as something else.
+func hasOpenAIIndicators(row sourceRow, record accountRecord) bool {
+	// OpenAI-specific boolean flags
+	if hasAny(row, "openai_passthrough", "codex_cli_only",
+		"openai_oauth_responses_websockets_v2_enabled",
+		"openai_oauth_responses_websockets_v2_mode") {
+		return true
+	}
+	// OpenAI API keys start with "sk-" but NOT "sk-ant-" (Anthropic)
+	if key := stringFromAny(first(row, "api_key", "key", "sk")); strings.HasPrefix(key, "sk-") && !strings.HasPrefix(key, "sk-ant-") {
+		return true
+	}
+	// Check credentials for OpenAI-specific fields
+	if _, ok := record.Credentials["openai_passthrough"]; ok {
+		return true
+	}
+	if _, ok := record.Credentials["codex_cli_only"]; ok {
+		return true
+	}
+	return false
 }
 
 func normalizedProvider(row sourceRow, record accountRecord) (string, bool) {

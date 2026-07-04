@@ -1446,6 +1446,27 @@
                   t('admin.accounts.supportsAllModels')
                 }}</span>
               </p>
+              <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+                <div>
+                  <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+                </div>
+                <button
+                  type="button"
+                  @click="restrictToModelList = !restrictToModelList"
+                  :class="[
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                    restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                      restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                    ]"
+                  />
+                </button>
+              </div>
             </div>
 
             <!-- Mapping Mode -->
@@ -1885,6 +1906,27 @@
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
             </p>
+            <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+              </div>
+              <button
+                type="button"
+                @click="restrictToModelList = !restrictToModelList"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                    restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- Mapping Mode -->
@@ -2138,6 +2180,27 @@
                 t('admin.accounts.supportsAllModels')
               }}</span>
             </p>
+            <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+              </div>
+              <button
+                type="button"
+                @click="restrictToModelList = !restrictToModelList"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                    restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- Mapping Mode -->
@@ -3747,6 +3810,7 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const restrictToModelList = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3912,6 +3976,29 @@ function buildAntigravityExtra(): Record<string, unknown> | undefined {
 
 const buildOpenAICompactModelMapping = () =>
   buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
+
+const buildAdvancedModelMapping = () =>
+  buildModelMappingObject('mapping', [], modelMappings.value)
+
+const normalizedModelList = () => {
+  const seen = new Set<string>()
+  const models: string[] = []
+  for (const raw of allowedModels.value) {
+    const model = raw.trim()
+    const key = model.toLowerCase()
+    if (!model || seen.has(key)) continue
+    seen.add(key)
+    models.push(model)
+  }
+  return models
+}
+
+const buildModelListExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  extra.supported_models = normalizedModelList()
+  extra.restrict_to_model_list = restrictToModelList.value
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
 
 const showMixedChannelWarning = ref(false)
 const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string } | null>(
@@ -4318,6 +4405,7 @@ watch(
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
+    restrictToModelList.value = false
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
@@ -4798,6 +4886,7 @@ const resetForm = () => {
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
+  restrictToModelList.value = false
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -5138,9 +5227,7 @@ const handleSubmit = async () => {
     }
 
     // Model mapping
-    const modelMapping = buildModelMappingObject(
-      modelRestrictionMode.value, allowedModels.value, modelMappings.value
-    )
+    const modelMapping = buildAdvancedModelMapping()
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -5258,7 +5345,7 @@ const handleSubmit = async () => {
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const modelMapping = buildAdvancedModelMapping()
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -5293,7 +5380,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildGeminiExtra(buildAnthropicExtra(buildOpenAIExtra()))
+  const extra = buildModelListExtra(buildGeminiExtra(buildAnthropicExtra(buildOpenAIExtra())))
 
   await doCreateAccount({
     ...form,
@@ -5397,6 +5484,7 @@ const createAccountAndFinish = async (
       delete credentials.compact_model_mapping
     }
   }
+  finalExtra = buildModelListExtra(finalExtra)
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -5441,12 +5529,12 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-    const extra = buildOpenAIExtra(oauthExtra)
+    const extra = buildModelListExtra(buildOpenAIExtra(oauthExtra))
     const shouldCreateOpenAI = form.platform === 'openai'
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
     if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const modelMapping = buildAdvancedModelMapping()
       if (modelMapping) {
         credentials.model_mapping = modelMapping
       }
@@ -5500,7 +5588,7 @@ const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
 const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | null => {
   const credentials: Record<string, unknown> = {}
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const modelMapping = buildAdvancedModelMapping()
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -5543,7 +5631,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
   oauthClient.error.value = ''
 
   try {
-    const extra = buildOpenAIExtra()
+    const extra = buildModelListExtra(buildOpenAIExtra())
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
       name: form.name,
@@ -5647,11 +5735,11 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
           credentials.client_id = clientId
         }
         const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
-        const extra = buildOpenAIExtra(oauthExtra)
+        const extra = buildModelListExtra(buildOpenAIExtra(oauthExtra))
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+          const modelMapping = buildAdvancedModelMapping()
           if (modelMapping) {
             credentials.model_mapping = modelMapping
           }
@@ -6092,13 +6180,14 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
+        const finalExtra = buildModelListExtra(extra)
         await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: finalExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

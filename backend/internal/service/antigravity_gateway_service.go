@@ -958,9 +958,9 @@ func (s *AntigravityGatewayService) applyErrorPolicy(p antigravityRetryLoopParam
 	return false, statusCode, nil
 }
 
-// mapAntigravityModel 获取映射后的模型名
-// 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底（DefaultAntigravityModelMapping）
-// 注意：返回空字符串表示模型不被支持，调度时会过滤掉该账号
+// mapAntigravityModel 获取映射后的模型名。
+// 映射只负责高级改名；未命中映射时默认透传请求模型。
+// 仅当账号开启 restrict_to_model_list 且模型不在账号模型列表中时返回空字符串。
 func mapAntigravityModel(account *Account, requestedModel string) string {
 	if account == nil {
 		return ""
@@ -989,7 +989,7 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 		return requestedModel
 	}
 
-	// 未在映射表中配置的模型，返回空字符串（不支持）
+	// 仅在账号开启“仅允许模型列表中的请求”时，未列出的模型才会被限制。
 	return ""
 }
 
@@ -1044,7 +1044,7 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	// 模型映射
 	mappedModel := s.getMappedModel(account, modelID)
 	if mappedModel == "" {
-		return nil, fmt.Errorf("model %s not in whitelist", modelID)
+		return nil, fmt.Errorf("model %s not in model list", modelID)
 	}
 
 	// 构建请求体
@@ -1355,7 +1355,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	mappedModel := s.getMappedModel(account, claudeReq.Model)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
-		return nil, s.writeClaudeError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in whitelist", claudeReq.Model))
+		return nil, s.writeClaudeError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in model list", claudeReq.Model))
 	}
 	// 应用 thinking 模式自动后缀：如果 thinking 开启且目标是 claude-sonnet-4-5，自动改为 thinking 版本
 	thinkingEnabled := claudeReq.Thinking != nil && (claudeReq.Thinking.Type == "enabled" || claudeReq.Thinking.Type == "adaptive")
@@ -2107,7 +2107,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	mappedModel := s.getMappedModel(account, originalModel)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
-		return nil, s.writeGoogleError(c, http.StatusForbidden, fmt.Sprintf("model %s not in whitelist", originalModel))
+		return nil, s.writeGoogleError(c, http.StatusForbidden, fmt.Sprintf("model %s not in model list", originalModel))
 	}
 	billingModel := mappedModel
 

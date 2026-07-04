@@ -88,7 +88,7 @@ describe('BulkEditAccountModal', () => {
     } as any)
   })
 
-  it('antigravity 白名单包含 Gemini 图片模型且过滤掉普通 GPT 模型', async () => {
+  it('antigravity 模型列表包含 Gemini 图片模型且过滤掉普通 GPT 模型', async () => {
     const wrapper = mountModal()
     const selector = wrapper.findComponent(ModelWhitelistSelector)
     expect(selector.exists()).toBe(true)
@@ -112,7 +112,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.text()).not.toContain('GPT-5.3 Codex Spark')
   })
 
-  it('仅勾选模型限制且白名单留空时，应提交空 model_mapping 以支持所有模型', async () => {
+  it('仅勾选模型列表且列表留空时，应提交空模型列表并默认不限制未知模型', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['anthropic'],
       selectedTypes: ['apikey']
@@ -126,6 +126,10 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       credentials: {
         model_mapping: {}
+      },
+      extra: {
+        supported_models: [],
+        restrict_to_model_list: false
       }
     })
   })

@@ -1425,10 +1425,9 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		}
 		groupID = resolvedGroupID
 		ctx = s.withGroupContext(ctx, group)
-		platform = group.Platform
+		platform = PlatformForRequest(ctx, group.Platform)
 	} else {
-		// 无分组时只使用原生 anthropic 平台
-		platform = PlatformAnthropic
+		platform = PlatformForRequest(ctx, PlatformAnthropic)
 	}
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
@@ -2264,16 +2263,16 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 		return forcePlatform, true, nil
 	}
 	if group != nil {
-		return group.Platform, false, nil
+		return PlatformForRequest(ctx, group.Platform), false, nil
 	}
 	if groupID != nil {
 		group, err := s.resolveGroupByID(ctx, *groupID)
 		if err != nil {
 			return "", false, err
 		}
-		return group.Platform, false, nil
+		return PlatformForRequest(ctx, group.Platform), false, nil
 	}
-	return PlatformAnthropic, false, nil
+	return PlatformForRequest(ctx, PlatformAnthropic), false, nil
 }
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
@@ -8188,17 +8187,14 @@ func PlatformFromAPIKey(apiKey *APIKey) string {
 }
 
 // QuotaPlatform 返回 user×platform 配额计量使用的平台标识。
-// 强制平台路由（如 /antigravity）优先按 ctx 中的 ForcePlatform 计量，否则回退到
-// APIKey 关联 Group 的平台。
+// 强制平台路由（如 /antigravity）优先按 ctx 中的 ForcePlatform 计量；
+// 普通网关请求按入站协议计量，最后才回退到 APIKey 关联 Group 的历史平台字段。
 //
 // 注意：必须用带 ForcePlatform 的请求 context 调用（如 handler 的 c.Request.Context()）。
 // 后扣运行在 worker 池的 background ctx 上没有 ForcePlatform，因此后扣平台由 handler
 // 预先算定、经 RecordUsageInput.QuotaPlatform 传入，不要在后扣链路用 worker ctx 调用本函数。
 func QuotaPlatform(ctx context.Context, apiKey *APIKey) string {
-	if fp, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && fp != "" {
-		return fp
-	}
-	return PlatformFromAPIKey(apiKey)
+	return PlatformForRequest(ctx, PlatformFromAPIKey(apiKey))
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
@@ -8807,7 +8803,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 缺省（未设置）时回退到分组平台，保持对其它调用方的兼容。
 	quotaPlatform := input.QuotaPlatform
 	if quotaPlatform == "" {
-		quotaPlatform = PlatformFromAPIKey(apiKey)
+		quotaPlatform = QuotaPlatform(ctx, apiKey)
 	}
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
@@ -9091,15 +9087,7 @@ func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 // 供调度阶段预检查（requested / channel_mapped）。
 // upstream 需逐账号检查，此处返回 false。
 func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	if groupID == nil || s.channelService == nil || requestedModel == "" {
-		return false
-	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
-	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
-	if billingModel == "" {
-		return false
-	}
-	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+	return false
 }
 
 // billingModelForRestriction 根据计费基准确定限制检查使用的模型。
@@ -9120,14 +9108,7 @@ func billingModelForRestriction(source, requestedModel, channelMappedModel strin
 // isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
 // 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
 func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
-	if s.channelService == nil {
-		return false
-	}
-	upstreamModel := resolveAccountUpstreamModel(account, requestedModel)
-	if upstreamModel == "" {
-		return false
-	}
-	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+	return false
 }
 
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
@@ -9140,18 +9121,7 @@ func resolveAccountUpstreamModel(account *Account, requestedModel string) string
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
 func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	if groupID == nil || s.channelService == nil {
-		return false
-	}
-	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
-	if err != nil {
-		slog.Warn("failed to check channel upstream restriction", "group_id", *groupID, "error", err)
-		return false
-	}
-	if ch == nil || !ch.RestrictModels {
-		return false
-	}
-	return ch.BillingModelSource == BillingModelSourceUpstream
+	return false
 }
 
 // isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。
@@ -9783,16 +9753,28 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts = filtered
 	}
 
-	// Collect unique models from all accounts
+	// Collect unique models from all accounts. The model catalog cache is the
+	// primary source; model_mapping remains only a legacy fallback for entries
+	// not yet migrated into supported_models.
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
+		supported := acc.SupportedModelIDs()
+		if len(supported) > 0 {
+			hasAnyMapping = true
+			for _, model := range supported {
+				modelSet[model] = struct{}{}
+			}
+			continue
+		}
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
 			hasAnyMapping = true
-			for model := range mapping {
-				modelSet[model] = struct{}{}
+			for model, mapped := range mapping {
+				if model == mapped && !strings.Contains(model, "*") {
+					modelSet[model] = struct{}{}
+				}
 			}
 		}
 	}

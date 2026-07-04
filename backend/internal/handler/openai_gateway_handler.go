@@ -55,11 +55,17 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if parent == nil {
 		return base
 	}
-	if clientRequestID, _ := parent.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
-		base = context.WithValue(base, ctxkey.ClientRequestID, strings.TrimSpace(clientRequestID))
-	}
-	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
-		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
+	base = copyTrimmedStringContextValue(parent, base, ctxkey.ClientRequestID)
+	base = copyTrimmedStringContextValue(parent, base, ctxkey.RequestID)
+	base = copyTrimmedStringContextValue(parent, base, ctxkey.ForcePlatform)
+	base = copyTrimmedStringContextValue(parent, base, ctxkey.InboundProtocol)
+	base = copyTrimmedStringContextValue(parent, base, ctxkey.RequiredProtocol)
+	return base
+}
+
+func copyTrimmedStringContextValue(parent context.Context, base context.Context, key ctxkey.Key) context.Context {
+	if value, _ := parent.Value(key).(string); strings.TrimSpace(value) != "" {
+		return context.WithValue(base, key, strings.TrimSpace(value))
 	}
 	return base
 }

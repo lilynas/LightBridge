@@ -44,6 +44,7 @@ func ProvideAdminHandlers(
 	uiThemeHandler *admin.UIThemeHandler,
 	lightBridgeConnectHandler *admin.LightBridgeConnectHandler,
 	aistudioProxyHandler *admin.AistudioProxyHandler,
+	modelCatalogHandler *admin.ModelCatalogHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
@@ -81,6 +82,7 @@ func ProvideAdminHandlers(
 		UITheme:                uiThemeHandler,
 		LightBridgeConnect:     lightBridgeConnectHandler,
 		AistudioProxy:          aistudioProxyHandler,
+		ModelCatalog:           modelCatalogHandler,
 	}
 }
 
@@ -121,6 +123,7 @@ func ProvideHandlers(
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
+	modelCatalogHandler *ModelCatalogHandler,
 	moduleHandler *ModuleHandler,
 	uiThemeAssetHandler *UIThemeAssetHandler,
 	_ *service.IdempotencyCoordinator,
@@ -143,6 +146,7 @@ func ProvideHandlers(
 		Payment:          paymentHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
+		ModelCatalog:     modelCatalogHandler,
 		Module:           moduleHandler,
 		UIThemeAsset:     uiThemeAssetHandler,
 	}
@@ -166,6 +170,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
+	NewModelCatalogHandler,
 	NewModuleHandler,
 	NewUIThemeAssetHandler,
 
@@ -205,6 +210,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewModuleHandler,
 	admin.NewUIThemeHandler,
 	admin.NewLightBridgeConnectHandler,
+	admin.NewModelCatalogHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

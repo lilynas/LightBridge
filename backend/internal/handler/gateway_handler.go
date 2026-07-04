@@ -301,14 +301,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
 	)
 
-	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
-	platform := ""
-	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
-		platform = forcePlatform
-	} else if apiKey.Group != nil {
-		platform = apiKey.Group.Platform
-	}
 	setCustomRequiredProtocol(c, service.CustomProtocolAnthropicMessages)
+	platform := service.PlatformForRequest(c.Request.Context(), "")
 	sessionKey := sessionHash
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
@@ -866,7 +860,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
+						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.QuotaPlatform(c.Request.Context(), fallbackAPIKey)); err != nil {
 							status, code, message, retryAfter := billingErrorDetails(err)
 							if retryAfter > 0 {
 								c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -1037,9 +1031,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		groupID = &apiKey.Group.ID
 		platform = apiKey.Group.Platform
 	}
-	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
-		platform = forcedPlatform
-	}
+	platform = service.PlatformForRequest(c.Request.Context(), platform)
 
 	// Get available models from all schedulable accounts in the selected group.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)

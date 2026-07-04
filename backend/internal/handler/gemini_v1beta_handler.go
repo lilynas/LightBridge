@@ -308,10 +308,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				// 生成前缀 hash
 				userAgent := c.GetHeader("User-Agent")
 				clientIP := ip.GetClientIP(c)
-				platform := ""
-				if apiKey.Group != nil {
-					platform = apiKey.Group.Platform
-				}
+				platform := service.PlatformForRequest(c.Request.Context(), "")
 				geminiPrefixHash = service.GenerateGeminiPrefixHash(
 					authSubject.UserID,
 					apiKey.ID,

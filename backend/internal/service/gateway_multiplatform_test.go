@@ -274,6 +274,39 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
+type bucketAwareSnapshotCacheForPlatform struct {
+	SchedulerCache
+	snapshots    map[SchedulerBucket][]*Account
+	accountsByID map[int64]*Account
+	seenBuckets  []SchedulerBucket
+}
+
+func (c *bucketAwareSnapshotCacheForPlatform) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
+	c.seenBuckets = append(c.seenBuckets, bucket)
+	accounts, ok := c.snapshots[bucket]
+	if !ok {
+		return nil, false, nil
+	}
+	out := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		cloned := *account
+		out = append(out, &cloned)
+	}
+	return out, true, nil
+}
+
+func (c *bucketAwareSnapshotCacheForPlatform) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
+	account := c.accountsByID[accountID]
+	if account == nil {
+		return nil, nil
+	}
+	cloned := *account
+	return &cloned, nil
+}
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int
@@ -499,6 +532,91 @@ func TestGatewayService_SelectAccountForModelWithPlatform_OpenAIGroupSelectsCust
 	require.NotNil(t, acc)
 	require.Equal(t, int64(9), acc.ID)
 	require.Equal(t, PlatformCustom, acc.Platform)
+}
+
+func TestGatewayService_SelectAccountForModelWithExclusions_InboundProtocolOverridesGroupPlatform(t *testing.T) {
+	groupID := int64(13)
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:          13,
+				Platform:    PlatformCustom,
+				Type:        AccountTypeAPIKey,
+				Priority:    1,
+				Status:      StatusActive,
+				Schedulable: true,
+				Extra:       map[string]any{"protocol": CustomProtocolOpenAIResponses},
+				AccountGroups: []AccountGroup{
+					{GroupID: groupID},
+				},
+				GroupIDs: []int64{groupID},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: {ID: groupID, Name: "mimo", Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+		}},
+		cache: &mockGatewayCacheForPlatform{},
+		cfg:   testConfig(),
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "mimo-v2.5-pro", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(13), acc.ID)
+	require.Equal(t, PlatformCustom, acc.Platform)
+}
+
+func TestGatewayService_SelectAccountForModelWithExclusions_InboundProtocolOverridesGroupPlatformForSnapshot(t *testing.T) {
+	groupID := int64(13)
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+	account := &Account{
+		ID:          13,
+		Platform:    PlatformCustom,
+		Type:        AccountTypeAPIKey,
+		Priority:    1,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{"protocol": CustomProtocolOpenAIResponses},
+		AccountGroups: []AccountGroup{
+			{GroupID: groupID},
+		},
+		GroupIDs: []int64{groupID},
+	}
+	cache := &bucketAwareSnapshotCacheForPlatform{
+		snapshots: map[SchedulerBucket][]*Account{
+			{GroupID: groupID, Platform: SchedulerPlatformGroupAny, Mode: SchedulerModeSingle}: {account},
+		},
+		accountsByID: map[int64]*Account{account.ID: account},
+	}
+	snapshot := &SchedulerSnapshotService{
+		cache: cache,
+		cfg:   testConfig(),
+	}
+	svc := &GatewayService{
+		schedulerSnapshot: snapshot,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: {ID: groupID, Name: "mimo", Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true},
+		}},
+		cache: &mockGatewayCacheForPlatform{},
+		cfg:   testConfig(),
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "", nil)
+	require.NoError(t, err)
+	require.NotNil(t, acc)
+	require.Equal(t, int64(13), acc.ID)
+	require.NotEmpty(t, cache.seenBuckets)
+	require.Equal(t, SchedulerBucket{GroupID: groupID, Platform: SchedulerPlatformGroupAny, Mode: SchedulerModeSingle}, cache.seenBuckets[0])
 }
 
 func TestGatewayService_SelectAccountForModelWithPlatform_CustomAccountsAcrossGroupPlatforms(t *testing.T) {

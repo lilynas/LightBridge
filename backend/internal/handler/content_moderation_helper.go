@@ -84,7 +84,7 @@ func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject
 		RequestID: contentModerationRequestID(c.Request.Context()),
 		UserID:    subject.UserID,
 		Endpoint:  GetInboundEndpoint(c),
-		Provider:  contentModerationProvider(apiKey),
+		Provider:  service.PlatformForRequest(c.Request.Context(), contentModerationProvider(apiKey)),
 		Model:     strings.TrimSpace(model),
 		Protocol:  protocol,
 		Body:      body,

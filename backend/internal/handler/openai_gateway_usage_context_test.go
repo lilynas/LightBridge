@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/ctxkey"
+	"github.com/WilliamWang1721/LightBridge/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,4 +39,31 @@ func TestOpenAISubmitUsageRecordTaskCopiesRequestContext(t *testing.T) {
 
 	require.Equal(t, "openai-client-request-123", gotClientRequestID)
 	require.Equal(t, "openai-request-456", gotRequestID)
+}
+
+func TestSubmitUsageRecordTaskCopiesPlatformContext(t *testing.T) {
+	parent := service.WithInboundProtocol(context.Background(), service.CustomProtocolOpenAIResponses)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic}}
+
+	var gotPlatform string
+	h := &GatewayHandler{}
+	h.submitUsageRecordTask(parent, func(ctx context.Context) {
+		gotPlatform = service.QuotaPlatform(ctx, apiKey)
+	})
+
+	require.Equal(t, service.PlatformOpenAI, gotPlatform)
+}
+
+func TestSubmitUsageRecordTaskCopiesForcePlatformContext(t *testing.T) {
+	parent := service.WithInboundProtocol(context.Background(), service.CustomProtocolOpenAIResponses)
+	parent = context.WithValue(parent, ctxkey.ForcePlatform, service.PlatformAntigravity)
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic}}
+
+	var gotPlatform string
+	h := &OpenAIGatewayHandler{}
+	h.submitUsageRecordTask(parent, func(ctx context.Context) {
+		gotPlatform = service.QuotaPlatform(ctx, apiKey)
+	})
+
+	require.Equal(t, service.PlatformAntigravity, gotPlatform)
 }

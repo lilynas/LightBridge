@@ -78,6 +78,12 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 用户可见模型目录（非管理员接口，隐藏账号/渠道来源）
+		modelCatalog := authenticated.Group("/model-catalog")
+		{
+			modelCatalog.GET("", h.ModelCatalog.List)
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{

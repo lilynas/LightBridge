@@ -484,6 +484,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOutboundRuntime,
 	NewGroupService,
 	NewAccountService,
+	NewModelCatalogService,
 	ProvideAistudioProxyManager,
 	NewProxyService,
 	ProvideProxyModuleService,

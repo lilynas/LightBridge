@@ -479,41 +479,15 @@ func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.C
 }
 
 func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	if groupID == nil || s.channelService == nil || requestedModel == "" {
-		return false
-	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
-	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
-	if billingModel == "" {
-		return false
-	}
-	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+	return false
 }
 
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string, requireCompact bool) bool {
-	if s.channelService == nil {
-		return false
-	}
-	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
-	if upstreamModel == "" {
-		return false
-	}
-	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+	return false
 }
 
 func (s *OpenAIGatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	if groupID == nil || s.channelService == nil {
-		return false
-	}
-	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
-	if err != nil {
-		slog.Warn("failed to check openai channel upstream restriction", "group_id", *groupID, "error", err)
-		return false
-	}
-	if ch == nil || !ch.RestrictModels {
-		return false
-	}
-	return ch.BillingModelSource == BillingModelSourceUpstream
+	return false
 }
 
 // ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。
@@ -5929,7 +5903,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
-			Platform:              PlatformFromAPIKey(apiKey),
+			Platform:              QuotaPlatform(ctx, apiKey),
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

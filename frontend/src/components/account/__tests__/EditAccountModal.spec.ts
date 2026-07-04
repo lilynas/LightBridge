@@ -189,7 +189,7 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
-  it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
+  it('reopening the same account rehydrates the OpenAI model list from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -211,12 +211,12 @@ describe('EditAccountModal', () => {
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      'gpt-5.2': 'gpt-5.2'
-    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('model_mapping')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.supported_models).toEqual(['gpt-5.2'])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.restrict_to_model_list).toBe(false)
   })
 
-  it('preserves model mappings when editing the whitelist', async () => {
+  it('preserves advanced model mappings when editing the model list', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = {
       'gpt-5.2': 'gpt-5.2',
@@ -236,9 +236,12 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11',
       'gpt-latest': 'gpt-5.2'
     })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.supported_models).toEqual([
+      'gpt-5.2-2025-12-11'
+    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.restrict_to_model_list).toBe(false)
   })
 
   it('submits OpenAI compact mode and compact-only model mapping', async () => {

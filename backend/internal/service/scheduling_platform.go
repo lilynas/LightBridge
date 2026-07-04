@@ -69,6 +69,32 @@ func schedulingQueryPlatformsForRequest(ctx context.Context, platform string, us
 	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformCustom}
 }
 
+func PlatformForInboundProtocol(protocol string) string {
+	switch protocol {
+	case CustomProtocolAnthropicMessages:
+		return PlatformAnthropic
+	case CustomProtocolOpenAIResponses, CustomProtocolOpenAIChatCompletions, CustomProtocolOpenAIEmbeddings:
+		return PlatformOpenAI
+	case CustomProtocolGemini:
+		return PlatformGemini
+	default:
+		return ""
+	}
+}
+
+func PlatformForRequest(ctx context.Context, fallback string) string {
+	if ctx == nil {
+		return fallback
+	}
+	if forcePlatform, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && forcePlatform != "" {
+		return forcePlatform
+	}
+	if platform := PlatformForInboundProtocol(InboundProtocolFromContext(ctx)); platform != "" {
+		return platform
+	}
+	return fallback
+}
+
 // accountServesSchedulingPlatform 判断账号是否可进入给定调度目标平台（别名）的**候选集**。
 //
 // 这是「候选级」判定（与入站 endpoint 无关）。Custom 账号的 protocol 匹配在请求级由

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,6 +12,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestResolveOpsPlatform_UsesInboundProtocolBeforeGroupPlatform(t *testing.T) {
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic}}
+	ctx := service.WithInboundProtocol(context.Background(), service.CustomProtocolOpenAIResponses)
+
+	require.Equal(t, service.PlatformOpenAI, resolveOpsPlatform(ctx, apiKey, ""))
+}
+
+func TestResolveOpsPlatform_FallsBackToPathBeforeGroupPlatform(t *testing.T) {
+	apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformAnthropic}}
+
+	require.Equal(t, service.PlatformOpenAI, resolveOpsPlatform(context.Background(), apiKey, service.PlatformOpenAI))
+}
 
 func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	t.Helper()

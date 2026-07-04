@@ -45,6 +45,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	modelCatalogService     *service.ModelCatalogService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -61,7 +62,12 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	modelCatalogServices ...*service.ModelCatalogService,
 ) *AccountHandler {
+	var modelCatalogService *service.ModelCatalogService
+	if len(modelCatalogServices) > 0 {
+		modelCatalogService = modelCatalogServices[0]
+	}
 	return &AccountHandler{
 		adminService:            adminService,
 		openaiOAuthService:      openaiOAuthService,
@@ -75,6 +81,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		modelCatalogService:     modelCatalogService,
 	}
 }
 
@@ -579,6 +586,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// OpenAI APIKey 账号创建后异步探测上游 /v1/responses 能力。
 	// 探测失败不影响账号创建响应。
 	h.scheduleOpenAIResponsesProbe(createdAccount)
+	h.scheduleOAuthModelSync(createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -669,6 +677,36 @@ func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) 
 			}
 		}()
 		h.accountTestService.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), accountID)
+	}()
+}
+
+// scheduleOAuthModelSync best-effort syncs the live upstream model list after
+// OAuth credentials are available. Failure is stored on the catalog sync state
+// and never blocks the account workflow.
+func (h *AccountHandler) scheduleOAuthModelSync(account *service.Account) {
+	if account == nil || !account.IsOAuth() || h.accountTestService == nil || h.modelCatalogService == nil {
+		return
+	}
+	accountID := account.ID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("oauth_model_catalog_sync_panic", "account_id", accountID, "recover", r)
+			}
+		}()
+		ctx := context.Background()
+		latest, err := h.adminService.GetAccount(ctx, accountID)
+		if err != nil {
+			return
+		}
+		models, err := h.accountTestService.FetchUpstreamSupportedModels(ctx, latest)
+		if err != nil {
+			h.modelCatalogService.RecordSyncFailure(ctx, latest, service.ModelCatalogSourceUpstream, err)
+			return
+		}
+		if _, _, err := h.modelCatalogService.ReplaceAccountModelsFromSync(ctx, latest, models, service.ModelCatalogSourceUpstream); err != nil {
+			slog.Warn("oauth_model_catalog_sync_save_failed", "account_id", accountID, "err", err)
+		}
 	}()
 }
 
@@ -1115,6 +1153,7 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		}
 	}
 
+	h.scheduleOAuthModelSync(updatedAccount)
 	response.Success(c, h.buildAccountResponseWithRuntime(ctx, updatedAccount))
 }
 
@@ -1866,6 +1905,13 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if h.modelCatalogService != nil {
+		if modelIDs, _, catalogErr := h.modelCatalogService.ListAccountModels(c.Request.Context(), account); catalogErr == nil && len(modelIDs) > 0 {
+			response.Success(c, genericModelsFromIDs(modelIDs))
+			return
+		}
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写：本地的默认模型列表对透传账号没有意义
@@ -2018,6 +2064,9 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
 	if err != nil {
+		if h.modelCatalogService != nil {
+			h.modelCatalogService.RecordSyncFailure(c.Request.Context(), account, service.ModelCatalogSourceUpstream, err)
+		}
 		var syncErr *service.UpstreamModelSyncError
 		if errors.As(err, &syncErr) {
 			switch syncErr.Kind {
@@ -2035,7 +2084,40 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"models": models})
+	var syncState *service.AccountModelSyncState
+	if h.modelCatalogService != nil {
+		state, normalized, saveErr := h.modelCatalogService.ReplaceAccountModelsFromSync(
+			c.Request.Context(),
+			account,
+			models,
+			service.ModelCatalogSourceUpstream,
+		)
+		if saveErr != nil {
+			response.ErrorFrom(c, saveErr)
+			return
+		}
+		syncState = state
+		models = normalized
+	}
+
+	response.Success(c, gin.H{"models": models, "sync_state": syncState})
+}
+
+func genericModelsFromIDs(modelIDs []string) []gin.H {
+	models := make([]gin.H, 0, len(modelIDs))
+	for _, id := range modelIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		models = append(models, gin.H{
+			"id":           id,
+			"type":         "model",
+			"object":       "model",
+			"display_name": id,
+		})
+	}
+	return models
 }
 
 // upstreamModelsOrNil 尝试从 OpenAI 透传账号的上游实时拉取真实支持的模型列表，

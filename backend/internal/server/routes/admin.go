@@ -93,6 +93,9 @@ func RegisterAdminRoutes(
 		// 渠道管理
 		registerChannelRoutes(admin, h)
 
+		// 模型目录 / 模型广场
+		registerModelCatalogRoutes(admin, h)
+
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
 
@@ -108,6 +111,13 @@ func RegisterAdminRoutes(
 		registerAdminModuleRoutes(admin, h)
 
 		registerUIThemeRoutes(admin, h)
+	}
+}
+
+func registerModelCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	modelCatalog := admin.Group("/model-catalog")
+	{
+		modelCatalog.GET("", h.Admin.ModelCatalog.List)
 	}
 }
 

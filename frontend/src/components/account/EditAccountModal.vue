@@ -225,6 +225,27 @@
                   t('admin.accounts.supportsAllModels')
                 }}</span>
               </p>
+              <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+                <div>
+                  <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+                </div>
+                <button
+                  type="button"
+                  @click="restrictToModelList = !restrictToModelList"
+                  :class="[
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                    restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                      restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                    ]"
+                  />
+                </button>
+              </div>
             </div>
 
             <!-- Mapping Mode -->
@@ -552,6 +573,27 @@
                 t('admin.accounts.supportsAllModels')
               }}</span>
             </p>
+            <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+              </div>
+              <button
+                type="button"
+                @click="restrictToModelList = !restrictToModelList"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                    restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- Mapping Mode -->
@@ -740,6 +782,27 @@
                 t('admin.accounts.supportsAllModels')
               }}</span>
             </p>
+            <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+              </div>
+              <button
+                type="button"
+                @click="restrictToModelList = !restrictToModelList"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                    restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- Mapping Mode -->
@@ -960,6 +1023,27 @@
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
             </p>
+            <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+              </div>
+              <button
+                type="button"
+                @click="restrictToModelList = !restrictToModelList"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                  restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                    restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- Mapping Mode -->
@@ -2566,6 +2650,7 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const restrictToModelList = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3009,10 +3094,22 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
-const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
+const stringArrayFromUnknown = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+}
+
+const loadModelRestrictionFromMapping = (
+  rawMapping?: Record<string, unknown>,
+  extra?: Record<string, unknown>
+) => {
   const parsed = splitModelMappingObject(rawMapping)
-  allowedModels.value = parsed.allowedModels
+  const listedModels = stringArrayFromUnknown(extra?.supported_models)
+  allowedModels.value = listedModels.length > 0 ? listedModels : parsed.allowedModels
   modelMappings.value = parsed.modelMappings
+  restrictToModelList.value = extra?.restrict_to_model_list === true
   modelRestrictionMode.value =
     parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
       ? 'mapping'
@@ -3020,7 +3117,31 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 }
 
 const buildModelRestrictionMapping = () =>
-  buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+  buildModelMappingObject('mapping', [], modelMappings.value)
+
+const normalizedModelList = () => {
+  const seen = new Set<string>()
+  const models: string[] = []
+  for (const raw of allowedModels.value) {
+    const model = raw.trim()
+    const key = model.toLowerCase()
+    if (!model || seen.has(key)) continue
+    seen.add(key)
+    models.push(model)
+  }
+  return models
+}
+
+const applyModelListExtra = (payload: Record<string, unknown>) => {
+  const currentExtra = (payload.extra as Record<string, unknown>) ||
+    (props.account?.extra as Record<string, unknown>) ||
+    {}
+  payload.extra = {
+    ...currentExtra,
+    supported_models: normalizedModelList(),
+    restrict_to_model_list: restrictToModelList.value
+  }
+}
 
 const syncFormFromAccount = (newAccount: Account | null) => {
   if (!newAccount) {
@@ -3225,7 +3346,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(
+      credentials.model_mapping as Record<string, unknown> | undefined,
+      newAccount.extra as Record<string, unknown> | undefined
+    )
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -3271,7 +3395,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(
+      bedrockCreds.model_mapping as Record<string, unknown> | undefined,
+      newAccount.extra as Record<string, unknown> | undefined
+    )
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
@@ -3282,7 +3409,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
 
     // Load model mappings for service_account
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(
+      credentials.model_mapping as Record<string, unknown> | undefined,
+      newAccount.extra as Record<string, unknown> | undefined
+    )
   } else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -3295,11 +3425,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI OAuth accounts
     if (newAccount.platform === 'openai' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      loadModelRestrictionFromMapping(
+        oauthCredentials.model_mapping as Record<string, unknown> | undefined,
+        newAccount.extra as Record<string, unknown> | undefined
+      )
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
       allowedModels.value = []
+      restrictToModelList.value = false
     }
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
@@ -4358,6 +4492,8 @@ const handleSubmit = async () => {
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
     }
+
+    applyModelListExtra(updatePayload)
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

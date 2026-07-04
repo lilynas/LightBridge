@@ -375,6 +375,7 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    modelCatalog: '模型目录',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     modules: '模块市场',
@@ -1076,6 +1077,35 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
+    }
+  },
+
+  modelCatalog: {
+    title: '模型目录',
+    description: '查看当前分组和账号目录中可用的模型、费用与使用方式',
+    searchPlaceholder: '搜索模型、分组或来源...',
+    empty: '暂无模型目录，请先在账号中拉取上游模型或维护模型列表',
+    modelCount: '{count} 个模型',
+    sourceCount: '{count} 个来源',
+    sourceDetails: '来源明细',
+    unknownAccount: '未知账号',
+    noGroups: '未绑定分组',
+    noPrice: '未配置价格',
+    priceTokenRange: '输入 {input} / 输出 {output}',
+    priceRequestRange: '每次 {price}',
+    usageUnknown: '未标注',
+    views: {
+      merged: '合并',
+      by_group: '按分组',
+      by_channel: '按渠道',
+      by_account: '按账号'
+    },
+    usageModes: {
+      chat: '对话',
+      responses: 'Responses',
+      embeddings: '向量',
+      image: '图片',
+      audio: '音频'
     }
   },
 
@@ -2321,7 +2351,7 @@ export default {
       },
       modelsList: {
         title: '自定义 /v1/models 模型列表',
-        hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
+        hint: '仅影响 /v1/models 展示结果，不影响模型请求调用和账号调度。',
         loading: '正在加载模型列表...',
         empty: '暂无可展示模型'
       },
@@ -3719,7 +3749,7 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
-        modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
+        modelRestrictionDisabledByPassthrough: '已开启自动透传：模型列表限制和模型映射不会生效。',
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -3733,12 +3763,14 @@ export default {
         webSearchDisabled: '关闭',
       },
       modelRestriction: '模型限制（可选）',
-      modelWhitelist: '模型白名单',
+      modelWhitelist: '模型列表',
       modelMapping: '模型映射',
-      selectAllowedModels: '选择允许的模型。留空则支持所有模型。',
+      selectAllowedModels: '维护该账号的模型列表。默认不限制未知模型请求。',
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
       selectedModels: '已选择 {count} 个模型',
-      supportsAllModels: '（支持所有模型）',
+      supportsAllModels: '（列表为空，未知模型仍会透传）',
+      restrictToModelList: '仅允许模型列表中的请求',
+      restrictToModelListHint: '关闭时，模型不在列表中也会继续请求上游；开启后仅该账号会跳过未知模型。',
       requestModel: '请求模型',
       actualModel: '实际模型',
       addMapping: '添加映射',
@@ -3748,10 +3780,10 @@ export default {
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
       fillRelatedModels: '同步最新支持模型',
-      syncUpstreamModels: '同步上游支持的模型',
+      syncUpstreamModels: '拉取上游模型',
       syncUpstreamModelsLoading: '同步上游中...',
       syncUpstreamModelsSuccess: '已从上游同步 {count} 个新模型（上游共 {total} 个）',
-      syncUpstreamModelsNoChanges: '上游 {count} 个模型均已在白名单中',
+      syncUpstreamModelsNoChanges: '上游 {count} 个模型均已在模型列表中',
       syncUpstreamModelsEmpty: '上游没有返回可同步的模型',
       syncUpstreamModelsFailed: '同步上游模型失败',
       syncUpstreamModelsError: '同步上游模型失败：{message}',
@@ -5467,7 +5499,7 @@ export default {
           unknown: '未知原因'
         },
         rootCauseDesc: {
-          no_available_account: '调度器没有选出可用账号。对 Custom provider 来说，常见原因是账号未绑定到目标分组、模型白名单不匹配、账号被禁用/限流/临时不可调度，或协议配置与请求入口不匹配。',
+          no_available_account: '调度器没有选出可用账号。对 Custom provider 来说，常见原因是账号未绑定到目标分组、模型列表限制不匹配、账号被禁用/限流/临时不可调度，或协议配置与请求入口不匹配。',
           auth_forbidden: '请求在认证、API Key、用户权限、分组权限或订阅余额检查阶段被拒绝。',
           client_request: '请求参数、模型、端点或 payload 不符合当前网关和渠道配置。',
           provider_upstream: '已选中账号并进入 Provider，上游返回了错误或 Provider 适配层返回失败。',
@@ -5523,7 +5555,7 @@ export default {
         suggestion: {
           customCheckAccountGroup: '确认 Custom 账号已绑定到本次请求命中的分组，或该分组允许使用该账号。',
           customCheckProtocol: '确认 Custom 账号协议与请求入口一致，例如 OpenAI Chat、Responses、Anthropic Messages 或 Gemini。',
-          customCheckModelScope: '检查 Custom 账号模型白名单、渠道定价模型范围和请求模型是否一致。',
+          customCheckModelScope: '检查 Custom 账号模型列表、渠道定价模型范围和请求模型是否一致。',
           customCheckAccountAvailability: '检查账号状态是否为正常，是否存在限流、临时不可调度、过期或手动禁用。',
           customNoUpstreamAttempt: '当前没有关联上游尝试时，优先排查调度条件，而不是上游 Base URL 或 API Key。',
           checkAccountGroup: '确认账号所在分组、用户允许分组和渠道分组过滤配置。',
@@ -6928,13 +6960,13 @@ export default {
         errorMessageHint: '留空则使用默认错误消息',
         saved: 'Beta 策略设置保存成功',
         saveFailed: '保存 Beta 策略设置失败',
-        modelWhitelist: '模型白名单',
+        modelWhitelist: '模型范围',
         modelWhitelistHint: '留空则对所有模型生效。支持精确匹配和通配符前缀（如 claude-opus-*）',
         modelPatternPlaceholder: '例如: claude-opus-* 或 claude-opus-4-6',
         addModelPattern: '添加模型规则',
         removePattern: '移除',
         fallbackAction: '未匹配模型处理方式',
-        fallbackActionHint: '当请求模型不在白名单中时的处理方式',
+        fallbackActionHint: '当请求模型不在模型范围中时的处理方式',
         fallbackErrorMessagePlaceholder: '未匹配模型被拦截时返回的自定义错误消息',
         quickPresets: '快捷预设',
         presetOpusOnly: '仅 Opus 允许 1M',
@@ -6965,12 +6997,12 @@ export default {
         errorMessage: '错误消息',
         errorMessagePlaceholder: '拦截时返回的自定义错误消息',
         errorMessageHint: '留空则使用默认错误消息。',
-        modelWhitelist: '模型白名单',
+        modelWhitelist: '模型范围',
         modelWhitelistHint: '留空表示对所有模型生效；支持精确匹配与通配符（如 gpt-5.5*）。',
         modelPatternPlaceholder: '例如: gpt-5.5 或 gpt-5.5*',
         addModelPattern: '添加模型规则',
         fallbackAction: '未匹配模型处理方式',
-        fallbackActionHint: '当请求模型不在白名单中时的处理方式。',
+        fallbackActionHint: '当请求模型不在模型范围中时的处理方式。',
         fallbackErrorMessagePlaceholder: '未匹配模型被拦截时返回的自定义错误消息'
       },
       wechatConnect: {
@@ -7284,11 +7316,19 @@ export default {
     },
     installedModules: '已安装模块',
     installedDescription: '查看当前实例已安装的模块，管理权限、启用状态和卸载操作。',
+    providerModules: 'Provider 模块',
+    providerModulesDescription: '管理 AI 服务提供商模块，支持 Anthropic、OpenAI、Gemini 等多个服务商。',
+    outboundModules: '出站模块',
+    outboundModulesDescription: '管理出站代理模块，用于请求转发和网络代理。',
     marketplaceDescription: '从模块 registry 安装独立模块包，不随主版本自动打包下载。',
     moduleCount: '{count} 个模块',
     packageCount: '{count} 个包',
     noInstalled: '暂无已安装模块',
     noInstalledHint: '从模块市场安装 OpenAI OAuth 提供商或其他可用模块。',
+    noProviderModules: '暂无 Provider 模块',
+    noProviderModulesHint: '安装 Provider 模块以支持更多 AI 服务提供商。',
+    noOutboundModules: '暂无出站模块',
+    noOutboundModulesHint: '安装出站模块以支持网络代理功能。',
     noMarketplace: '暂无可用模块包',
     noMarketplaceHint: '请检查模块 registry 地址或网络连接。',
     versionValue: 'v{version}',
@@ -7301,6 +7341,13 @@ export default {
     purge: '清除',
     install: '安装',
     operationFailed: '操作失败',
+    category: {
+      all: '全部',
+      builtin: '内置功能',
+      provider: 'Provider',
+      outbound: '出站模块',
+      marketplace: '模块市场'
+    },
     status: {
       installed: '已安装',
       enabled: '已启用',
@@ -7310,7 +7357,8 @@ export default {
       purged: '已清除'
     },
     type: {
-      provider: 'Provider'
+      provider: 'Provider',
+      outbound: '出站模块'
     }
   },
 

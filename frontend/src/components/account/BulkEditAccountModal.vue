@@ -236,6 +236,27 @@
                   t('admin.accounts.supportsAllModels')
                 }}</span>
               </p>
+              <div class="mt-3 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+                <div>
+                  <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.accounts.restrictToModelList') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.restrictToModelListHint') }}</p>
+                </div>
+                <button
+                  type="button"
+                  @click="restrictToModelList = !restrictToModelList"
+                  :class="[
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out',
+                    restrictToModelList ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out',
+                      restrictToModelList ? 'translate-x-5' : 'translate-x-0'
+                    ]"
+                  />
+                </button>
+              </div>
             </div>
 
             <!-- Mapping Mode -->
@@ -1277,6 +1298,7 @@ const pendingUpdatesForConfirm = ref<Record<string, unknown> | null>(null)
 const baseUrl = ref('')
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const restrictToModelList = ref(false)
 const modelMappings = ref<ModelMapping[]>([])
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
@@ -1423,11 +1445,20 @@ const removeErrorCode = (code: number) => {
 }
 
 const buildModelMappingObject = (): Record<string, string> | null => {
-  return buildModelMappingPayload(
-    modelRestrictionMode.value,
-    allowedModels.value,
-    modelMappings.value
-  )
+  return buildModelMappingPayload('mapping', [], modelMappings.value)
+}
+
+const normalizedModelList = () => {
+  const seen = new Set<string>()
+  const models: string[] = []
+  for (const raw of allowedModels.value) {
+    const model = raw.trim()
+    const key = model.toLowerCase()
+    if (!model || seen.has(key)) continue
+    seen.add(key)
+    models.push(model)
+  }
+  return models
 }
 
 const buildOpenAICompactModelMapping = (): Record<string, string> | null => {
@@ -1496,22 +1527,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
-    // 统一使用 model_mapping 字段
-    if (modelRestrictionMode.value === 'whitelist') {
-      // 白名单模式：将模型转换为 model_mapping 格式（key=value）
-      // 空白名单表示“支持所有模型”，需显式发送空对象以覆盖已有限制。
-      const mapping: Record<string, string> = {}
-      for (const m of allowedModels.value) {
-        mapping[m] = m
-      }
-      credentials.model_mapping = mapping
-      credentialsChanged = true
-    } else {
-      // 映射模式下空配置同样表示“支持所有模型”。
-      const modelMapping = buildModelMappingObject()
-      credentials.model_mapping = modelMapping ?? {}
-      credentialsChanged = true
-    }
+    const extra = ensureExtra()
+    extra.supported_models = normalizedModelList()
+    extra.restrict_to_model_list = restrictToModelList.value
+
+    const modelMapping = buildModelMappingObject()
+    credentials.model_mapping = modelMapping ?? {}
+    credentialsChanged = true
   }
 
   if (enableCustomErrorCodes.value) {
@@ -1770,6 +1792,7 @@ watch(
       openaiPassthroughEnabled.value = false
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []
+      restrictToModelList.value = false
       modelMappings.value = []
       selectedErrorCodes.value = []
       customErrorCodeInput.value = null

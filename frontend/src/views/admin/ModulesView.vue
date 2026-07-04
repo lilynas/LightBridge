@@ -31,8 +31,23 @@
         <p class="min-w-0 break-words text-sm text-red-700 dark:text-red-200">{{ error }}</p>
       </div>
 
+      <!-- 模块分类筛选器 -->
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="cat in moduleCategories"
+          :key="cat.key"
+          class="module-category-btn"
+          :class="{ 'module-category-btn--active': activeCategory === cat.key }"
+          @click="activeCategory = cat.key"
+        >
+          <Icon :name="cat.icon as any" size="sm" :stroke-width="2" />
+          {{ cat.label }}
+          <span class="module-category-count">{{ cat.count }}</span>
+        </button>
+      </div>
+
       <!-- 内置功能卡片（原「功能开关」，迁移自系统设置） -->
-      <section class="card overflow-hidden">
+      <section v-if="activeCategory === 'builtin' || activeCategory === 'all'" class="card overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <div>
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.builtinFeatures') }}</h2>
@@ -79,31 +94,32 @@
         </div>
       </section>
 
-      <section class="card overflow-hidden">
+      <!-- Provider 模块 -->
+      <section v-if="activeCategory === 'provider' || activeCategory === 'all'" class="card overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.installedModules') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.installedDescription') }}</p>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.providerModules') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.providerModulesDescription') }}</p>
           </div>
-          <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">
-            {{ t('modules.moduleCount', { count: installed.length }) }}
+          <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+            {{ t('modules.moduleCount', { count: providerModules.length }) }}
           </span>
         </div>
 
         <div v-if="loading" class="flex items-center justify-center py-16">
           <Icon name="refresh" size="lg" :stroke-width="2" class="animate-spin text-primary-500" />
         </div>
-        <div v-else-if="installed.length === 0" class="px-5 py-12 text-center">
+        <div v-else-if="providerModules.length === 0" class="px-5 py-12 text-center">
           <Icon name="inbox" size="xl" :stroke-width="2" class="mx-auto text-gray-400" />
-          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noInstalled') }}</p>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noInstalledHint') }}</p>
+          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noProviderModules') }}</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noProviderModulesHint') }}</p>
         </div>
         <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-          <div v-for="mod in installed" :key="mod.id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div v-for="mod in providerModules" :key="mod.id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ installedName(mod) }}</h3>
-                <span class="module-pill">{{ moduleTypeLabel(mod.type) }}</span>
+                <span class="module-pill module-pill--provider">{{ t('modules.type.provider') }}</span>
                 <span class="module-pill" :class="statusClass(mod.status)">{{ statusLabel(mod.status) }}</span>
               </div>
               <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
@@ -135,7 +151,65 @@
         </div>
       </section>
 
-      <section class="card overflow-hidden">
+      <!-- Outbound 模块 -->
+      <section v-if="activeCategory === 'outbound' || activeCategory === 'all'" class="card overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.outboundModules') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.outboundModulesDescription') }}</p>
+          </div>
+          <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            {{ t('modules.moduleCount', { count: outboundModules.length }) }}
+          </span>
+        </div>
+
+        <div v-if="loading" class="flex items-center justify-center py-16">
+          <Icon name="refresh" size="lg" :stroke-width="2" class="animate-spin text-primary-500" />
+        </div>
+        <div v-else-if="outboundModules.length === 0" class="px-5 py-12 text-center">
+          <Icon name="inbox" size="xl" :stroke-width="2" class="mx-auto text-gray-400" />
+          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noOutboundModules') }}</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noOutboundModulesHint') }}</p>
+        </div>
+        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+          <div v-for="mod in outboundModules" :key="mod.id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ installedName(mod) }}</h3>
+                <span class="module-pill module-pill--outbound">{{ t('modules.type.outbound') }}</span>
+                <span class="module-pill" :class="statusClass(mod.status)">{{ statusLabel(mod.status) }}</span>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('modules.versionValue', { version: mod.version }) }}</span>
+                <span>{{ mod.id }}</span>
+                <span v-if="mod.enabledAt">{{ t('modules.enabledAt', { time: formatDate(mod.enabledAt) }) }}</span>
+              </div>
+              <p v-if="mod.lastError" class="mt-2 break-words text-sm text-red-600 dark:text-red-300">{{ mod.lastError }}</p>
+            </div>
+
+            <div class="flex flex-wrap gap-2 lg:justify-end">
+              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="approve(mod.id)">
+                {{ t('modules.approvePermissions') }}
+              </button>
+              <button v-if="mod.status !== 'enabled'" class="btn btn-primary px-3 py-2" :disabled="busyKey === mod.id" @click="enable(mod.id)">
+                {{ t('modules.enable') }}
+              </button>
+              <button v-else class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="disable(mod.id)">
+                {{ t('modules.disable') }}
+              </button>
+              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="uninstall(mod.id)">
+                {{ t('modules.uninstall') }}
+              </button>
+              <button class="btn px-3 py-2 text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20" :disabled="busyKey === mod.id" @click="purge(mod.id)">
+                {{ t('modules.purge') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 模块市场 -->
+      <section v-if="activeCategory === 'marketplace' || activeCategory === 'all'" class="card overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <div>
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.marketplace') }}</h2>
@@ -195,8 +269,26 @@ const error = ref('')
 const busyKey = ref('')
 const installed = ref<InstalledModule[]>([])
 const marketplace = ref<MarketplaceModule[]>([])
+const activeCategory = ref('all')
 
 const enabledCount = computed(() => installed.value.filter((mod) => mod.status === 'enabled').length)
+
+// 模块分类
+const moduleCategories = computed(() => {
+  const providerCount = installed.value.filter((mod) => mod.type === 'provider').length
+  const outboundCount = installed.value.filter((mod) => mod.type === 'outbound').length
+  return [
+    { key: 'all', label: t('modules.category.all'), icon: 'grid', count: installed.value.length },
+    { key: 'builtin', label: t('modules.category.builtin'), icon: 'cog', count: builtinFeatures.value.length },
+    { key: 'provider', label: t('modules.category.provider'), icon: 'cpu', count: providerCount },
+    { key: 'outbound', label: t('modules.category.outbound'), icon: 'arrowRight', count: outboundCount },
+    { key: 'marketplace', label: t('modules.category.marketplace'), icon: 'cube', count: marketplace.value.length }
+  ]
+})
+
+// 按类型分组的模块
+const providerModules = computed(() => installed.value.filter((mod) => mod.type === 'provider'))
+const outboundModules = computed(() => installed.value.filter((mod) => mod.type === 'outbound'))
 
 // 内置功能（原系统设置「功能开关」）：通过 public-settings 标志位驱动。
 const builtinFeatureBusy = ref('')
@@ -418,5 +510,25 @@ onMounted(loadAll)
 
 .module-pill {
   @apply rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200;
+}
+
+.module-pill--provider {
+  @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300;
+}
+
+.module-pill--outbound {
+  @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300;
+}
+
+.module-category-btn {
+  @apply flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300 dark:hover:border-primary-600 dark:hover:text-primary-400;
+}
+
+.module-category-btn--active {
+  @apply border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300;
+}
+
+.module-category-count {
+  @apply rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400;
 }
 </style>

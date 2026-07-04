@@ -375,6 +375,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    modelCatalog: 'Model Catalog',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     modules: 'Modules',
@@ -1072,6 +1073,35 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  modelCatalog: {
+    title: 'Model Catalog',
+    description: 'View usable models, pricing, and usage modes from the current group and account catalog',
+    searchPlaceholder: 'Search models, groups, or sources...',
+    empty: 'No model catalog yet. Pull upstream models or maintain an account model list first.',
+    modelCount: '{count} model(s)',
+    sourceCount: '{count} source(s)',
+    sourceDetails: 'Source details',
+    unknownAccount: 'Unknown account',
+    noGroups: 'No groups bound',
+    noPrice: 'No price configured',
+    priceTokenRange: 'Input {input} / Output {output}',
+    priceRequestRange: '{price} per request',
+    usageUnknown: 'Unspecified',
+    views: {
+      merged: 'Merged',
+      by_group: 'By Group',
+      by_channel: 'By Channel',
+      by_account: 'By Account'
+    },
+    usageModes: {
+      chat: 'Chat',
+      responses: 'Responses',
+      embeddings: 'Embeddings',
+      image: 'Image',
+      audio: 'Audio'
     }
   },
 
@@ -3576,7 +3606,7 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
-        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model-list restriction and model mapping will not take effect.',
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -3590,13 +3620,15 @@ export default {
         webSearchDisabled: 'Disabled',
       },
       modelRestriction: 'Model Restriction (Optional)',
-      modelWhitelist: 'Model Whitelist',
+      modelWhitelist: 'Model List',
       modelMapping: 'Model Mapping',
-      selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
+      selectAllowedModels: 'Maintain this account model list. Unknown model requests pass through by default.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
       selectedModels: 'Selected {count} model(s)',
-      supportsAllModels: '(supports all models)',
+      supportsAllModels: '(empty list, unknown models still pass through)',
+      restrictToModelList: 'Only allow requests in the model list',
+      restrictToModelListHint: 'When off, models outside the list still go upstream. When on, only this account skips unknown models.',
       requestModel: 'Request model',
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
@@ -3606,10 +3638,10 @@ export default {
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
       fillRelatedModels: 'Sync latest supported models',
-      syncUpstreamModels: 'Sync upstream supported models',
+      syncUpstreamModels: 'Pull upstream models',
       syncUpstreamModelsLoading: 'Syncing upstream...',
       syncUpstreamModelsSuccess: 'Synced {count} new model(s) from upstream ({total} upstream total)',
-      syncUpstreamModelsNoChanges: 'All {count} upstream model(s) are already in the whitelist',
+      syncUpstreamModelsNoChanges: 'All {count} upstream model(s) are already in the model list',
       syncUpstreamModelsEmpty: 'Upstream returned no models to sync',
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
@@ -5308,7 +5340,7 @@ export default {
           unknown: 'Unknown Cause'
         },
         rootCauseDesc: {
-          no_available_account: 'The scheduler did not select an available account. For Custom providers, common causes are missing group binding, model whitelist mismatch, disabled/rate-limited/temp-unschedulable accounts, or protocol mismatch with the request endpoint.',
+          no_available_account: 'The scheduler did not select an available account. For Custom providers, common causes are missing group binding, model-list restriction mismatch, disabled/rate-limited/temp-unschedulable accounts, or protocol mismatch with the request endpoint.',
           auth_forbidden: 'The request was rejected during API key, user permission, group permission, subscription, or balance checks.',
           client_request: 'Request parameters, model, endpoint, or payload do not match the current gateway and channel configuration.',
           provider_upstream: 'An account was selected and the request reached the Provider, but the upstream or provider adapter returned an error.',
@@ -5364,7 +5396,7 @@ export default {
         suggestion: {
           customCheckAccountGroup: 'Confirm the Custom account is bound to the group hit by this request, or that the group can use the account.',
           customCheckProtocol: 'Confirm the Custom account protocol matches the request endpoint, such as OpenAI Chat, Responses, Anthropic Messages, or Gemini.',
-          customCheckModelScope: 'Check the Custom account model whitelist, channel pricing model scope, and requested model.',
+          customCheckModelScope: 'Check the Custom account model list, channel pricing model scope, and requested model.',
           customCheckAccountAvailability: 'Check whether the account is normal, rate-limited, temp-unschedulable, expired, or manually disabled.',
           customNoUpstreamAttempt: 'When there is no upstream attempt, investigate scheduler conditions before Base URL or upstream API key.',
           checkAccountGroup: 'Confirm account group, user allowed groups, and channel group filters.',
@@ -6773,14 +6805,14 @@ export default {
         errorMessageHint: 'Leave empty for default message',
         saved: 'Beta policy settings saved',
         saveFailed: 'Failed to save beta policy settings',
-        modelWhitelist: 'Model Whitelist',
+        modelWhitelist: 'Model Scope',
         modelWhitelistHint: 'Leave empty to apply to all models. Supports exact match and wildcard prefix (e.g., claude-opus-*)',
         modelPatternPlaceholder: 'e.g., claude-opus-* or claude-opus-4-6',
         addModelPattern: 'Add model pattern',
         removePattern: 'Remove',
         fallbackAction: 'Fallback Action',
-        fallbackActionHint: 'Action for models not matching the whitelist',
-        fallbackErrorMessagePlaceholder: 'Custom error message when non-whitelisted models are blocked',
+        fallbackActionHint: 'Action for models not matching the model scope',
+        fallbackErrorMessagePlaceholder: 'Custom error message when out-of-scope models are blocked',
         quickPresets: 'Quick Presets',
         presetOpusOnly: 'Opus only for 1M',
         presetOpusOnlyDesc: 'Pass for Opus, filter others',
@@ -6810,13 +6842,13 @@ export default {
         errorMessage: 'Error message',
         errorMessagePlaceholder: 'Custom error message when blocked',
         errorMessageHint: 'Leave empty for the default message.',
-        modelWhitelist: 'Model whitelist',
+        modelWhitelist: 'Model scope',
         modelWhitelistHint: 'Leave empty to apply to all models. Supports exact match and wildcard prefix (e.g., gpt-5.5*).',
         modelPatternPlaceholder: 'e.g., gpt-5.5 or gpt-5.5*',
         addModelPattern: 'Add model pattern',
         fallbackAction: 'Fallback action',
-        fallbackActionHint: 'Action for models not matching the whitelist.',
-        fallbackErrorMessagePlaceholder: 'Custom error message when non-whitelisted models are blocked'
+        fallbackActionHint: 'Action for models not matching the model scope.',
+        fallbackErrorMessagePlaceholder: 'Custom error message when out-of-scope models are blocked'
       },
       wechatConnect: {
         title: 'WeChat Connect',
@@ -7129,11 +7161,19 @@ export default {
     },
     installedModules: 'Installed Modules',
     installedDescription: 'Review installed modules and manage permissions, runtime state, and removal.',
+    providerModules: 'Provider Modules',
+    providerModulesDescription: 'Manage AI service provider modules supporting Anthropic, OpenAI, Gemini and more.',
+    outboundModules: 'Outbound Modules',
+    outboundModulesDescription: 'Manage outbound proxy modules for request forwarding and network proxying.',
     marketplaceDescription: 'Install standalone module packages from the module registry without bundling them into core releases.',
     moduleCount: '{count} modules',
     packageCount: '{count} packages',
     noInstalled: 'No modules installed',
     noInstalledHint: 'Install OpenAI OAuth Provider or another available module from the marketplace.',
+    noProviderModules: 'No Provider modules',
+    noProviderModulesHint: 'Install Provider modules to support more AI service providers.',
+    noOutboundModules: 'No outbound modules',
+    noOutboundModulesHint: 'Install outbound modules to support network proxy functionality.',
     noMarketplace: 'No marketplace packages',
     noMarketplaceHint: 'Check the module registry URL or network connectivity.',
     versionValue: 'v{version}',
@@ -7146,6 +7186,13 @@ export default {
     purge: 'Purge',
     install: 'Install',
     operationFailed: 'Operation failed',
+    category: {
+      all: 'All',
+      builtin: 'Built-in',
+      provider: 'Provider',
+      outbound: 'Outbound',
+      marketplace: 'Marketplace'
+    },
     status: {
       installed: 'Installed',
       enabled: 'Enabled',
@@ -7155,7 +7202,8 @@ export default {
       purged: 'Purged'
     },
     type: {
-      provider: 'Provider'
+      provider: 'Provider',
+      outbound: 'Outbound'
     }
   },
 
