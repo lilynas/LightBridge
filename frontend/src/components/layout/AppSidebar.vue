@@ -307,7 +307,6 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
-import { useDeploymentMode } from '@/composables/useDeploymentMode'
 
 interface NavItem {
   path: string
@@ -828,16 +827,6 @@ const flagChannelPricing = makeSidebarFlag(FeatureFlags.channelPricing)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
-// 个人模式下，分发相关菜单（公告/风控/兑换码/优惠码/订阅）随对应路由一并结构性移除。
-// distributionFlag 返回 false 即从菜单过滤掉该项（与路由注销保持一致）。
-const { isDistributionMode } = useDeploymentMode()
-const flagDistribution = () => isDistributionMode.value
-
-// combineFlags：所有子开关都「非 false」才显示（沿用 NavItem.featureFlag 的宽容语义）。
-function combineFlags(...flags: Array<() => boolean | undefined>): () => boolean {
-  return () => flags.every((f) => f() !== false)
-}
-
 // anyFlags：任一子开关「非 false」即显示（用于分组：只要有一个子项启用，分组就显示）
 function anyFlags(...flags: Array<() => boolean | undefined>): () => boolean {
   return () => flags.some((f) => f() !== false)
@@ -873,10 +862,10 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     expandOnly: true,
     children: [
       { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-      { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
+      { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
       { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
       { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-      { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: combineFlags(flagDistribution, flagRedeem) },
+      { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagRedeem },
     ],
   })
 
@@ -992,7 +981,6 @@ const adminNavItems = computed((): NavItem[] => {
       icon: CreditCardIcon,
       expandOnly: true,
       hideInSimpleMode: true,
-      featureFlag: flagAdminPayment,
       children: [
         { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon },
         { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon, featureFlag: flagAdminPayment },
