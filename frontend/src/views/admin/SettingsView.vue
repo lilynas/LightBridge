@@ -6949,7 +6949,7 @@ type SettingsTab =
   | "payment"
   | "email"
   | "backup";
-const activeTab = ref<SettingsTab>((route.meta.defaultTab as SettingsTab) || "general");
+const activeTab = ref<SettingsTab>((route?.meta?.defaultTab as SettingsTab) || "general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
