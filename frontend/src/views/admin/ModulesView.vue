@@ -22,14 +22,12 @@
 
       <!-- 内置功能卡片 -->
       <section class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.builtinFeatures') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.builtinFeaturesDescription') }}</p>
+        <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <div class="flex items-center justify-between">
+            <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+              {{ t('modules.builtinCount', { count: builtinFeatures.length }) }}
+            </span>
           </div>
-          <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-            {{ t('modules.builtinCount', { count: builtinFeatures.length }) }}
-          </span>
         </div>
         <div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
           <div

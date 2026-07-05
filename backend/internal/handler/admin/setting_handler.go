@@ -384,15 +384,15 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled              bool                         `json:"registration_enabled"`
-	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
+	RegistrationEnabled              *bool                        `json:"registration_enabled"`
+	EmailVerifyEnabled               *bool                        `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
+	PromoCodeEnabled                 *bool                        `json:"promo_code_enabled"`
+	PasswordResetEnabled             *bool                        `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
-	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
-	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
+	InvitationCodeEnabled            *bool                        `json:"invitation_code_enabled"`
+	TotpEnabled                      *bool                        `json:"totp_enabled"` // TOTP 双因素认证
+	LoginAgreementEnabled            *bool                        `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
 	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
@@ -803,7 +803,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	// TOTP 双因素认证参数验证
 	// 只有手动配置了加密密钥才允许启用 TOTP 功能
-	if req.TotpEnabled && !previousSettings.TotpEnabled {
+	if req.TotpEnabled != nil && *req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
 			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
@@ -844,7 +844,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
-	if req.LoginAgreementEnabled && len(loginAgreementDocuments) == 0 {
+	if req.LoginAgreementEnabled != nil && *req.LoginAgreementEnabled && len(loginAgreementDocuments) == 0 {
 		response.BadRequest(c, "Login agreement documents are required when enabled")
 		return
 	}
@@ -1479,15 +1479,50 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		// 系统全局 platform quota 默认值（整体替换语义）
 		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
 
-		RegistrationEnabled:              req.RegistrationEnabled,
-		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		RegistrationEnabled: func() bool {
+			if req.RegistrationEnabled != nil {
+				return *req.RegistrationEnabled
+			}
+			return previousSettings.RegistrationEnabled
+		}(),
+		EmailVerifyEnabled: func() bool {
+			if req.EmailVerifyEnabled != nil {
+				return *req.EmailVerifyEnabled
+			}
+			return previousSettings.EmailVerifyEnabled
+		}(),
 		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                 req.PromoCodeEnabled,
-		PasswordResetEnabled:             req.PasswordResetEnabled,
+		PromoCodeEnabled: func() bool {
+			if req.PromoCodeEnabled != nil {
+				return *req.PromoCodeEnabled
+			}
+			return previousSettings.PromoCodeEnabled
+		}(),
+		PasswordResetEnabled: func() bool {
+			if req.PasswordResetEnabled != nil {
+				return *req.PasswordResetEnabled
+			}
+			return previousSettings.PasswordResetEnabled
+		}(),
 		FrontendURL:                      req.FrontendURL,
-		InvitationCodeEnabled:            req.InvitationCodeEnabled,
-		TotpEnabled:                      req.TotpEnabled,
-		LoginAgreementEnabled:            req.LoginAgreementEnabled,
+		InvitationCodeEnabled: func() bool {
+			if req.InvitationCodeEnabled != nil {
+				return *req.InvitationCodeEnabled
+			}
+			return previousSettings.InvitationCodeEnabled
+		}(),
+		TotpEnabled: func() bool {
+			if req.TotpEnabled != nil {
+				return *req.TotpEnabled
+			}
+			return previousSettings.TotpEnabled
+		}(),
+		LoginAgreementEnabled: func() bool {
+			if req.LoginAgreementEnabled != nil {
+				return *req.LoginAgreementEnabled
+			}
+			return previousSettings.LoginAgreementEnabled
+		}(),
 		LoginAgreementMode:               loginAgreementMode,
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
 		LoginAgreementDocuments:          loginAgreementDocuments,
