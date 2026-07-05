@@ -360,6 +360,12 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         privacy_filter_enabled: false,
         affiliate_enabled: false,
+        announcements_enabled: true,
+        redeem_enabled: true,
+        promo_enabled: true,
+        proxies_enabled: true,
+        channel_pricing_enabled: true,
+        login_agreement_enabled: false,
       }
     }
 

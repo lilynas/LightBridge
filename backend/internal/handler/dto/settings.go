@@ -250,6 +250,15 @@ type SystemSettings struct {
 	// 部署模式：personal（个人）/ distribution（分发）
 	DeploymentMode string `json:"deployment_mode"`
 
+	// 公告功能开关
+	AnnouncementsEnabled bool `json:"announcements_enabled"`
+
+	// 兑换码功能开关
+	RedeemEnabled bool `json:"redeem_enabled"`
+
+	// 优惠码功能开关
+	PromoEnabled bool `json:"promo_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -327,6 +336,12 @@ type PublicSettings struct {
 
 	// 部署模式：personal（个人）/ distribution（分发），驱动前端结构性移除分发功能
 	DeploymentMode string `json:"deployment_mode"`
+
+	AnnouncementsEnabled bool `json:"announcements_enabled"`
+
+	RedeemEnabled bool `json:"redeem_enabled"`
+
+	PromoEnabled bool `json:"promo_enabled"`
 }
 
 type LoginAgreementDocument struct {

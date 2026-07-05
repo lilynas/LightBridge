@@ -736,6 +736,12 @@ const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagPrivacyFilter = makeSidebarFlag(FeatureFlags.privacyFilter)
+const flagAnnouncements = makeSidebarFlag(FeatureFlags.announcements)
+const flagRedeem = makeSidebarFlag(FeatureFlags.redeem)
+const flagPromo = makeSidebarFlag(FeatureFlags.promo)
+const flagProxies = makeSidebarFlag(FeatureFlags.proxies)
+const flagChannelPricing = makeSidebarFlag(FeatureFlags.channelPricing)
+const flagLoginAgreement = makeSidebarFlag(FeatureFlags.loginAgreement)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
@@ -751,33 +757,67 @@ function combineFlags(...flags: Array<() => boolean | undefined>): () => boolean
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
-//
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
-  items.push(
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
-    { path: '/model-catalog', label: t('nav.modelCatalog'), icon: DatabaseIcon },
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
-    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
-    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
+
+  // API 与监控
+  items.push({
+    path: '/self/api-monitor-group',
+    label: t('nav.groupApiMonitor'),
+    icon: KeyIcon,
+    expandOnly: true,
+    children: [
+      { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+      { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+      { path: '/model-catalog', label: t('nav.modelCatalog'), icon: DatabaseIcon },
+      { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    ],
+  })
+
+  // 渠道与订阅
+  items.push({
+    path: '/self/channel-sub-group',
+    label: t('nav.groupChannelSub'),
+    icon: CreditCardIcon,
+    expandOnly: true,
+    children: [
+      { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+      { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
+      { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+      { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
+      { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: combineFlags(flagDistribution, flagRedeem) },
+    ],
+  })
+
+  // 推广
+  items.push({
+    path: '/self/affiliate-group',
+    label: t('nav.groupAffiliate'),
+    icon: UsersIcon,
+    expandOnly: true,
+    hideInSimpleMode: true,
+    featureFlag: flagAffiliate,
+    children: [
+      { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon },
+    ],
+  })
+
+  // 个人资料
+  items.push({ path: '/profile', label: t('nav.profile'), icon: UserIcon })
+
+  // 自定义菜单
+  for (const item of customMenuItemsForUser.value) {
+    items.push({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
-    })),
-  )
+    })
+  }
+
   return items
 }
 
@@ -850,7 +890,7 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       children: [
         { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
-        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
+        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon, featureFlag: flagChannelPricing },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
         { path: '/admin/model-catalog', label: t('nav.modelCatalog'), icon: DatabaseIcon },
       ],
@@ -879,14 +919,14 @@ const adminNavItems = computed((): NavItem[] => {
       icon: BellIcon,
       expandOnly: true,
       hideInSimpleMode: true,
-      featureFlag: combineFlags(flagDistribution, flagAffiliate),
+      featureFlag: combineFlags(flagDistribution, combineFlags(flagAffiliate, flagAnnouncements, flagRedeem, flagPromo)),
       children: [
-        { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, featureFlag: flagDistribution },
-        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon, featureFlag: flagAffiliate },
-        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon, featureFlag: flagAffiliate },
-        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon, featureFlag: flagAffiliate },
-        { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, featureFlag: flagDistribution },
-        { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, featureFlag: flagDistribution },
+        { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, featureFlag: combineFlags(flagDistribution, flagAnnouncements) },
+        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon, featureFlag: combineFlags(flagDistribution, flagAffiliate) },
+        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon, featureFlag: combineFlags(flagDistribution, flagAffiliate) },
+        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon, featureFlag: combineFlags(flagDistribution, flagAffiliate) },
+        { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, featureFlag: combineFlags(flagDistribution, flagRedeem) },
+        { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, featureFlag: combineFlags(flagDistribution, flagPromo) },
       ],
     },
 
@@ -912,7 +952,7 @@ const adminNavItems = computed((): NavItem[] => {
       expandOnly: true,
       children: [
         { path: '/admin/modules', label: t('nav.modules'), icon: ServerIcon },
-        { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
+        { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, featureFlag: flagProxies },
         { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
         { path: '/admin/feedback', label: t('nav.feedback'), icon: FeedbackIcon },
       ],
@@ -1007,13 +1047,19 @@ function toggleGroup(item: NavItem) {
 
 /**
  * Click handler for collapsible parent items.
- * - When sidebar is collapsed: do nothing (children are not visible).
+ * - When sidebar is collapsed: navigate to the first child (quick access).
  * - When `expandOnly` is true: only toggle expand state.
  * - Otherwise (default, e.g. /admin/orders): navigate to the parent path
  *   (router-link semantics) and ensure the group is expanded.
  */
 function handleGroupClick(item: NavItem) {
-  if (sidebarCollapsed.value) return
+  if (sidebarCollapsed.value) {
+    // 收起状态下点击分组图标，导航到第一个子项
+    if (item.children?.length) {
+      router.push(item.children[0].path)
+    }
+    return
+  }
   if (item.expandOnly) {
     toggleGroup(item)
     return

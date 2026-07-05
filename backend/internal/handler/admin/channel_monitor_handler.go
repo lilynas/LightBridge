@@ -26,11 +26,12 @@ const (
 // ChannelMonitorHandler 渠道监控管理后台 handler。
 type ChannelMonitorHandler struct {
 	monitorService *service.ChannelMonitorService
+	accountService *service.AccountService
 }
 
 // NewChannelMonitorHandler 创建 handler。
-func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *ChannelMonitorHandler {
-	return &ChannelMonitorHandler{monitorService: monitorService}
+func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService, accountService *service.AccountService) *ChannelMonitorHandler {
+	return &ChannelMonitorHandler{monitorService: monitorService, accountService: accountService}
 }
 
 // --- Request / Response ---
@@ -487,6 +488,43 @@ func (h *ChannelMonitorHandler) QuickCreate(c *gin.Context) {
 		IntervalSeconds: interval,
 		CreatedBy:       subject.UserID,
 	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, channelMonitorToResponse(m))
+}
+
+// --- Create from Account ---
+
+type createFromAccountRequest struct {
+	AccountID       int64  `json:"account_id" binding:"required"`
+	ModelID         string `json:"model_id" binding:"required,max=200"`
+	IntervalSeconds int    `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
+}
+
+// CreateFromAccount POST /api/v1/admin/channel-monitors/from-account
+// 从已有账号直接创建监控，自动复用账号的端点、密钥和提供商配置。
+func (h *ChannelMonitorHandler) CreateFromAccount(c *gin.Context) {
+	var req createFromAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
+		return
+	}
+
+	// 查找账号
+	account, err := h.accountService.GetByID(c.Request.Context(), req.AccountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	interval := req.IntervalSeconds
+	if interval <= 0 {
+		interval = 60
+	}
+
+	m, err := h.monitorService.CreateFromAccount(c.Request.Context(), account, req.ModelID, interval)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

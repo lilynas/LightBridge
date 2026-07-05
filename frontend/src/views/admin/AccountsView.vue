@@ -1228,12 +1228,12 @@ const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false },
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
-    { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
-    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
+    { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: true },
+    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: true },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false },
-    { key: 'newapi_balance', label: t('admin.accounts.columns.newapiBalance'), sortable: false }
+    { key: 'newapi_balance', label: t('admin.accounts.columns.newapiBalance'), sortable: true }
   ]
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })

@@ -12,7 +12,10 @@
       :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
     >
       <!-- Header -->
-      <AppHeader />
+      <AppHeader
+        @refresh="$emit('refresh')"
+        @customize-dashboard="$emit('customizeDashboard')"
+      />
 
       <!-- Main Content -->
       <main class="p-4 md:p-6 lg:p-8">
@@ -31,6 +34,11 @@ import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+
+defineEmits<{
+  refresh: []
+  customizeDashboard: []
+}>()
 
 const appStore = useAppStore()
 const authStore = useAuthStore()

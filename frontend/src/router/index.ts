@@ -525,6 +525,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/settings/email',
+    name: 'AdminEmailSettings',
+    component: () => import('@/views/admin/SettingsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Email Settings',
+      titleKey: 'admin.settings.emailTab',
+      descriptionKey: 'admin.settings.description',
+      defaultTab: 'email'
+    }
+  },
+  {
     path: '/admin/version-control',
     name: 'AdminVersionControl',
     component: () => import('@/views/admin/VersionControlView.vue'),

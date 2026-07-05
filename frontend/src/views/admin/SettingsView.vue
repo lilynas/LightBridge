@@ -6915,10 +6915,12 @@ import {
   normalizeRegistrationEmailSuffixDomains,
   parseRegistrationEmailSuffixWhitelistInput,
 } from "@/utils/registrationEmailPolicy";
+import { useRoute } from "vue-router";
 
 const { t, locale } = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
+const route = useRoute();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 function localText(zh: string, en: string): string {
@@ -6947,7 +6949,7 @@ type SettingsTab =
   | "payment"
   | "email"
   | "backup";
-const activeTab = ref<SettingsTab>("general");
+const activeTab = ref<SettingsTab>((route.meta.defaultTab as SettingsTab) || "general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -9870,11 +9872,13 @@ watch(
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  @apply sticky z-20 border-b border-gray-200 bg-white/90 backdrop-blur-xl;
   top: 4.75rem;
-  box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
+}
+
+.dark .settings-tabs-shell {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
 }
 
 .settings-tabs-scroll {
@@ -9888,16 +9892,15 @@ watch(
 }
 
 .settings-tabs {
-  @apply flex min-w-max items-center gap-1;
+  @apply flex min-w-max items-center gap-0;
 }
 
 .settings-tab {
-  @apply relative flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-medium text-gray-600 outline-none transition-all duration-200 ease-out dark:text-gray-300;
+  @apply relative flex h-11 min-w-[6.75rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap border-b-2 border-transparent px-4 text-sm font-medium text-gray-500 outline-none transition-all duration-200 ease-out dark:text-gray-400;
 }
 
-.settings-tab:hover,
-.settings-tab:focus-visible {
-  @apply text-gray-900 dark:text-white;
+.settings-tab:hover {
+  @apply text-gray-700 dark:text-gray-200;
 }
 
 @media (min-width: 768px) {
@@ -9914,12 +9917,9 @@ watch(
   @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
 
-/* Active tab: 新版 LightBridge segmented 风格 —— 白色凸起胶囊，去掉旧的红→蓝渐变下划线 */
+/* Active tab */
 .settings-tab-active {
-  @apply bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300;
-  box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
+  @apply border-primary-500 text-primary-600 dark:text-primary-400;
 }
 
 .settings-tab-icon {
@@ -9937,24 +9937,5 @@ watch(
 
 .settings-tab-label {
   @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
-}
-</style>
-
-<style>
-/* Dark-mode overrides for the settings tabs shell. Kept in an UNSCOPED block
-   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
-   rules in the production build, leaving inactive tabs unreadable on dark. */
-.dark .settings-tabs-shell {
-  border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
-  box-shadow:
-    0 16px 36px rgb(0 0 0 / 0.28),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-
-.dark .settings-tab-active {
-  box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.22),
-    0 1px 0 rgb(255 255 255 / 0.08) inset;
 }
 </style>

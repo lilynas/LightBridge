@@ -416,6 +416,10 @@ export default {
     groupMarketing: '营销推广',
     groupSecurity: '安全与风控',
     groupSystem: '系统与配置',
+    // User menu groups
+    groupApiMonitor: 'API 与监控',
+    groupChannelSub: '渠道与订阅',
+    groupAffiliate: '推广',
   },
 
   docs: {
@@ -1124,11 +1128,13 @@ export default {
       error: '异常'
     },
     quickMonitorTitle: '为 {model} 设置监控',
-    quickMonitorProvider: '服务商',
-    quickMonitorEndpoint: '监控端点 URL',
-    quickMonitorApiMode: 'API 模式',
+    quickMonitorSelectSource: '选择监控来源',
+    quickMonitorSourceHint: '将使用所选来源的端点和密钥配置监控',
     quickMonitorInterval: '检测间隔',
-    quickMonitorSubmit: '创建并启用'
+    quickMonitorSubmit: '创建并启用',
+    allGroups: '全部分组',
+    selectAccountMonitor: '为 {model} 设置监控',
+    selectAccountHint: '选择要监控的账号来源，系统将使用该账号的配置创建监控'
   },
 
   affiliate: {
@@ -1517,12 +1523,31 @@ export default {
       startUsingApi: '开始使用 API 后，使用历史将显示在这里。',
       viewAllUsage: '查看全部',
       quickActions: '快捷操作',
+      userUsageTrend: '用户使用趋势（Top 12）',
       manageUsers: '管理用户',
       viewUserAccounts: '查看和管理用户账户',
       manageAccounts: '管理账号',
       configureAiAccounts: '配置 AI 平台账号',
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
+      customize: {
+        button: '自定义板块',
+        title: '自定义板块',
+        smallTitle: '小板块',
+        largeTitle: '大板块',
+        enabled: '已显示',
+        hidden: '未显示',
+        emptyEnabled: '暂无显示板块',
+        emptyHidden: '暂无可添加板块',
+        smallCount: '{count}/{limit}',
+        smallLimit: '小板块最多显示 {limit} 个',
+        add: '添加',
+        remove: '取消',
+        moveUp: '上移',
+        moveDown: '下移',
+        reset: '恢复默认',
+        usageCharts: '模型与 Token 图表'
+      },
       failedToLoad: '加载仪表盘数据失败'
     },
 
@@ -7334,7 +7359,11 @@ export default {
       privacyFilter: '隐私过滤',
       privacyFilterDesc: '对请求与响应内容进行隐私脱敏',
       affiliate: '邀请返利',
-      affiliateDesc: '用户邀请奖励与返利体系'
+      affiliateDesc: '用户邀请奖励与返利体系',
+      emailVerification: '邮件验证',
+      emailVerificationDesc: '用户注册与密码重置的邮件验证功能',
+      loginAgreement: '登录条款',
+      loginAgreementDesc: '用户登录/注册前的条款同意功能'
     },
     installedModules: '已安装模块',
     installedDescription: '查看当前实例已安装的模块，管理权限、启用状态和卸载操作。',

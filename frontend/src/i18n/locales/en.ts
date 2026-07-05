@@ -416,6 +416,10 @@ export default {
     groupMarketing: 'Marketing',
     groupSecurity: 'Security',
     groupSystem: 'System',
+    // User menu groups
+    groupApiMonitor: 'API & Monitor',
+    groupChannelSub: 'Channels & Subscriptions',
+    groupAffiliate: 'Affiliate',
   },
 
   docs: {
@@ -1120,11 +1124,13 @@ export default {
       error: 'Error'
     },
     quickMonitorTitle: 'Set up monitoring for {model}',
-    quickMonitorProvider: 'Provider',
-    quickMonitorEndpoint: 'Monitor Endpoint URL',
-    quickMonitorApiMode: 'API Mode',
+    quickMonitorSelectSource: 'Select monitoring source',
+    quickMonitorSourceHint: 'Will use the selected source\'s endpoint and API key',
     quickMonitorInterval: 'Check Interval',
-    quickMonitorSubmit: 'Create & Enable'
+    quickMonitorSubmit: 'Create & Enable',
+    allGroups: 'All Groups',
+    selectAccountMonitor: 'Set up monitoring for {model}',
+    selectAccountHint: 'Select an account source to create monitoring using its configuration'
   },
 
   affiliate: {
@@ -1502,6 +1508,24 @@ export default {
       spendShort: 'Spend',
       requestsShort: 'Req',
       tokensShort: 'Tok',
+      customize: {
+        button: 'Customize Sections',
+        title: 'Customize Sections',
+        smallTitle: 'Small Sections',
+        largeTitle: 'Large Sections',
+        enabled: 'Shown',
+        hidden: 'Hidden',
+        emptyEnabled: 'No sections shown',
+        emptyHidden: 'No sections to add',
+        smallCount: '{count}/{limit}',
+        smallLimit: 'Small sections are limited to {limit}',
+        add: 'Add',
+        remove: 'Remove',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
+        reset: 'Restore default',
+        usageCharts: 'Model and Token Charts'
+      },
       failedToLoad: 'Failed to load dashboard statistics'
     },
 
@@ -7179,7 +7203,11 @@ export default {
       privacyFilter: 'Privacy Filter',
       privacyFilterDesc: 'Redact sensitive content in requests and responses',
       affiliate: 'Affiliate',
-      affiliateDesc: 'User invitation rewards and rebate system'
+      affiliateDesc: 'User invitation rewards and rebate system',
+      emailVerification: 'Email Verification',
+      emailVerificationDesc: 'Email verification for user registration and password reset',
+      loginAgreement: 'Login Agreement',
+      loginAgreementDesc: 'Terms agreement before user login/registration'
     },
     installedModules: 'Installed Modules',
     installedDescription: 'Review installed modules and manage permissions, runtime state, and removal.',

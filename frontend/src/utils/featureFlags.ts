@@ -124,6 +124,36 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Affiliate',
   }),
+  announcements: defineFlag({
+    key: 'announcements_enabled',
+    mode: 'opt-out',
+    label: 'Announcements',
+  }),
+  redeem: defineFlag({
+    key: 'redeem_enabled',
+    mode: 'opt-out',
+    label: 'Redeem Codes',
+  }),
+  promo: defineFlag({
+    key: 'promo_enabled',
+    mode: 'opt-out',
+    label: 'Promo Codes',
+  }),
+  proxies: defineFlag({
+    key: 'proxies_enabled',
+    mode: 'opt-out',
+    label: 'IP Management',
+  }),
+  channelPricing: defineFlag({
+    key: 'channel_pricing_enabled',
+    mode: 'opt-out',
+    label: 'Channel Pricing',
+  }),
+  loginAgreement: defineFlag({
+    key: 'login_agreement_enabled',
+    mode: 'opt-out',
+    label: 'Login Agreement',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

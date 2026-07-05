@@ -188,6 +188,10 @@ const (
 	SettingKeyLoginAgreementUpdatedAt          = "login_agreement_updated_at"          // 条款更新日期（展示用）
 	SettingKeyLoginAgreementDocuments          = "login_agreement_documents"           // 条款文档列表（JSON，Markdown 内容）
 	SettingKeyDeploymentMode                   = "deployment_mode"                     // 部署模式：personal（个人）/ distribution（分发）。个人模式渐进式移除分发相关功能
+	SettingKeyAnnouncementsEnabled             = "announcements_enabled"               // 是否启用公告功能
+	SettingKeyRedeemEnabled                    = "redeem_enabled"                      // 是否启用兑换码功能
+	SettingKeyProxiesEnabled                   = "proxies_enabled"                     // 是否启用 IP 管理功能
+	SettingKeyChannelPricingEnabled            = "channel_pricing_enabled"             // 是否启用渠道定价功能
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址

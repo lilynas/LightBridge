@@ -257,8 +257,10 @@
       :html-url="upgradeChangesRelease?.html_url"
       :can-upgrade="isReleaseBuild && !isSameVersion(upgradeChangesRelease?.version, currentVersion)"
       :upgrading="updating"
+      :restarting="restarting"
       @close="upgradeChangesOpen = false"
       @upgrade="handleUpgradeFromDialog"
+      @restart="handleRestart"
     />
   </div>
   </AppLayout>

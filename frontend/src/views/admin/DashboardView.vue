@@ -1,5 +1,8 @@
 <template>
-  <AppLayout>
+  <AppLayout
+    @refresh="loadDashboardStats"
+    @customize-dashboard="showCustomizePanel = true"
+  >
     <div class="space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
@@ -7,10 +10,14 @@
       </div>
 
       <template v-else-if="stats">
-        <!-- Row 1: Core Stats -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <!-- Small Panels -->
+        <div v-if="enabledSmallPanels.length > 0" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('apiKeys')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('apiKeys')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
@@ -30,7 +37,11 @@
           </div>
 
           <!-- Service Accounts -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('accounts')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('accounts')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
                 <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
@@ -55,7 +66,11 @@
           </div>
 
           <!-- Today Requests -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('todayRequests')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('todayRequests')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
@@ -75,7 +90,11 @@
           </div>
 
           <!-- New Users Today -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('users')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('users')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
@@ -93,12 +112,12 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Row 2: Token Stats -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('todayTokens')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('todayTokens')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
                 <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
@@ -134,7 +153,11 @@
           </div>
 
           <!-- Total Tokens -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('totalTokens')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('totalTokens')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
                 <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
@@ -170,7 +193,11 @@
           </div>
 
           <!-- Performance (RPM/TPM) -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('performance')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('performance')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
                 <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
@@ -196,7 +223,11 @@
           </div>
 
           <!-- Avg Response Time -->
-          <div class="card p-4">
+          <div
+            v-if="isSmallPanelEnabled('avgResponse')"
+            class="card p-4"
+            :style="smallPanelOrderStyle('avgResponse')"
+          >
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
                 <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
@@ -216,61 +247,65 @@
           </div>
         </div>
 
-        <!-- Charts Section -->
-        <div class="space-y-6">
-          <!-- 时间范围与颗粒度已迁移到顶部菜单栏的时间范围按钮 -->
-          <div class="flex items-center justify-end">
-            <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
-              <Icon name="refresh" size="sm" :stroke-width="2" :class="{ 'animate-spin': chartsLoading }" />
-              {{ t('common.refresh') }}
-            </button>
-          </div>
+        <!-- Large Panels -->
+        <div v-if="enabledLargePanels.length > 0" class="flex flex-col gap-6">
+          <template v-for="panel in enabledLargePanels" :key="panel.key">
+            <!-- Charts Grid -->
+            <div v-if="panel.key === 'usageCharts'" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <ModelDistributionChart
+                :model-stats="modelStats"
+                :enable-ranking-view="true"
+                :ranking-items="rankingItems"
+                :ranking-total-actual-cost="rankingTotalActualCost"
+                :ranking-total-requests="rankingTotalRequests"
+                :ranking-total-tokens="rankingTotalTokens"
+                :loading="chartsLoading"
+                :ranking-loading="rankingLoading"
+                :ranking-error="rankingError"
+                :start-date="startDate"
+                :end-date="endDate"
+                @ranking-click="goToUserUsage"
+              />
+              <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+            </div>
 
-          <!-- Charts Grid -->
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ModelDistributionChart
-              :model-stats="modelStats"
-              :enable-ranking-view="true"
-              :ranking-items="rankingItems"
-              :ranking-total-actual-cost="rankingTotalActualCost"
-              :ranking-total-requests="rankingTotalRequests"
-              :ranking-total-tokens="rankingTotalTokens"
-              :loading="chartsLoading"
-              :ranking-loading="rankingLoading"
-              :ranking-error="rankingError"
-              :start-date="startDate"
-              :end-date="endDate"
-              @ranking-click="goToUserUsage"
-            />
-            <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
-          </div>
-
-          <!-- User Usage Trend (Full Width) -->
-          <div class="card p-4">
-            <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.dashboard.recentUsage') }} (Top 12)
-            </h3>
-            <div class="h-64">
-              <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
-                <LoadingSpinner size="md" />
-              </div>
-              <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
-              <div
-                v-else
-                class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
-              >
-                {{ t('admin.dashboard.noDataAvailable') }}
+            <!-- User Usage Trend (Full Width) -->
+            <div v-else-if="panel.key === 'userTrend'" class="card p-4">
+              <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.dashboard.recentUsage') }} (Top 12)
+              </h3>
+              <div class="h-64">
+                <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
+                  <LoadingSpinner size="md" />
+                </div>
+                <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
+                <div
+                  v-else
+                  class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('admin.dashboard.noDataAvailable') }}
+                </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
       </template>
     </div>
+    <DashboardCustomizePanel
+      v-model:enabled-small-keys="enabledSmallPanelKeys"
+      v-model:enabled-large-keys="enabledLargePanelKeys"
+      :show="showCustomizePanel"
+      :small-panels="dashboardSmallPanels"
+      :large-panels="dashboardLargePanels"
+      :small-limit="MAX_SMALL_PANELS"
+      @reset="resetDashboardLayout"
+      @close="showCustomizePanel = false"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -289,6 +324,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import DashboardCustomizePanel from '@/components/admin/dashboard/DashboardCustomizePanel.vue'
 
 import {
   Chart as ChartJS,
@@ -335,6 +371,47 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
+const DASHBOARD_LAYOUT_STORAGE_KEY = 'lb-admin-dashboard-layout-v1'
+const MAX_SMALL_PANELS = 16
+
+interface DashboardPanelOption {
+  key: string
+  labelKey: string
+}
+
+interface DashboardLayoutPreference {
+  small: string[]
+  large: string[]
+}
+
+const dashboardSmallPanels: DashboardPanelOption[] = [
+  { key: 'apiKeys', labelKey: 'admin.dashboard.apiKeys' },
+  { key: 'accounts', labelKey: 'admin.dashboard.accounts' },
+  { key: 'todayRequests', labelKey: 'admin.dashboard.todayRequests' },
+  { key: 'users', labelKey: 'admin.dashboard.users' },
+  { key: 'todayTokens', labelKey: 'admin.dashboard.todayTokens' },
+  { key: 'totalTokens', labelKey: 'admin.dashboard.totalTokens' },
+  { key: 'performance', labelKey: 'admin.dashboard.performance' },
+  { key: 'avgResponse', labelKey: 'admin.dashboard.avgResponse' }
+]
+
+const dashboardLargePanels: DashboardPanelOption[] = [
+  { key: 'usageCharts', labelKey: 'admin.dashboard.customize.usageCharts' },
+  { key: 'userTrend', labelKey: 'admin.dashboard.userUsageTrend' }
+]
+
+const defaultDashboardLayout: DashboardLayoutPreference = {
+  small: dashboardSmallPanels.map((panel) => panel.key),
+  large: dashboardLargePanels.map((panel) => panel.key)
+}
+
+const initialDashboardLayout = loadDashboardLayout()
+const enabledSmallPanelKeys = ref<string[]>(initialDashboardLayout.small)
+const enabledLargePanelKeys = ref<string[]>(initialDashboardLayout.large)
+const showCustomizePanel = ref(false)
+const enabledSmallPanelSet = computed(() => new Set(enabledSmallPanelKeys.value))
+const enabledSmallPanels = computed(() => panelsForKeys(enabledSmallPanelKeys.value, dashboardSmallPanels))
+const enabledLargePanels = computed(() => panelsForKeys(enabledLargePanelKeys.value, dashboardLargePanels))
 
 // Date range
 // 时间范围 / 颗粒度由顶部菜单栏的全局 store 驱动
@@ -353,6 +430,93 @@ watch(
     loadDashboardStats()
   }
 )
+
+watch(
+  [enabledSmallPanelKeys, enabledLargePanelKeys],
+  () => {
+    saveDashboardLayout()
+  },
+  { deep: true }
+)
+
+function panelsForKeys(keys: string[], panels: DashboardPanelOption[]): DashboardPanelOption[] {
+  const panelMap = new Map(panels.map((panel) => [panel.key, panel]))
+  return keys
+    .map((key) => panelMap.get(key))
+    .filter((panel): panel is DashboardPanelOption => Boolean(panel))
+}
+
+function sanitizePanelKeys(
+  value: unknown,
+  panels: DashboardPanelOption[],
+  limit?: number
+): string[] {
+  if (!Array.isArray(value)) return []
+  const availableKeys = new Set(panels.map((panel) => panel.key))
+  const seenKeys = new Set<string>()
+  const next: string[] = []
+
+  value.forEach((item) => {
+    if (typeof item !== 'string' || !availableKeys.has(item) || seenKeys.has(item)) return
+    seenKeys.add(item)
+    next.push(item)
+  })
+
+  return typeof limit === 'number' ? next.slice(0, limit) : next
+}
+
+function createDefaultDashboardLayout(): DashboardLayoutPreference {
+  return {
+    small: [...defaultDashboardLayout.small],
+    large: [...defaultDashboardLayout.large]
+  }
+}
+
+function loadDashboardLayout(): DashboardLayoutPreference {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY)
+    if (!raw) return createDefaultDashboardLayout()
+    const parsed = JSON.parse(raw) as Partial<DashboardLayoutPreference>
+    return {
+      small: Array.isArray(parsed.small)
+        ? sanitizePanelKeys(parsed.small, dashboardSmallPanels, MAX_SMALL_PANELS)
+        : [...defaultDashboardLayout.small],
+      large: Array.isArray(parsed.large)
+        ? sanitizePanelKeys(parsed.large, dashboardLargePanels)
+        : [...defaultDashboardLayout.large]
+    }
+  } catch {
+    return createDefaultDashboardLayout()
+  }
+}
+
+function saveDashboardLayout() {
+  try {
+    localStorage.setItem(
+      DASHBOARD_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        small: enabledSmallPanelKeys.value,
+        large: enabledLargePanelKeys.value
+      })
+    )
+  } catch {
+    /* ignore persistence failures */
+  }
+}
+
+function resetDashboardLayout() {
+  enabledSmallPanelKeys.value = [...defaultDashboardLayout.small]
+  enabledLargePanelKeys.value = [...defaultDashboardLayout.large]
+}
+
+function isSmallPanelEnabled(key: string): boolean {
+  return enabledSmallPanelSet.value.has(key)
+}
+
+function smallPanelOrderStyle(key: string): CSSProperties {
+  const order = enabledSmallPanelKeys.value.indexOf(key)
+  return { order: order < 0 ? 0 : order }
+}
 
 // Dark mode detection
 const isDarkMode = computed(() => {

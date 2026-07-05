@@ -16,6 +16,46 @@
           />
         </div>
 
+        <!-- 分组筛选器 -->
+        <div v-if="activeView === 'by_group' && allGroups.length > 0" class="relative">
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:hover:bg-dark-700"
+            @click="showGroupDropdown = !showGroupDropdown"
+          >
+            <Icon name="grid" size="sm" />
+            <span class="max-w-[120px] truncate">{{ selectedGroupName || t('modelCatalog.allGroups') }}</span>
+            <Icon name="chevronDown" size="sm" class="transition-transform" :class="{ 'rotate-180': showGroupDropdown }" />
+          </button>
+          <transition name="dropdown">
+            <div
+              v-if="showGroupDropdown"
+              ref="groupDropdownRef"
+              class="absolute left-0 z-50 mt-2 max-h-64 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800"
+            >
+              <button
+                type="button"
+                class="flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-dark-700"
+                :class="{ 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': !selectedGroupId }"
+                @click="selectGroup(null)"
+              >
+                {{ t('modelCatalog.allGroups') }}
+              </button>
+              <button
+                v-for="group in allGroups"
+                :key="group.id"
+                type="button"
+                class="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-dark-700"
+                :class="{ 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': selectedGroupId === group.id }"
+                @click="selectGroup(group.id)"
+              >
+                <span class="truncate">{{ group.name }}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ groupCount(group.id) }}</span>
+              </button>
+            </div>
+          </transition>
+        </div>
+
         <div class="inline-flex overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800">
           <button
             v-for="mode in visibleViewModes"
@@ -199,15 +239,57 @@ const { t } = useI18n()
 
 const searchQuery = ref('')
 const activeView = ref<CatalogViewMode>('merged')
+const selectedGroupId = ref<number | null>(null)
+const showGroupDropdown = ref(false)
+const groupDropdownRef = ref<HTMLElement | null>(null)
 
 const visibleViewModes = computed<CatalogViewMode[]>(() =>
   props.admin ? ['merged', 'by_group', 'by_channel', 'by_account'] : ['merged', 'by_group']
 )
 
+// 收集所有唯一的分组
+const allGroups = computed<ModelCatalogGroup[]>(() => {
+  const groupMap = new Map<number, ModelCatalogGroup>()
+  for (const model of props.models) {
+    for (const group of model.groups || []) {
+      if (!groupMap.has(group.id)) {
+        groupMap.set(group.id, group)
+      }
+    }
+  }
+  return Array.from(groupMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+})
+
+// 选中的分组名称
+const selectedGroupName = computed(() => {
+  if (!selectedGroupId.value) return ''
+  return allGroups.value.find(g => g.id === selectedGroupId.value)?.name || ''
+})
+
+// 统计每个分组的模型数量
+function groupCount(groupId: number): number {
+  return props.models.filter(m => m.groups?.some(g => g.id === groupId)).length
+}
+
+// 选择分组
+function selectGroup(groupId: number | null) {
+  selectedGroupId.value = groupId
+  showGroupDropdown.value = false
+}
+
 const filteredModels = computed(() => {
+  let result = props.models
+
+  // 按分组筛选
+  if (selectedGroupId.value) {
+    result = result.filter(model => model.groups?.some(g => g.id === selectedGroupId.value))
+  }
+
+  // 按搜索关键词筛选
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return props.models
-  return props.models.filter((model) => {
+  if (!query) return result
+
+  return result.filter((model) => {
     const groupHit = (model.groups || []).some((group) => group.name.toLowerCase().includes(query))
     const sourceHit = props.admin && model.sources?.some((source) =>
       [source.account_name, source.platform, source.source].some((value) =>

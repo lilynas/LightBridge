@@ -215,6 +215,16 @@ import {
 const props = defineProps<{
   show: boolean
   monitor: ChannelMonitor | null
+  /** 预填充数据（从账号或模型列表快速创建时使用） */
+  prefill?: {
+    name?: string
+    provider?: Provider
+    api_mode?: APIMode
+    endpoint?: string
+    api_key?: string
+    primary_model?: string
+    interval_seconds?: number
+  }
 }>()
 
 const emit = defineEmits<{
@@ -454,10 +464,26 @@ watch(
     if (!show) return
     void loadTemplates()
     if (m) loadFromMonitor(m)
+    else if (props.prefill) applyPrefill()
     else resetForm()
   },
   { immediate: true },
 )
+
+function applyPrefill() {
+  const p = props.prefill
+  if (!p) return
+  resetForm()
+  suppressFormWatchers = true
+  if (p.name) form.name = p.name
+  if (p.provider) form.provider = p.provider
+  if (p.api_mode) form.api_mode = p.api_mode
+  if (p.endpoint) form.endpoint = p.endpoint
+  if (p.api_key) form.api_key = p.api_key
+  if (p.primary_model) form.primary_model = p.primary_model
+  if (p.interval_seconds) form.interval_seconds = p.interval_seconds
+  suppressFormWatchers = false
+}
 
 function useCurrentDomain() {
   form.endpoint = window.location.origin

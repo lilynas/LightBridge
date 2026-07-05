@@ -354,6 +354,26 @@ const builtinFeatures = computed<BuiltinFeature[]>(() => {
       configPath: '/admin/affiliates/invites',
       enabled: !!ps?.affiliate_enabled,
       settingKey: 'affiliate_enabled'
+    },
+    {
+      key: 'email-verification',
+      title: t('modules.builtin.emailVerification'),
+      description: t('modules.builtin.emailVerificationDesc'),
+      icon: 'mail',
+      iconBg: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300',
+      configPath: '/admin/settings/email',
+      enabled: !!ps?.email_verify_enabled,
+      settingKey: 'email_verify_enabled'
+    },
+    {
+      key: 'login-agreement',
+      title: t('modules.builtin.loginAgreement'),
+      description: t('modules.builtin.loginAgreementDesc'),
+      icon: 'document',
+      iconBg: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300',
+      configPath: '/admin/settings/agreement',
+      enabled: !!ps?.login_agreement_enabled,
+      settingKey: 'login_agreement_enabled'
     }
   ]
 })

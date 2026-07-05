@@ -877,6 +877,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled:   settings[SettingKeyRiskControlEnabled] == "true",
 		PrivacyFilterEnabled: settings[SettingKeyPrivacyFilterEnabled] == "true",
 
+		AnnouncementsEnabled: settings[SettingKeyAnnouncementsEnabled] != "false",
+		RedeemEnabled:        settings[SettingKeyRedeemEnabled] != "false",
+		PromoEnabled:         settings[SettingKeyPromoCodeEnabled] != "false",
+		ProxiesEnabled:       settings[SettingKeyProxiesEnabled] != "false",
+		ChannelPricingEnabled: settings[SettingKeyChannelPricingEnabled] != "false",
+
 		DeploymentMode: NormalizeDeploymentMode(settings[SettingKeyDeploymentMode]),
 	}, nil
 }
@@ -934,6 +940,15 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 	}
+}
+
+// IsChannelMonitorEnabled 检查渠道监控功能是否启用（用于渐进式加载决策）
+func (s *SettingService) IsChannelMonitorEnabled(ctx context.Context) bool {
+	val, err := s.settingRepo.GetValue(ctx, SettingKeyChannelMonitorEnabled)
+	if err != nil {
+		return true // 默认启用
+	}
+	return val != "false"
 }
 
 // AvailableChannelsRuntime is the lightweight view of the available-channels feature
@@ -1182,6 +1197,11 @@ type PublicSettingsInjectionPayload struct {
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	PrivacyFilterEnabled                 bool `json:"privacy_filter_enabled"`
 	DeploymentMode                       string `json:"deployment_mode"`
+	AnnouncementsEnabled                 bool `json:"announcements_enabled"`
+	RedeemEnabled                        bool `json:"redeem_enabled"`
+	PromoEnabled                         bool `json:"promo_enabled"`
+	ProxiesEnabled                       bool `json:"proxies_enabled"`
+	ChannelPricingEnabled                bool `json:"channel_pricing_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1246,6 +1266,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		PrivacyFilterEnabled:                 settings.PrivacyFilterEnabled,
 		DeploymentMode:                       NormalizeDeploymentMode(settings.DeploymentMode),
+		AnnouncementsEnabled:                 settings.AnnouncementsEnabled,
+		RedeemEnabled:                        settings.RedeemEnabled,
+		PromoEnabled:                         settings.PromoEnabled,
+		ProxiesEnabled:                       settings.ProxiesEnabled,
+		ChannelPricingEnabled:                settings.ChannelPricingEnabled,
 	}, nil
 }
 
@@ -1889,6 +1914,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 	// 隐私过滤功能开关
 	updates[SettingKeyPrivacyFilterEnabled] = strconv.FormatBool(settings.PrivacyFilterEnabled)
+
+	// 公告功能开关
+	updates[SettingKeyAnnouncementsEnabled] = strconv.FormatBool(settings.AnnouncementsEnabled)
+	// 兑换码功能开关
+	updates[SettingKeyRedeemEnabled] = strconv.FormatBool(settings.RedeemEnabled)
+	// 优惠码功能开关
+	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoEnabled)
 
 	// 部署模式：personal / distribution（归一化非法值）
 	updates[SettingKeyDeploymentMode] = NormalizeDeploymentMode(settings.DeploymentMode)
@@ -3328,6 +3360,17 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
 	// 隐私过滤功能（默认关闭，严格 true 才启用）
 	result.PrivacyFilterEnabled = settings[SettingKeyPrivacyFilterEnabled] == "true"
+
+	// 公告功能（默认开启）
+	result.AnnouncementsEnabled = settings[SettingKeyAnnouncementsEnabled] != "false"
+	// 兑换码功能（默认开启）
+	result.RedeemEnabled = settings[SettingKeyRedeemEnabled] != "false"
+	// 优惠码功能（默认开启）
+	result.PromoEnabled = settings[SettingKeyPromoCodeEnabled] != "false"
+	// IP 管理功能（默认开启）
+	result.ProxiesEnabled = settings[SettingKeyProxiesEnabled] != "false"
+	// 渠道定价功能（默认开启）
+	result.ChannelPricingEnabled = settings[SettingKeyChannelPricingEnabled] != "false"
 
 	// 部署模式（默认 distribution；非法/空值归一化）
 	result.DeploymentMode = NormalizeDeploymentMode(settings[SettingKeyDeploymentMode])

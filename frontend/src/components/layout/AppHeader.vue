@@ -21,8 +21,32 @@
         </div>
       </div>
 
-      <!-- Right: Announcements + Docs + Subscriptions + Balance + User Dropdown -->
+      <!-- Right: Refresh + Dashboard Customize + Time Range + Announcements + Docs + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
+        <!-- 刷新按钮（仅管理控制台显示） -->
+        <button
+          v-if="showTimeRangeButton"
+          type="button"
+          class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:scale-105 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
+          :title="t('common.refresh', 'Refresh')"
+          :aria-label="t('common.refresh', 'Refresh')"
+          @click="$emit('refresh')"
+        >
+          <Icon name="refresh" size="md" />
+        </button>
+
+        <!-- 自定义板块按钮（仅管理控制台显示） -->
+        <button
+          v-if="showDashboardCustomizeButton"
+          type="button"
+          class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:scale-105 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
+          :title="t('admin.dashboard.customize.button')"
+          :aria-label="t('admin.dashboard.customize.button')"
+          @click="$emit('customizeDashboard')"
+        >
+          <Icon name="grid" size="md" />
+        </button>
+
         <!-- 时间范围按钮（仅仪表盘 / 管理控制台显示） -->
         <TimeRangeButton v-if="showTimeRangeButton" />
 
@@ -221,6 +245,11 @@ import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import TimeRangeButton from '@/components/layout/TimeRangeButton.vue'
 import Icon from '@/components/icons/Icon.vue'
 
+defineEmits<{
+  refresh: []
+  customizeDashboard: []
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
@@ -232,6 +261,7 @@ const onboardingStore = useOnboardingStore()
 // 时间范围按钮仅在仪表盘 / 管理控制台页面显示
 const TIME_RANGE_ROUTES = new Set(['AdminDashboard', 'AdminOps'])
 const showTimeRangeButton = computed(() => TIME_RANGE_ROUTES.has(String(route.name || '')))
+const showDashboardCustomizeButton = computed(() => route.name === 'AdminDashboard')
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)

@@ -149,6 +149,64 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	return m, nil
 }
 
+// CreateFromAccount 从已有账号直接创建监控，自动填充端点、密钥和提供商信息。
+func (s *ChannelMonitorService) CreateFromAccount(ctx context.Context, account *Account, modelID string, intervalSeconds int) (*ChannelMonitor, error) {
+	if account == nil {
+		return nil, ErrChannelMonitorMissingAPIKey
+	}
+	if strings.TrimSpace(modelID) == "" {
+		return nil, ErrChannelMonitorMissingPrimaryModel
+	}
+
+	// 根据账号类型确定 provider 和端点
+	var provider, endpoint, apiKey string
+	switch {
+	case account.IsOpenAI():
+		provider = "openai"
+		endpoint = account.GetOpenAIBaseURL()
+		apiKey = account.GetCredential("api_key")
+	case account.IsAnthropic():
+		provider = "anthropic"
+		endpoint = account.GetBaseURL()
+		apiKey = account.GetCredential("api_key")
+	case account.IsGemini():
+		provider = "gemini"
+		endpoint = account.GetGeminiBaseURL("https://generativelanguage.googleapis.com")
+		apiKey = account.GetCredential("api_key")
+	case account.IsCustom():
+		// Custom 平台根据协议确定 provider
+		if account.IsCustomOpenAIProtocol() {
+			provider = "openai"
+		} else {
+			provider = "anthropic"
+		}
+		endpoint = account.GetCustomBaseURL()
+		apiKey = account.GetCredential("api_key")
+	default:
+		provider = "openai"
+		endpoint = account.GetCredential("base_url")
+		apiKey = account.GetCredential("api_key")
+	}
+
+	if endpoint == "" {
+		endpoint = "https://api.openai.com"
+	}
+	if intervalSeconds <= 0 {
+		intervalSeconds = 60
+	}
+
+	return s.Create(ctx, ChannelMonitorCreateParams{
+		Name:            "Monitor: " + modelID,
+		Provider:        provider,
+		Endpoint:        endpoint,
+		APIKey:          apiKey,
+		PrimaryModel:    modelID,
+		Enabled:         true,
+		IntervalSeconds: intervalSeconds,
+		CreatedBy:       account.ID,
+	})
+}
+
 // validateCreateParams 把 Create 入参的所有校验聚拢为一个函数，避免 Create 主体超过 30 行。
 func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateProvider(p.Provider); err != nil {

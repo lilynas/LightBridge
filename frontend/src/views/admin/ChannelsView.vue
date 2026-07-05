@@ -701,8 +701,8 @@ const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.channels.columns.name', 'Name'), sortable: true },
   { key: 'description', label: t('admin.channels.columns.description', 'Description'), sortable: false },
   { key: 'status', label: t('admin.channels.columns.status', 'Status'), sortable: true },
-  { key: 'group_count', label: t('admin.channels.columns.groups', 'Groups'), sortable: false },
-  { key: 'pricing_count', label: t('admin.channels.columns.pricing', 'Pricing'), sortable: false },
+  { key: 'group_count', label: t('admin.channels.columns.groups', 'Groups'), sortable: true },
+  { key: 'pricing_count', label: t('admin.channels.columns.pricing', 'Pricing'), sortable: true },
   { key: 'created_at', label: t('admin.channels.columns.createdAt', 'Created'), sortable: true },
   { key: 'actions', label: t('admin.channels.columns.actions', 'Actions'), sortable: false }
 ])

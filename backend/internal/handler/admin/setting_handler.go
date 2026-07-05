@@ -652,6 +652,15 @@ type UpdateSettingsRequest struct {
 	// 部署模式：personal（个人）/ distribution（分发）
 	DeploymentMode *string `json:"deployment_mode"`
 
+	// 公告功能开关
+	AnnouncementsEnabled *bool `json:"announcements_enabled"`
+
+	// 兑换码功能开关
+	RedeemEnabled *bool `json:"redeem_enabled"`
+
+	// 优惠码功能开关
+	PromoEnabled *bool `json:"promo_enabled"`
+
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 
@@ -1778,6 +1787,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return service.NormalizeDeploymentMode(*req.DeploymentMode)
 			}
 			return previousSettings.DeploymentMode
+		}(),
+		AnnouncementsEnabled: func() bool {
+			if req.AnnouncementsEnabled != nil {
+				return *req.AnnouncementsEnabled
+			}
+			return previousSettings.AnnouncementsEnabled
+		}(),
+		RedeemEnabled: func() bool {
+			if req.RedeemEnabled != nil {
+				return *req.RedeemEnabled
+			}
+			return previousSettings.RedeemEnabled
+		}(),
+		PromoEnabled: func() bool {
+			if req.PromoEnabled != nil {
+				return *req.PromoEnabled
+			}
+			return previousSettings.PromoEnabled
 		}(),
 	}
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"time"
 
 	dbent "github.com/WilliamWang1721/LightBridge/ent"
@@ -624,7 +625,13 @@ func ProvideChannelMonitorService(
 // 通过 SetScheduler 注入回 service 后再 Start，确保启动时加载所有 enabled monitor，
 // 后续 CRUD 也能即时同步任务表。Runner.Stop 由 cleanup function 调用。
 // settingService 用于 runner 每次 fire 读取功能开关。
+// 功能禁用时不创建 runner，实现真正的渐进式加载。
 func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+	// 检查功能是否启用，禁用时不创建 runner
+	if settingService != nil && !settingService.IsChannelMonitorEnabled(context.Background()) {
+		slog.Info("channel_monitor: feature disabled, runner not started")
+		return nil
+	}
 	r := NewChannelMonitorRunner(svc, settingService)
 	svc.SetScheduler(r)
 	r.Start()

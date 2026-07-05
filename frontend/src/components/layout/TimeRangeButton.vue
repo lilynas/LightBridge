@@ -2,11 +2,11 @@
   <div class="relative" ref="wrapperRef">
     <button
       type="button"
-      class="btn-ghost btn-icon"
+      class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:scale-105 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-800"
       :title="t('admin.dashboard.timeRange')"
       @click="open = !open"
     >
-      <Icon name="clock" size="md" :stroke-width="2" />
+      <Icon name="clock" size="md" />
     </button>
 
     <BaseDialog

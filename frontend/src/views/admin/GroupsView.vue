@@ -3058,7 +3058,7 @@ const columns = computed<Column[]>(() => [
   {
     key: "capacity",
     label: t("admin.groups.columns.capacity"),
-    sortable: false,
+    sortable: true,
   },
   { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
   { key: "status", label: t("admin.groups.columns.status"), sortable: true },
