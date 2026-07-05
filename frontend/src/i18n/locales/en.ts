@@ -96,7 +96,7 @@ export default {
       soon: 'Soon',
       claude: 'Claude',
       gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      antigravity: 'Gemini',
       more: 'More'
     },
     // CTA section
@@ -408,6 +408,14 @@ export default {
     riskControl: 'Risk Control',
     privacyFilter: 'Privacy Filter',
     feedback: 'Feedback',
+    // Menu groups
+    groupOperations: 'Operations',
+    groupUsersAccess: 'Users & Access',
+    groupChannelsModels: 'Channels & Models',
+    groupCommerce: 'Commerce',
+    groupMarketing: 'Marketing',
+    groupSecurity: 'Security',
+    groupSystem: 'System',
   },
 
   docs: {
@@ -782,7 +790,7 @@ export default {
         opencode: 'OpenCode',
       },
       antigravity: {
-        description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
+        description: 'Configure API access for Gemini group. Select the configuration method based on your client.',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
@@ -1102,7 +1110,21 @@ export default {
       embeddings: 'Embeddings',
       image: 'Image',
       audio: 'Audio'
-    }
+    },
+    // Monitor status
+    setupMonitor: 'Setup Monitor',
+    monitorStatus: {
+      operational: 'Operational',
+      degraded: 'Degraded',
+      failed: 'Failed',
+      error: 'Error'
+    },
+    quickMonitorTitle: 'Set up monitoring for {model}',
+    quickMonitorProvider: 'Provider',
+    quickMonitorEndpoint: 'Monitor Endpoint URL',
+    quickMonitorApiMode: 'API Mode',
+    quickMonitorInterval: 'Check Interval',
+    quickMonitorSubmit: 'Create & Enable'
   },
 
   affiliate: {
@@ -1867,7 +1889,7 @@ export default {
         usageAnthropic: 'Usage (Claude)',
         usageOpenAI: 'Usage (OpenAI)',
         usageGemini: 'Usage (Gemini)',
-        usageAntigravity: 'Usage (Antigravity)',
+        usageAntigravity: 'Usage (Gemini)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
@@ -2228,7 +2250,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity',
+        antigravity: 'Gemini',
       },
       upstreamProtocols: {
         openai_responses: 'OpenAI Responses',
@@ -3232,7 +3254,7 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity',
+        antigravity: 'Gemini',
       },
       types: {
         oauth: 'OAuth',
@@ -3240,7 +3262,7 @@ export default {
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
-        antigravityOauth: 'Antigravity OAuth',
+        antigravityOauth: 'Gemini OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -3793,7 +3815,7 @@ export default {
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
-        '!! WARNING !! Antigravity Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Antigravity accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Antigravity accounts from Anthropic accounts. Make sure you understand this before enabling!!',
+        '!! WARNING !! Gemini Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Gemini accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Gemini accounts from Anthropic accounts. Make sure you understand this before enabling!!',
       aiCreditsBalance: 'AI Credits',
       allowOverages: 'Allow Overages (AI Credits)',
       allowOveragesTooltip:
@@ -3834,7 +3856,7 @@ export default {
       // Upstream type
       upstream: {
         baseUrl: 'Upstream Base URL',
-        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://cloudcode-pa.googleapis.com',
+        baseUrlHint: 'The address of the upstream Gemini service, e.g., https://cloudcode-pa.googleapis.com',
         apiKey: 'Upstream API Key',
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',
@@ -3996,10 +4018,10 @@ export default {
 	          aiStudioNotConfigured:
 	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback'
 	        },
-        // Antigravity specific
+        // Gemini specific
         antigravity: {
-          title: 'Antigravity Account Authorization',
-          followSteps: 'Follow these steps to authorize your Antigravity account:',
+          title: 'Gemini Account Authorization',
+          followSteps: 'Follow these steps to authorize your Gemini account:',
           step1GenerateUrl: 'Generate the authorization URL',
           generateAuthUrl: 'Generate Auth URL',
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
@@ -4013,13 +4035,13 @@ export default {
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
                     authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
-                    failedToGenerateUrl: 'Failed to generate Antigravity auth URL',
+                    failedToGenerateUrl: 'Failed to generate Gemini auth URL',
                     missingExchangeParams: 'Missing code, session ID, or state',
-                    failedToExchangeCode: 'Failed to exchange Antigravity auth code',
+                    failedToExchangeCode: 'Failed to exchange Gemini auth code',
                     // Refresh Token auth
                     refreshTokenAuth: 'Manual RT',
-                    refreshTokenDesc: 'Enter your existing Antigravity Refresh Token. Supports batch input (one per line). The system will automatically validate and create accounts.',
-                    refreshTokenPlaceholder: 'Paste your Antigravity Refresh Token...\nSupports multiple tokens, one per line',
+                    refreshTokenDesc: 'Enter your existing Gemini Refresh Token. Supports batch input (one per line). The system will automatically validate and create accounts.',
+                    refreshTokenPlaceholder: 'Paste your Gemini Refresh Token...\nSupports multiple tokens, one per line',
                     validating: 'Validating...',
                     validateAndCreate: 'Validate & Create',
                     pleaseEnterRefreshToken: 'Please enter Refresh Token',
@@ -4030,8 +4052,8 @@ export default {
         providerLabel: 'Access Type',
         providerGemini: 'Gemini',
         providerGeminiDesc: 'Official Gemini (CLI/OAuth, API Key, Vertex service account)',
-        providerAntigravity: 'Antigravity',
-        providerAntigravityDesc: 'Antigravity account type under the Gemini platform',
+        providerAntigravity: 'Gemini',
+        providerAntigravityDesc: 'Account type under the Gemini platform',
         providerAistudioProxy: 'AIStudio Reverse Proxy',
         providerAistudioProxyDesc: 'Connect to an aistudio-api reverse proxy; supports Google Pro/Ultra membership',
         proxyModeBadge: 'AIStudio reverse-proxy mode: authenticates with a Bearer token; model list served from a static table.',
@@ -4280,7 +4302,7 @@ export default {
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
-      antigravityAccount: 'Antigravity Account',
+      antigravityAccount: 'Gemini Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -4369,7 +4391,7 @@ export default {
         unlimited: 'Unlimited'
       },
       ineligibleWarning:
-        'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.',
+        'This account is not eligible for Gemini, but API forwarding still works. Use at your own risk.',
       forbidden: 'Forbidden',
       forbiddenValidation: 'Verification Required',
       forbiddenViolation: 'Violation Ban',

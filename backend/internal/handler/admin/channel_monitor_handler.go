@@ -448,3 +448,48 @@ func parseHistoryLimit(raw string) int {
 	}
 	return v
 }
+
+// --- Quick Create ---
+
+type quickCreateMonitorRequest struct {
+	ModelID         string `json:"model_id" binding:"required,max=200"`
+	Provider        string `json:"provider" binding:"required,oneof=openai anthropic gemini"`
+	APIMode         string `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
+	Endpoint        string `json:"endpoint" binding:"required,max=500"`
+	APIKey          string `json:"api_key" binding:"required,max=2000"`
+	IntervalSeconds int    `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
+}
+
+// QuickCreate POST /api/v1/admin/channel-monitors/quick
+// 从模型列表快速创建监控：只需 endpoint + API key，自动填充模型名称。
+func (h *ChannelMonitorHandler) QuickCreate(c *gin.Context) {
+	var req quickCreateMonitorRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
+		return
+	}
+
+	subject, _ := middleware2.GetAuthSubjectFromContext(c)
+
+	interval := req.IntervalSeconds
+	if interval <= 0 {
+		interval = 60
+	}
+
+	m, err := h.monitorService.Create(c.Request.Context(), service.ChannelMonitorCreateParams{
+		Name:            "Monitor: " + req.ModelID,
+		Provider:        req.Provider,
+		APIMode:         req.APIMode,
+		Endpoint:        req.Endpoint,
+		APIKey:          req.APIKey,
+		PrimaryModel:    req.ModelID,
+		Enabled:         true,
+		IntervalSeconds: interval,
+		CreatedBy:       subject.UserID,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, channelMonitorToResponse(m))
+}

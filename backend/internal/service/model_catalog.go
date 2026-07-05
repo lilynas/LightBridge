@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -56,10 +57,11 @@ type ModelCatalogRepository interface {
 }
 
 type ModelCatalogService struct {
-	repo           ModelCatalogRepository
-	accountRepo    AccountRepository
-	groupRepo      GroupRepository
-	channelService *ChannelService
+	repo            ModelCatalogRepository
+	accountRepo     AccountRepository
+	groupRepo       GroupRepository
+	channelService  *ChannelService
+	monitorService  *ChannelMonitorService
 }
 
 func NewModelCatalogService(
@@ -67,12 +69,14 @@ func NewModelCatalogService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	channelService *ChannelService,
+	monitorService *ChannelMonitorService,
 ) *ModelCatalogService {
 	return &ModelCatalogService{
 		repo:           repo,
 		accountRepo:    accountRepo,
 		groupRepo:      groupRepo,
 		channelService: channelService,
+		monitorService: monitorService,
 	}
 }
 
@@ -269,6 +273,10 @@ func (s *ModelCatalogService) ListCatalog(ctx context.Context, groupID *int64, i
 	sort.SliceStable(out.Models, func(i, j int) bool {
 		return strings.ToLower(out.Models[i].ID) < strings.ToLower(out.Models[j].ID)
 	})
+
+	// 填充监控状态：按 primary_model 匹配 channel_monitors，批量查最新状态 + 7d 可用率
+	s.enrichMonitorStatus(ctx, out.Models)
+
 	return out, nil
 }
 
@@ -334,6 +342,12 @@ type ModelCatalogModel struct {
 	Groups      []ModelCatalogGroupRef  `json:"groups"`
 	PriceRange  *ModelCatalogPriceRange `json:"price_range,omitempty"`
 	Sources     []ModelCatalogSourceRef `json:"sources,omitempty"`
+
+	// 监控状态（由 channel_monitors 按 primary_model 匹配聚合）
+	MonitorID        *int64   `json:"monitor_id,omitempty"`
+	MonitorStatus    string   `json:"monitor_status,omitempty"`
+	MonitorLatencyMs *int     `json:"monitor_latency_ms,omitempty"`
+	MonitorAvail7d   *float64 `json:"monitor_availability_7d,omitempty"`
 }
 
 type ModelCatalogGroupRef struct {
@@ -532,4 +546,120 @@ func mergeMinMax(minPtr, maxPtr, value *float64) (*float64, *float64) {
 		maxPtr = &v
 	}
 	return minPtr, maxPtr
+}
+
+// enrichMonitorStatus 批量填充模型目录的监控状态。
+// 按 primary_model 匹配 enabled 的 channel_monitors，再批量查最新状态 + 7d 可用率。
+// 失败时仅 log warning，不阻断目录渲染。
+func (s *ModelCatalogService) enrichMonitorStatus(ctx context.Context, models []ModelCatalogModel) {
+	if s == nil || s.monitorService == nil || s.monitorService.repo == nil || len(models) == 0 {
+		return
+	}
+
+	// 1. 收集所有模型 ID
+	modelIDs := make([]string, 0, len(models))
+	for _, m := range models {
+		modelIDs = append(modelIDs, m.ID)
+	}
+
+	// 2. 查所有 enabled 的 monitors
+	allMonitors, err := s.monitorService.repo.ListEnabled(ctx)
+	if err != nil {
+		slog.Warn("model_catalog: failed to list enabled monitors for enrichment", "error", err)
+		return
+	}
+	if len(allMonitors) == 0 {
+		return
+	}
+
+	// 3. 按 primary_model 建索引（小写匹配）
+	modelSet := make(map[string]struct{}, len(modelIDs))
+	for _, id := range modelIDs {
+		modelSet[strings.ToLower(id)] = struct{}{}
+	}
+
+	type monitorMatch struct {
+		monitorID int64
+		modelID   string
+	}
+	var matches []monitorMatch
+	for _, mon := range allMonitors {
+		if _, ok := modelSet[strings.ToLower(mon.PrimaryModel)]; ok {
+			matches = append(matches, monitorMatch{monitorID: mon.ID, modelID: mon.PrimaryModel})
+		}
+	}
+	if len(matches) == 0 {
+		return
+	}
+
+	// 4. 收集 monitor IDs，批量查最新状态 + 7d 可用率
+	monitorIDs := make([]int64, 0, len(matches))
+	for _, m := range matches {
+		monitorIDs = append(monitorIDs, m.monitorID)
+	}
+
+	latestMap, err := s.monitorService.repo.ListLatestForMonitorIDs(ctx, monitorIDs)
+	if err != nil {
+		slog.Warn("model_catalog: batch load monitor latest failed", "error", err)
+		latestMap = map[int64][]*ChannelMonitorLatest{}
+	}
+	availMap, err := s.monitorService.repo.ComputeAvailabilityForMonitors(ctx, monitorIDs, 7)
+	if err != nil {
+		slog.Warn("model_catalog: batch compute monitor availability failed", "error", err)
+		availMap = map[int64][]*ChannelMonitorAvailability{}
+	}
+
+	// 5. 按 model name 构建最新状态索引：modelID -> latest status
+	type modelStatus struct {
+		monitorID   int64
+		status      string
+		latencyMs   *int
+		avail7d     *float64
+	}
+	statusByModel := make(map[string]modelStatus, len(matches))
+
+	for _, m := range matches {
+		// 找该 monitor 主模型的最新状态
+		latests := latestMap[m.monitorID]
+		for _, l := range latests {
+			if strings.EqualFold(l.Model, m.modelID) {
+				statusByModel[strings.ToLower(m.modelID)] = modelStatus{
+					monitorID: m.monitorID,
+					status:    l.Status,
+					latencyMs: l.LatencyMs,
+				}
+				break
+			}
+		}
+	}
+
+	// 填充可用率
+	for _, m := range matches {
+		key := strings.ToLower(m.modelID)
+		st, ok := statusByModel[key]
+		if !ok {
+			continue
+		}
+		avails := availMap[m.monitorID]
+		for _, a := range avails {
+			if strings.EqualFold(a.Model, m.modelID) {
+				v := a.AvailabilityPct
+				st.avail7d = &v
+				statusByModel[key] = st
+				break
+			}
+		}
+	}
+
+	// 6. 填充到 models
+	for i := range models {
+		st, ok := statusByModel[strings.ToLower(models[i].ID)]
+		if !ok {
+			continue
+		}
+		models[i].MonitorID = &st.monitorID
+		models[i].MonitorStatus = st.status
+		models[i].MonitorLatencyMs = st.latencyMs
+		models[i].MonitorAvail7d = st.avail7d
+	}
 }

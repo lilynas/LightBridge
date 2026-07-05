@@ -56,6 +56,11 @@ export interface ModelCatalogModel {
   groups: ModelCatalogGroup[]
   price_range?: ModelCatalogPriceRange | null
   sources?: ModelCatalogSource[]
+  // 监控状态（由 channel_monitors 按 primary_model 匹配聚合）
+  monitor_id?: number | null
+  monitor_status?: string | null
+  monitor_latency_ms?: number | null
+  monitor_availability_7d?: number | null
 }
 
 export interface ModelCatalogResponse {

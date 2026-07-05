@@ -96,7 +96,7 @@ export default {
       soon: '即将推出',
       claude: 'Claude',
       gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      antigravity: 'Gemini',
       more: '更多'
     },
     // CTA 区块
@@ -408,6 +408,14 @@ export default {
     riskControl: '风控中心',
     privacyFilter: '隐私过滤',
     feedback: '问题反馈',
+    // Menu groups
+    groupOperations: '运维监控',
+    groupUsersAccess: '用户与权限',
+    groupChannelsModels: '渠道与模型',
+    groupCommerce: '商业运营',
+    groupMarketing: '营销推广',
+    groupSecurity: '安全与风控',
+    groupSystem: '系统与配置',
   },
 
   docs: {
@@ -782,7 +790,7 @@ export default {
         opencode: 'OpenCode'
       },
       antigravity: {
-        description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
+        description: '为 Gemini 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         claudeNote:
@@ -1106,7 +1114,21 @@ export default {
       embeddings: '向量',
       image: '图片',
       audio: '音频'
-    }
+    },
+    // 监控状态
+    setupMonitor: '设置监控',
+    monitorStatus: {
+      operational: '在线',
+      degraded: '降级',
+      failed: '故障',
+      error: '异常'
+    },
+    quickMonitorTitle: '为 {model} 设置监控',
+    quickMonitorProvider: '服务商',
+    quickMonitorEndpoint: '监控端点 URL',
+    quickMonitorApiMode: 'API 模式',
+    quickMonitorInterval: '检测间隔',
+    quickMonitorSubmit: '创建并启用'
   },
 
   affiliate: {
@@ -1888,7 +1910,7 @@ export default {
         usageAnthropic: '用量 (Claude)',
         usageOpenAI: '用量 (OpenAI)',
         usageGemini: '用量 (Gemini)',
-        usageAntigravity: '用量 (Antigravity)',
+        usageAntigravity: '用量 (Gemini)',
         concurrency: '并发数',
         status: '状态',
         lastActive: '最后活跃时间',
@@ -2255,7 +2277,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity',
+        antigravity: 'Gemini',
       },
       upstreamProtocols: {
         openai_responses: 'OpenAI Responses',
@@ -3422,7 +3444,7 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
-        antigravity: 'Antigravity',
+        antigravity: 'Gemini',
       },
       types: {
         oauth: 'OAuth',
@@ -3430,7 +3452,7 @@ export default {
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
-        antigravityOauth: 'Antigravity OAuth',
+        antigravityOauth: 'Gemini OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游',
@@ -3524,7 +3546,7 @@ export default {
         unlimited: '无限制'
       },
       ineligibleWarning:
-        '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
+        '该账号无 Gemini 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
       forbidden: '已封禁',
       forbiddenValidation: '需要验证',
       forbiddenViolation: '违规封禁',
@@ -3931,7 +3953,7 @@ export default {
       mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
-        '！！注意！！ Antigravity Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Antigravity 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Antigravity 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
+        '！！注意！！ Gemini Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Gemini 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Gemini 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
       aiCreditsBalance: 'AI Credits',
       allowOverages: '允许超量请求 (AI Credits)',
       allowOveragesTooltip:
@@ -3972,7 +3994,7 @@ export default {
       // Upstream type
       upstream: {
         baseUrl: '上游 Base URL',
-        baseUrlHint: '上游 Antigravity 服务的地址，例如：https://cloudcode-pa.googleapis.com',
+        baseUrlHint: '上游 Gemini 服务的地址，例如：https://cloudcode-pa.googleapis.com',
         apiKey: '上游 API Key',
         apiKeyHint: '上游服务的 API Key',
         pleaseEnterBaseUrl: '请输入上游 Base URL',
@@ -4124,10 +4146,10 @@ export default {
           aiStudioNotConfigured:
             'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
         },
-        // Antigravity specific
+        // Gemini specific
         antigravity: {
-          title: 'Antigravity 账户授权',
-          followSteps: '请按照以下步骤完成 Antigravity 账户的授权：',
+          title: 'Gemini 账户授权',
+          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
           step1GenerateUrl: '生成授权链接',
           generateAuthUrl: '生成授权链接',
           step2OpenUrl: '在浏览器中打开链接并完成授权',
@@ -4141,13 +4163,13 @@ export default {
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
-          failedToGenerateUrl: '生成 Antigravity 授权链接失败',
+          failedToGenerateUrl: '生成 Gemini 授权链接失败',
           missingExchangeParams: '缺少 code / session_id / state',
-          failedToExchangeCode: 'Antigravity 授权码兑换失败',
+          failedToExchangeCode: 'Gemini 授权码兑换失败',
           // Refresh Token auth
           refreshTokenAuth: '手动输入 RT',
-          refreshTokenDesc: '输入您已有的 Antigravity Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
-          refreshTokenPlaceholder: '粘贴您的 Antigravity Refresh Token...\n支持多个，每行一个',
+          refreshTokenDesc: '输入您已有的 Gemini Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          refreshTokenPlaceholder: '粘贴您的 Gemini Refresh Token...\n支持多个，每行一个',
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
@@ -4159,8 +4181,8 @@ export default {
         providerLabel: '接入类型',
         providerGemini: 'Gemini',
         providerGeminiDesc: '官方 Gemini（CLI/OAuth、API Key、Vertex 服务账号）',
-        providerAntigravity: 'Antigravity',
-        providerAntigravityDesc: 'Gemini 平台下的 Antigravity 账号类型',
+        providerAntigravity: 'Gemini',
+        providerAntigravityDesc: 'Gemini 平台下的账号类型',
         providerAistudioProxy: 'AIStudio 反代',
         providerAistudioProxyDesc: '接入 aistudio-api 反代，支持 Google 会员 Pro/Ultra',
         proxyModeBadge: '当前为 AIStudio 反代模式：使用 Bearer Token 鉴权，模型列表由静态表提供。',
@@ -4407,7 +4429,7 @@ export default {
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
-      antigravityAccount: 'Antigravity 账号',
+      antigravityAccount: 'Gemini 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

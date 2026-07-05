@@ -812,60 +812,111 @@ const customMenuItemsForAdmin = computed(() => {
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
+    // Dashboard
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
-    { path: '/admin/error-analysis', label: t('nav.errorAnalysis'), icon: ErrorAnalysisIcon, featureFlag: flagOpsMonitoring },
-    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+
+    // Operations group
     {
-      path: '/admin/channels',
-      label: t('nav.channelManagement'),
-      icon: ChannelIcon,
-      hideInSimpleMode: true,
+      path: '/admin/ops-group',
+      label: t('nav.groupOperations'),
+      icon: ChartIcon,
       expandOnly: true,
+      featureFlag: flagOpsMonitoring,
       children: [
+        { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon },
+        { path: '/admin/error-analysis', label: t('nav.errorAnalysis'), icon: ErrorAnalysisIcon },
+      ],
+    },
+
+    // Users & Access group
+    {
+      path: '/admin/users-group',
+      label: t('nav.groupUsersAccess'),
+      icon: UsersIcon,
+      expandOnly: true,
+      hideInSimpleMode: true,
+      children: [
+        { path: '/admin/users', label: t('nav.users'), icon: UsersIcon },
+        { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
+      ],
+    },
+
+    // Channels & Models group
+    {
+      path: '/admin/channels-group',
+      label: t('nav.groupChannelsModels'),
+      icon: ChannelIcon,
+      expandOnly: true,
+      hideInSimpleMode: true,
+      children: [
+        { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
         { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+        { path: '/admin/model-catalog', label: t('nav.modelCatalog'), icon: DatabaseIcon },
       ],
     },
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
-    { path: '/admin/model-catalog', label: t('nav.modelCatalog'), icon: DatabaseIcon },
-    { path: '/admin/modules', label: t('nav.modules'), icon: ServerIcon },
-    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, featureFlag: flagDistribution },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: combineFlags(flagRiskControl, flagDistribution) },
-    { path: '/admin/privacy-filter', label: t('nav.privacyFilter'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagPrivacyFilter },
-    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
-    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagDistribution },
+
+    // Commerce group
     {
-      path: '/admin/affiliates',
-      label: t('nav.affiliateManagement'),
-      icon: UsersIcon,
-      hideInSimpleMode: true,
+      path: '/admin/commerce-group',
+      label: t('nav.groupCommerce'),
+      icon: CreditCardIcon,
       expandOnly: true,
-      featureFlag: flagAffiliate,
+      hideInSimpleMode: true,
+      featureFlag: combineFlags(flagDistribution, flagAdminPayment),
       children: [
-        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon },
-        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon },
-        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
+        { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, featureFlag: flagDistribution },
+        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon, featureFlag: flagAdminPayment },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon, featureFlag: flagAdminPayment },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, featureFlag: flagAdminPayment },
       ],
     },
+
+    // Marketing group
     {
-      path: '/admin/orders',
-      label: t('nav.orderManagement'),
-      icon: OrderIcon,
-      hideInSimpleMode: true,
+      path: '/admin/marketing-group',
+      label: t('nav.groupMarketing'),
+      icon: BellIcon,
       expandOnly: true,
-      featureFlag: flagAdminPayment,
+      hideInSimpleMode: true,
+      featureFlag: combineFlags(flagDistribution, flagAffiliate),
       children: [
-        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+        { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, featureFlag: flagDistribution },
+        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon, featureFlag: flagAffiliate },
+        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon, featureFlag: flagAffiliate },
+        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon, featureFlag: flagAffiliate },
+        { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, featureFlag: flagDistribution },
+        { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, featureFlag: flagDistribution },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/feedback', label: t('nav.feedback'), icon: FeedbackIcon }
+
+    // Security group
+    {
+      path: '/admin/security-group',
+      label: t('nav.groupSecurity'),
+      icon: ShieldIcon,
+      expandOnly: true,
+      hideInSimpleMode: true,
+      featureFlag: combineFlags(flagRiskControl, flagDistribution, flagPrivacyFilter),
+      children: [
+        { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, featureFlag: combineFlags(flagRiskControl, flagDistribution) },
+        { path: '/admin/privacy-filter', label: t('nav.privacyFilter'), icon: ShieldIcon, featureFlag: flagPrivacyFilter },
+      ],
+    },
+
+    // System group
+    {
+      path: '/admin/system-group',
+      label: t('nav.groupSystem'),
+      icon: CogIcon,
+      expandOnly: true,
+      children: [
+        { path: '/admin/modules', label: t('nav.modules'), icon: ServerIcon },
+        { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
+        { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
+        { path: '/admin/feedback', label: t('nav.feedback'), icon: FeedbackIcon },
+      ],
+    },
   ]
 
   const visible = applyFeatureFlags(baseItems)

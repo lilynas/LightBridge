@@ -38,7 +38,6 @@ const tOpts = computed(() => {
       { value: 'apikey', label: t('admin.accounts.apiKey') },
       { value: 'service_account', label: t('admin.accounts.types.serviceAccount') || 'Vertex' },
       { value: 'bedrock', label: 'AWS Bedrock' },
-      { value: 'antigravity', label: 'Antigravity' },
       { value: 'aistudio-proxy', label: t('admin.accounts.gemini.providerAistudioProxy') || 'AI Studio' }
     ]
   }
@@ -64,7 +63,6 @@ const tOpts = computed(() => {
       { value: 'oauth', label: t('admin.accounts.gemini.providerGemini') || 'Gemini OAuth' },
       { value: 'apikey', label: t('admin.accounts.gemini.providerAistudioProxy') ? 'Gemini API Key' : 'API Key' },
       { value: 'service_account', label: 'Vertex' },
-      { value: 'antigravity', label: 'Antigravity' },
       { value: 'aistudio-proxy', label: t('admin.accounts.gemini.providerAistudioProxy') || 'AI Studio' }
     ]
   }

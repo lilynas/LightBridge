@@ -709,6 +709,7 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		monitors.GET("", h.Admin.ChannelMonitor.List)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
 		// 静态路径必须注册在 /:id 之前，避免被参数路由抢占
+		monitors.POST("/quick", h.Admin.ChannelMonitor.QuickCreate)
 		monitors.GET("/availability", h.Admin.ChannelMonitor.RecentAvailability)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)

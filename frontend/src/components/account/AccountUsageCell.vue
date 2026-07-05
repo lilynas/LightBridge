@@ -942,7 +942,7 @@ const antigravityTierClass = computed(() => {
     case 'g1-pro-tier':
       return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
     case 'g1-ultra-tier':
-      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+      return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
     default:
       return ''
   }

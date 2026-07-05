@@ -107,6 +107,29 @@
               </span>
             </div>
 
+            <!-- 监控状态 -->
+            <div v-if="model.monitor_status" class="mb-2 flex items-center gap-2">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" :class="monitorStatusClass(model.monitor_status)">
+                <span class="h-1.5 w-1.5 rounded-full" :class="monitorDotClass(model.monitor_status)"></span>
+                {{ t(`modelCatalog.monitorStatus.${model.monitor_status}`, model.monitor_status) }}
+              </span>
+              <span v-if="model.monitor_availability_7d != null" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ model.monitor_availability_7d.toFixed(1) }}%
+                <template v-if="model.monitor_latency_ms != null">
+                  · {{ model.monitor_latency_ms }}ms
+                </template>
+              </span>
+            </div>
+            <button
+              v-else-if="admin"
+              type="button"
+              class="mb-2 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+              @click="$emit('quickSetup', model)"
+            >
+              <Icon name="plus" size="sm" />
+              {{ t('modelCatalog.setupMonitor') }}
+            </button>
+
             <div class="space-y-2 text-xs text-gray-500 dark:text-gray-400">
               <div class="flex items-start gap-2">
                 <Icon name="dollar" size="sm" class="mt-0.5 shrink-0" />
@@ -169,6 +192,7 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   refresh: []
+  quickSetup: [model: ModelCatalogModel]
 }>()
 
 const { t } = useI18n()
@@ -315,5 +339,31 @@ function formatMinMax(min?: number | null, max?: number | null) {
 function formatMoney(value?: number | null) {
   if (value == null) return '-'
   return `$${Number(value).toFixed(4)}`
+}
+
+function monitorStatusClass(status: string): string {
+  switch (status) {
+    case 'operational':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    case 'degraded':
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    case 'failed':
+      return 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+  }
+}
+
+function monitorDotClass(status: string): string {
+  switch (status) {
+    case 'operational':
+      return 'bg-emerald-500'
+    case 'degraded':
+      return 'bg-amber-500'
+    case 'failed':
+      return 'bg-red-500'
+    default:
+      return 'bg-gray-400'
+  }
 }
 </script>

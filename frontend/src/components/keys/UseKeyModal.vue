@@ -1009,11 +1009,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     provider[platform].npm = '@ai-sdk/anthropic'
   } else if (platform === 'antigravity-claude') {
     provider[platform].npm = '@ai-sdk/anthropic'
-    provider[platform].name = 'Antigravity (Claude)'
+    provider[platform].name = 'Gemini (Claude)'
     provider[platform].models = claudeModels
   } else if (platform === 'antigravity-gemini') {
     provider[platform].npm = '@ai-sdk/google'
-    provider[platform].name = 'Antigravity (Gemini)'
+    provider[platform].name = 'Gemini'
     provider[platform].models = antigravityGeminiModels
   } else if (platform === 'openai') {
     provider[platform].models = openaiModels
