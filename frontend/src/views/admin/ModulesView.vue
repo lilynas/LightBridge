@@ -2,21 +2,10 @@
   <AppLayout>
     <div class="space-y-6">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="module-stat">
-            <span class="module-stat-label">{{ t('modules.installed') }}</span>
-            <span class="module-stat-value">{{ installed.length }}</span>
-          </div>
-          <div class="module-stat">
-            <span class="module-stat-label">{{ t('modules.enabled') }}</span>
-            <span class="module-stat-value">{{ enabledCount }}</span>
-          </div>
-          <div class="module-stat">
-            <span class="module-stat-label">{{ t('modules.marketplace') }}</span>
-            <span class="module-stat-value">{{ marketplace.length }}</span>
-          </div>
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('modules.title') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('modules.builtinFeaturesDescription') }}</p>
         </div>
-
         <button class="btn btn-secondary" :disabled="loading" @click="loadAll">
           <Icon name="refresh" size="sm" :stroke-width="2" :class="{ 'animate-spin': loading }" />
           {{ t('modules.refresh') }}
@@ -31,23 +20,8 @@
         <p class="min-w-0 break-words text-sm text-red-700 dark:text-red-200">{{ error }}</p>
       </div>
 
-      <!-- 模块分类筛选器 -->
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="cat in moduleCategories"
-          :key="cat.key"
-          class="module-category-btn"
-          :class="{ 'module-category-btn--active': activeCategory === cat.key }"
-          @click="activeCategory = cat.key"
-        >
-          <Icon :name="cat.icon as any" size="sm" :stroke-width="2" />
-          {{ cat.label }}
-          <span class="module-category-count">{{ cat.count }}</span>
-        </button>
-      </div>
-
-      <!-- 内置功能卡片（原「功能开关」，迁移自系统设置） -->
-      <section v-if="activeCategory === 'builtin' || activeCategory === 'all'" class="card overflow-hidden">
+      <!-- 内置功能卡片 -->
+      <section class="card overflow-hidden">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
           <div>
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.builtinFeatures') }}</h2>
@@ -93,205 +67,27 @@
           </div>
         </div>
       </section>
-
-      <!-- Provider 模块 -->
-      <section v-if="activeCategory === 'provider' || activeCategory === 'all'" class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.providerModules') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.providerModulesDescription') }}</p>
-          </div>
-          <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-            {{ t('modules.moduleCount', { count: providerModules.length }) }}
-          </span>
-        </div>
-
-        <div v-if="loading" class="flex items-center justify-center py-16">
-          <Icon name="refresh" size="lg" :stroke-width="2" class="animate-spin text-primary-500" />
-        </div>
-        <div v-else-if="providerModules.length === 0" class="px-5 py-12 text-center">
-          <Icon name="inbox" size="xl" :stroke-width="2" class="mx-auto text-gray-400" />
-          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noProviderModules') }}</p>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noProviderModulesHint') }}</p>
-        </div>
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-          <div v-for="mod in providerModules" :key="mod.id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ installedName(mod) }}</h3>
-                <span class="module-pill module-pill--provider">{{ t('modules.type.provider') }}</span>
-                <span class="module-pill" :class="statusClass(mod.status)">{{ statusLabel(mod.status) }}</span>
-              </div>
-              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
-                <span>{{ t('modules.versionValue', { version: mod.version }) }}</span>
-                <span>{{ mod.id }}</span>
-                <span v-if="mod.enabledAt">{{ t('modules.enabledAt', { time: formatDate(mod.enabledAt) }) }}</span>
-              </div>
-              <p v-if="mod.lastError" class="mt-2 break-words text-sm text-red-600 dark:text-red-300">{{ mod.lastError }}</p>
-            </div>
-
-            <div class="flex flex-wrap gap-2 lg:justify-end">
-              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="approve(mod.id)">
-                {{ t('modules.approvePermissions') }}
-              </button>
-              <button v-if="mod.status !== 'enabled'" class="btn btn-primary px-3 py-2" :disabled="busyKey === mod.id" @click="enable(mod.id)">
-                {{ t('modules.enable') }}
-              </button>
-              <button v-else class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="disable(mod.id)">
-                {{ t('modules.disable') }}
-              </button>
-              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="uninstall(mod.id)">
-                {{ t('modules.uninstall') }}
-              </button>
-              <button class="btn px-3 py-2 text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20" :disabled="busyKey === mod.id" @click="purge(mod.id)">
-                {{ t('modules.purge') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Outbound 模块 -->
-      <section v-if="activeCategory === 'outbound' || activeCategory === 'all'" class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.outboundModules') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.outboundModulesDescription') }}</p>
-          </div>
-          <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-            {{ t('modules.moduleCount', { count: outboundModules.length }) }}
-          </span>
-        </div>
-
-        <div v-if="loading" class="flex items-center justify-center py-16">
-          <Icon name="refresh" size="lg" :stroke-width="2" class="animate-spin text-primary-500" />
-        </div>
-        <div v-else-if="outboundModules.length === 0" class="px-5 py-12 text-center">
-          <Icon name="inbox" size="xl" :stroke-width="2" class="mx-auto text-gray-400" />
-          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noOutboundModules') }}</p>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noOutboundModulesHint') }}</p>
-        </div>
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-          <div v-for="mod in outboundModules" :key="mod.id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ installedName(mod) }}</h3>
-                <span class="module-pill module-pill--outbound">{{ t('modules.type.outbound') }}</span>
-                <span class="module-pill" :class="statusClass(mod.status)">{{ statusLabel(mod.status) }}</span>
-              </div>
-              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
-                <span>{{ t('modules.versionValue', { version: mod.version }) }}</span>
-                <span>{{ mod.id }}</span>
-                <span v-if="mod.enabledAt">{{ t('modules.enabledAt', { time: formatDate(mod.enabledAt) }) }}</span>
-              </div>
-              <p v-if="mod.lastError" class="mt-2 break-words text-sm text-red-600 dark:text-red-300">{{ mod.lastError }}</p>
-            </div>
-
-            <div class="flex flex-wrap gap-2 lg:justify-end">
-              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="approve(mod.id)">
-                {{ t('modules.approvePermissions') }}
-              </button>
-              <button v-if="mod.status !== 'enabled'" class="btn btn-primary px-3 py-2" :disabled="busyKey === mod.id" @click="enable(mod.id)">
-                {{ t('modules.enable') }}
-              </button>
-              <button v-else class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="disable(mod.id)">
-                {{ t('modules.disable') }}
-              </button>
-              <button class="btn btn-secondary px-3 py-2" :disabled="busyKey === mod.id" @click="uninstall(mod.id)">
-                {{ t('modules.uninstall') }}
-              </button>
-              <button class="btn px-3 py-2 text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20" :disabled="busyKey === mod.id" @click="purge(mod.id)">
-                {{ t('modules.purge') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 模块市场 -->
-      <section v-if="activeCategory === 'marketplace' || activeCategory === 'all'" class="card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('modules.marketplace') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.marketplaceDescription') }}</p>
-          </div>
-          <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-            {{ t('modules.packageCount', { count: marketplace.length }) }}
-          </span>
-        </div>
-
-        <div v-if="marketplace.length === 0" class="px-5 py-12 text-center">
-          <Icon name="inbox" size="xl" :stroke-width="2" class="mx-auto text-gray-400" />
-          <p class="mt-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('modules.noMarketplace') }}</p>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('modules.noMarketplaceHint') }}</p>
-        </div>
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-          <div v-for="mod in marketplace" :key="`${mod.id}-${mod.version}`" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ marketplaceName(mod) }}</h3>
-                <span class="module-pill">{{ moduleTypeLabel(mod.type) }}</span>
-              </div>
-              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
-                <span>{{ t('modules.versionValue', { version: mod.version }) }}</span>
-                <span>{{ mod.id }}</span>
-                <span v-if="mod.sha256">{{ t('modules.signedPackage') }}</span>
-              </div>
-              <p v-if="marketplaceDescription(mod)" class="mt-2 text-sm text-gray-600 dark:text-dark-300">{{ marketplaceDescription(mod) }}</p>
-            </div>
-
-            <button class="btn btn-primary px-4 py-2" :disabled="busyKey === `${mod.id}:${mod.version}`" @click="install(mod.id, mod.version)">
-              <Icon name="download" size="sm" :stroke-width="2" />
-              {{ t('modules.install') }}
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import modulesAPI, { type InstalledModule, type LocalizedText, type MarketplaceModule } from '@/api/admin/modules'
 import { settingsAPI } from '@/api/admin/settings'
-import { useAppStore } from '@/stores'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
-const { t, te, locale } = useI18n()
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const loading = ref(false)
 const error = ref('')
-const busyKey = ref('')
-const installed = ref<InstalledModule[]>([])
-const marketplace = ref<MarketplaceModule[]>([])
-const activeCategory = ref('all')
-
-const enabledCount = computed(() => installed.value.filter((mod) => mod.status === 'enabled').length)
-
-// 模块分类
-const moduleCategories = computed(() => {
-  const providerCount = installed.value.filter((mod) => mod.type === 'provider').length
-  const outboundCount = installed.value.filter((mod) => mod.type === 'outbound').length
-  return [
-    { key: 'all', label: t('modules.category.all'), icon: 'grid', count: installed.value.length },
-    { key: 'builtin', label: t('modules.category.builtin'), icon: 'cog', count: builtinFeatures.value.length },
-    { key: 'provider', label: t('modules.category.provider'), icon: 'cpu', count: providerCount },
-    { key: 'outbound', label: t('modules.category.outbound'), icon: 'arrowRight', count: outboundCount },
-    { key: 'marketplace', label: t('modules.category.marketplace'), icon: 'cube', count: marketplace.value.length }
-  ]
-})
-
-// 按类型分组的模块
-const providerModules = computed(() => installed.value.filter((mod) => mod.type === 'provider'))
-const outboundModules = computed(() => installed.value.filter((mod) => mod.type === 'outbound'))
-
-// 内置功能（原系统设置「功能开关」）：通过 public-settings 标志位驱动。
 const builtinFeatureBusy = ref('')
+
 interface BuiltinFeature {
   key: string
   title: string
@@ -302,6 +98,7 @@ interface BuiltinFeature {
   enabled: boolean
   settingKey: string
 }
+
 const builtinFeatures = computed<BuiltinFeature[]>(() => {
   const ps = appStore.cachedPublicSettings
   return [
@@ -384,90 +181,24 @@ async function toggleBuiltinFeature(feature: BuiltinFeature, value: boolean) {
   error.value = ''
   try {
     await settingsAPI.updateSettings({ [feature.settingKey]: value } as Record<string, unknown>)
-    // 刷新公开设置，让侧边栏 / 路由守卫 / 卡片状态同步。
     await appStore.fetchPublicSettings(true)
   } catch (err) {
-    error.value = messageOf(err)
+    error.value = extractApiErrorMessage(err, t('common.error'))
   } finally {
     builtinFeatureBusy.value = ''
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'enabled') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-  if (status === 'failed') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-  if (status === 'disabled') return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-dark-200'
-  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-}
-
-function statusLabel(status: string) {
-  const key = `modules.status.${status}`
-  return te(key) ? t(key) : status
-}
-
-function moduleTypeLabel(type: string) {
-  const key = `modules.type.${type}`
-  return te(key) ? t(key) : type
-}
-
-function localizedText(primary: string | undefined, translations: LocalizedText | undefined, fallback: string) {
-  const current = String(locale.value || '').trim()
-  const candidates = [
-    current,
-    current.replace('_', '-'),
-    current.split(/[-_]/)[0],
-    current.toLowerCase().startsWith('zh') ? 'zh-CN' : '',
-    current.toLowerCase().startsWith('zh') ? 'zh' : '',
-    'en'
-  ].filter(Boolean)
-  for (const key of candidates) {
-    const value = translations?.[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return primary?.trim() || fallback
-}
-
-function installedName(mod: InstalledModule) {
-  const manifest = (mod.manifest || {}) as { name_i18n?: LocalizedText }
-  return localizedText(mod.name, manifest.name_i18n, mod.id)
-}
-
-function marketplaceName(mod: MarketplaceModule) {
-  return localizedText(mod.name, mod.name_i18n, mod.id)
-}
-
-function marketplaceDescription(mod: MarketplaceModule) {
-  return localizedText(mod.summary || mod.description, mod.description_i18n, '')
-}
-
-function formatDate(value?: string) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date)
-}
-
-function messageOf(err: unknown) {
-  const e = err as { response?: { data?: { message?: string; error?: string } }; message?: string }
-  return e.response?.data?.message || e.response?.data?.error || e.message || t('modules.operationFailed')
+function messageOf(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return String(err)
 }
 
 async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const [installedItems, marketplaceItems] = await Promise.all([
-      modulesAPI.listInstalledModules(),
-      modulesAPI.listMarketplaceModules()
-    ])
-    installed.value = installedItems
-    marketplace.value = marketplaceItems
+    await appStore.fetchPublicSettings(true)
   } catch (err) {
     error.value = messageOf(err)
   } finally {
@@ -475,80 +206,5 @@ async function loadAll() {
   }
 }
 
-async function run(action: () => Promise<unknown>, key = '') {
-  busyKey.value = key
-  error.value = ''
-  try {
-    await action()
-    await loadAll()
-  } catch (err) {
-    error.value = messageOf(err)
-  } finally {
-    busyKey.value = ''
-  }
-}
-
-function install(id: string, version: string) {
-  return run(() => modulesAPI.installMarketplaceModule(id, version), `${id}:${version}`)
-}
-
-function approve(id: string) {
-  return run(() => modulesAPI.approveModulePermissions(id), id)
-}
-
-function enable(id: string) {
-  return run(() => modulesAPI.enableModule(id), id)
-}
-
-function disable(id: string) {
-  return run(() => modulesAPI.disableModule(id), id)
-}
-
-function uninstall(id: string) {
-  return run(() => modulesAPI.uninstallModule(id), id)
-}
-
-function purge(id: string) {
-  return run(() => modulesAPI.purgeModule(id), id)
-}
-
 onMounted(loadAll)
 </script>
-
-<style scoped>
-.module-stat {
-  @apply flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-dark-700 dark:bg-dark-800;
-}
-
-.module-stat-label {
-  @apply text-xs font-medium text-gray-500 dark:text-dark-400;
-}
-
-.module-stat-value {
-  @apply text-sm font-semibold text-gray-900 dark:text-white;
-}
-
-.module-pill {
-  @apply rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200;
-}
-
-.module-pill--provider {
-  @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300;
-}
-
-.module-pill--outbound {
-  @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300;
-}
-
-.module-category-btn {
-  @apply flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300 dark:hover:border-primary-600 dark:hover:text-primary-400;
-}
-
-.module-category-btn--active {
-  @apply border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300;
-}
-
-.module-category-count {
-  @apply rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400;
-}
-</style>

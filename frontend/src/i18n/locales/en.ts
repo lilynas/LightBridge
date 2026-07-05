@@ -1709,10 +1709,18 @@ export default {
         description: 'DingTalk OAuth login',
         clientId: 'Client ID',
         clientIdPlaceholder: 'Enter DingTalk Client ID',
-        clientSecret: 'Client Secret',
-        clientSecretPlaceholder: 'Enter DingTalk Client Secret',
         redirectUrl: 'Redirect URL',
         redirectUrlPlaceholder: 'https://your-domain.com/api/v1/oauth/dingtalk/callback'
+      },
+      registration: {
+        title: 'Registration Settings',
+        description: 'Control user registration, password reset, and invitation code features',
+        emailVerify: 'Email Verification',
+        emailVerifyHint: 'Require email verification during registration',
+        passwordReset: 'Password Reset',
+        passwordResetHint: 'Allow users to reset password via email',
+        invitationCode: 'Invitation Code',
+        invitationCodeHint: 'Require invitation code during registration'
       }
     },
 

@@ -1731,10 +1731,18 @@ export default {
         description: '钉钉 OAuth 登录',
         clientId: 'Client ID',
         clientIdPlaceholder: '输入钉钉 Client ID',
-        clientSecret: 'Client Secret',
-        clientSecretPlaceholder: '输入钉钉 Client Secret',
         redirectUrl: 'Redirect URL',
         redirectUrlPlaceholder: 'https://your-domain.com/api/v1/oauth/dingtalk/callback'
+      },
+      registration: {
+        title: '注册设置',
+        description: '控制用户注册、密码重置和邀请码功能',
+        emailVerify: '邮箱验证',
+        emailVerifyHint: '注册时要求验证邮箱地址',
+        passwordReset: '密码重置',
+        passwordResetHint: '允许用户通过邮箱重置密码',
+        invitationCode: '邀请码注册',
+        invitationCodeHint: '注册时要求输入邀请码'
       }
     },
 
