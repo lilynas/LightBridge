@@ -365,7 +365,7 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsContextManagementW
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
 	req, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
+		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token", false,
 	)
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
@@ -382,7 +382,7 @@ func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManageme
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
 	req, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
+		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token", false,
 	)
 	require.NoError(t, err)
 	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),

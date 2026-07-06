@@ -1,6 +1,7 @@
 package aistudio_proxy
 
 import (
+	"context"
 	"testing"
 )
 

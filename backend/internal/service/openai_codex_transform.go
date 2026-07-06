@@ -8,6 +8,13 @@ import (
 
 var codexModelMap = map[string]string{
 	"gpt-5.5":                    "gpt-5.5",
+	"gpt-5.5-pro":                "gpt-5.5",
+	"gpt-5.5-pro-codex":          "gpt-5.5",
+	"gpt-5.5-pro-none":           "gpt-5.5",
+	"gpt-5.5-pro-low":            "gpt-5.5",
+	"gpt-5.5-pro-medium":         "gpt-5.5",
+	"gpt-5.5-pro-high":           "gpt-5.5",
+	"gpt-5.5-pro-xhigh":          "gpt-5.5",
 	"codex-auto-review":          "codex-auto-review",
 	"gpt-5.4":                    "gpt-5.4",
 	"gpt-5.4-mini":               "gpt-5.4-mini",
@@ -59,6 +66,8 @@ var codexVersionModelPrefixes = []struct {
 	{prefix: "gpt-5.3-codex", target: "gpt-5.3-codex"},
 	{prefix: "gpt-5.4-mini", target: "gpt-5.4-mini"},
 	{prefix: "gpt-5.4-nano", target: "gpt-5.4-nano"},
+	{prefix: "gpt-5.5-pro-codex", target: "gpt-5.5"},
+	{prefix: "gpt-5.5-pro", target: "gpt-5.5"},
 	{prefix: "gpt-5.5", target: "gpt-5.5"},
 	{prefix: "gpt-5.4", target: "gpt-5.4"},
 	{prefix: "gpt-5.2", target: "gpt-5.2"},
@@ -601,6 +610,51 @@ func hasOpenAIInputImage(reqBody map[string]any) bool {
 	return hasOpenAIInputImageValue(reqBody["input"]) || hasOpenAIInputImageValue(reqBody["messages"])
 }
 
+// stripImageGenerationToolsFromRequest removes any tool with type "image_generation"
+// from the request body's tools array. Returns true if any tools were removed.
+func stripImageGenerationToolsFromRequest(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+	var filtered []any
+	removed := false
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok {
+			filtered = append(filtered, rawTool)
+			continue
+		}
+		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, rawTool)
+	}
+	if removed {
+		reqBody["tools"] = filtered
+	}
+	return removed
+}
+
+func stripImageGenerationToolChoiceFromRequest(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	if !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		return false
+	}
+	delete(reqBody, "tool_choice")
+	return true
+}
+
 func hasOpenAIInputImageValue(value any) bool {
 	switch v := value.(type) {
 	case []any:
@@ -995,7 +1049,7 @@ type codexInputFilterOptions struct {
 	PreserveCallIDs    bool
 }
 
-// filterCodexInput 按需过滤 item_reference 与 id。
+// filterCodexInput 按需过滤 item_reference 与 rs_* id。
 // preserveReferences 为 true 时保持引用与 id，以满足续链请求对上下文的依赖。
 func filterCodexInput(input []any, preserveReferences bool) []any {
 	return filterCodexInputWithOptions(input, codexInputFilterOptions{
@@ -1013,11 +1067,11 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 		typ, _ := m["type"].(string)
 
-		// chatgpt.com codex backend (OAuth path) does not persist reasoning
-		// items because applyCodexOAuthTransform forces store=false. Any rs_*
-		// reference replayed in input is guaranteed to 404 upstream
-		// ("Item with id 'rs_...' not found"). Drop reasoning items entirely.
-		if typ == "reasoning" {
+		// chatgpt.com codex backend (OAuth path) does not persist rs_* reasoning
+		// references because applyCodexOAuthTransform forces store=false.
+		// Drop only those references; reasoning items without rs_* IDs can carry
+		// safe continuation context.
+		if id, ok := m["id"].(string); ok && strings.HasPrefix(id, "rs_") {
 			continue
 		}
 

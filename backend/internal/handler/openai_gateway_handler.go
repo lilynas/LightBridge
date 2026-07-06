@@ -86,6 +86,22 @@ func setCustomRequiredProtocol(c *gin.Context, protocol string) {
 	c.Request = c.Request.WithContext(service.WithInboundProtocol(c.Request.Context(), strings.TrimSpace(protocol)))
 }
 
+func openAICompatibleRequestPlatform(apiKey *service.APIKey) string {
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformGrok {
+		return service.PlatformGrok
+	}
+	return service.PlatformOpenAI
+}
+
+func bindOpenAICompatibleRequestPlatform(c *gin.Context, apiKey *service.APIKey) string {
+	platform := openAICompatibleRequestPlatform(apiKey)
+	if platform == service.PlatformGrok && c != nil && c.Request != nil {
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, platform))
+		c.Set(string(middleware2.ContextKeyForcePlatform), platform)
+	}
+	return platform
+}
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -140,6 +156,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	requestPlatform := bindOpenAICompatibleRequestPlatform(c, apiKey)
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -322,6 +339,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			requireCompact,
+			requestPlatform,
 		)
 		if err != nil {
 			reqLog.Warn("openai.account_select_failed",
@@ -611,6 +629,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	requestPlatform := bindOpenAICompatibleRequestPlatform(c, apiKey)
 
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -736,6 +755,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			requestPlatform,
 		)
 		if err != nil {
 			reqLog.Warn("openai_messages.account_select_failed",
@@ -1161,6 +1181,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	requestPlatform := bindOpenAICompatibleRequestPlatform(c, apiKey)
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
@@ -1337,6 +1358,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			service.OpenAIUpstreamTransportResponsesWebsocketV2,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			requestPlatform,
 		)
 		if err != nil {
 			reqLog.Warn("openai.websocket_account_select_failed",

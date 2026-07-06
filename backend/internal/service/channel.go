@@ -235,6 +235,8 @@ func (c *Channel) Clone() *Channel {
 	return &cp
 }
 
+const featureKeyAnthropicBearerAuth = "anthropic_bearer_auth"
+
 // IsWebSearchEmulationEnabled 返回该渠道是否为指定平台启用了 web search 模拟。
 func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	if c == nil || c.FeaturesConfig == nil {
@@ -256,6 +258,16 @@ func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	}
 	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
 	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
+	return ok && enabled
+}
+
+// IsAnthropicBearerAuthEnabled returns whether this channel uses
+// Authorization: Bearer <key> instead of x-api-key for Anthropic auth.
+func (c *Channel) IsAnthropicBearerAuthEnabled() bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	enabled, ok := c.FeaturesConfig[featureKeyAnthropicBearerAuth].(bool)
 	return ok && enabled
 }
 

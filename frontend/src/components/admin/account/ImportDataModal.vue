@@ -20,7 +20,7 @@
             <div class="truncate text-sm text-gray-700 dark:text-dark-200">
               {{ fileLabel || t('admin.accounts.dataImportSelectFile') }}
             </div>
-            <div class="text-xs text-gray-500 dark:text-dark-400">JSON/TXT/ZIP (.json, .txt, .zip)</div>
+            <div class="text-xs text-gray-500 dark:text-dark-400">JSON/JSONL/TXT/ZIP (.json, .jsonl, .txt, .zip)</div>
           </div>
           <button type="button" class="btn btn-secondary shrink-0" @click="openFilePicker">
             {{ t('common.chooseFile') }}
@@ -30,10 +30,38 @@
           ref="fileInput"
           type="file"
           class="hidden"
-          accept="application/json,text/plain,application/zip,.json,.txt,.zip"
+          accept="application/json,text/plain,application/zip,.json,.jsonl,.txt,.zip"
           multiple
           @change="handleFileChange"
         />
+      </div>
+
+      <!-- Detected format badge -->
+      <div v-if="detectedFormat" class="flex items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+          <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {{ t('admin.accounts.dataImportFormatDetected', { format: detectedFormatLabel }) }}
+        </span>
+        <span v-if="detectedFormat !== 'unknown'" class="text-xs text-gray-500 dark:text-dark-400">
+          {{ t('admin.accounts.dataImportFormatConverted') }}
+        </span>
+      </div>
+
+      <!-- Manual format override -->
+      <div v-if="detectedFormat && detectedFormat !== 'unknown'">
+        <label class="input-label">{{ t('admin.accounts.dataImportFormatOverride') }}</label>
+        <select v-model="manualFormatOverride" class="input">
+          <option value="auto">{{ t('admin.accounts.dataImportFormatAuto') }}</option>
+          <option value="native">LightBridge Native</option>
+          <option value="cpa">CPA</option>
+          <option value="sub2api">sub2api</option>
+          <option value="codex2api">codex2api</option>
+          <option value="codexmanager">Codex Manager</option>
+          <option value="codex">Codex Auth</option>
+          <option value="session">ChatGPT Session</option>
+        </select>
       </div>
 
       <div>
@@ -170,7 +198,11 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { detectFormat, convertToPayload, getInputFormatLabel } from '@/utils/authconv'
 import type { AdminDataImportPayload, AdminDataImportResult, AdminGroup } from '@/types'
+import type { InputFormat } from '@/utils/authconv'
+
+type ImportFormatOverride = 'auto' | 'native' | InputFormat
 
 interface Props {
   show: boolean
@@ -208,11 +240,20 @@ const importProgress = reactive({
   current: ''
 })
 
+// Format detection state
+const detectedFormat = ref<InputFormat | null>(null)
+const manualFormatOverride = ref<ImportFormatOverride>('auto')
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileLabel = computed(() => {
   if (files.value.length === 0) return ''
   if (files.value.length === 1) return files.value[0].name
   return t('admin.accounts.dataImportSelectedFiles', { count: files.value.length })
+})
+
+const detectedFormatLabel = computed(() => {
+  if (!detectedFormat.value || detectedFormat.value === 'unknown') return ''
+  return getInputFormatLabel(detectedFormat.value)
 })
 
 const errorItems = computed(() => result.value?.errors || [])
@@ -235,6 +276,11 @@ function resetImportProgress() {
   importProgress.current = ''
 }
 
+function resetFormatState() {
+  detectedFormat.value = null
+  manualFormatOverride.value = 'auto'
+}
+
 watch(
   () => props.show,
   (open) => {
@@ -243,6 +289,7 @@ watch(
       sourceURLs.value = ''
       result.value = null
       resetImportProgress()
+      resetFormatState()
       compatibilityMode.value = false
       selectedGroupIds.value = []
       overrideDefaults.value = false
@@ -262,10 +309,21 @@ const openFilePicker = () => {
 const handleFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   extracting.value = true
+  resetFormatState()
   try {
     files.value = await expandSelectedImportFiles(Array.from(target.files || []))
     if (target.files && target.files.length > 0 && files.value.length === 0) {
       appStore.showError(t('admin.accounts.dataImportZipNoImportableFiles'))
+    }
+    // Detect format from first file
+    if (files.value.length > 0) {
+      const firstText = await readFileAsText(files.value[0])
+      try {
+        const parsed = parseJSONOrJSONL(firstText)
+        detectedFormat.value = detectFormat(parsed)
+      } catch {
+        detectedFormat.value = null
+      }
     }
   } catch (error: any) {
     files.value = []
@@ -298,7 +356,7 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
-const isImportableDataFileName = (name: string) => /\.(json|txt)$/i.test(name)
+const isImportableDataFileName = (name: string) => /\.(json|jsonl|txt)$/i.test(name)
 
 const isZipFile = (file: File) => {
   const name = file.name.toLowerCase()
@@ -414,6 +472,32 @@ const emptyResult = (): AdminDataImportResult => ({
   errors: []
 })
 
+const parseJSONLines = (text: string): unknown[] => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) {
+    throw new SyntaxError('Empty JSONL input')
+  }
+
+  return lines.map((line) => JSON.parse(line))
+}
+
+const parseJSONOrJSONL = (text: string): unknown => {
+  const normalizedText = text.replace(/^\uFEFF/, '')
+  try {
+    return JSON.parse(normalizedText)
+  } catch (jsonError) {
+    try {
+      return parseJSONLines(normalizedText)
+    } catch {
+      throw jsonError
+    }
+  }
+}
+
 const mergeResult = (target: AdminDataImportResult, source: AdminDataImportResult) => {
   target.proxy_created += source.proxy_created
   target.proxy_reused += source.proxy_reused
@@ -423,15 +507,58 @@ const mergeResult = (target: AdminDataImportResult, source: AdminDataImportResul
   target.errors = [...(target.errors || []), ...(source.errors || [])]
 }
 
-const parseImportPayload = (text: string): AdminDataImportPayload => {
+const parseAndConvertPayload = (text: string): AdminDataImportPayload => {
+  // Try to parse as JSON/JSONL first
+  let parsed: unknown
   try {
-    return JSON.parse(text)
+    parsed = parseJSONOrJSONL(text)
   } catch (error) {
     if (!compatibilityMode.value) {
       throw error
     }
     return text
   }
+
+  // If manual override is set to native, pass through directly
+  if (manualFormatOverride.value === 'native') {
+    return parsed as AdminDataImportPayload
+  }
+
+  // Check if it's already a valid AdminDataPayload (has proxies + accounts arrays)
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    Array.isArray((parsed as any).accounts)
+  ) {
+    const hasAdminFields = (parsed as any).accounts.some(
+      (acc: any) => acc && typeof acc === 'object' && 'platform' in acc && 'type' in acc && 'credentials' in acc
+    )
+    if (hasAdminFields) {
+      return parsed as AdminDataImportPayload
+    }
+  }
+
+  // Try to detect and convert via authconv.
+  const selectedInputFormat = manualFormatOverride.value
+  const inputFormat = selectedInputFormat === 'auto'
+    ? undefined
+    : selectedInputFormat
+
+  const converted = convertToPayload(parsed, {
+    concurrency: overrideDefaults.value ? defaults.concurrency : 10,
+    priority: overrideDefaults.value ? defaults.priority : 1,
+    rate_multiplier: overrideDefaults.value ? defaults.rate_multiplier : 1,
+    auto_pause_on_expired: overrideDefaults.value ? defaults.auto_pause_on_expired : true,
+    inputFormat
+  })
+
+  if (converted) {
+    return converted as AdminDataImportPayload
+  }
+
+  // Fallback: pass through as-is
+  return parsed as AdminDataImportPayload
 }
 
 const accountDefaultsPayload = () => {
@@ -489,7 +616,7 @@ const handleImport = async () => {
     for (const sourceFile of files.value) {
       importProgress.current = sourceFile.name
       const text = await readFileAsText(sourceFile)
-      const dataPayload = parseImportPayload(text)
+      const dataPayload = parseAndConvertPayload(text)
 
       const res = await adminAPI.accounts.importData({
         data: dataPayload,

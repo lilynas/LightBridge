@@ -15,6 +15,10 @@ import (
 )
 
 func newGatewayRoutesTestRouter() *gin.Engine {
+	return newGatewayRoutesTestRouterForPlatform(service.PlatformOpenAI)
+}
+
+func newGatewayRoutesTestRouterForPlatform(platform string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -28,7 +32,7 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: service.PlatformOpenAI},
+				Group:   &service.Group{Platform: platform},
 			})
 			c.Next()
 		}),
@@ -133,5 +137,60 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
+	}
+}
+
+func TestGatewayRoutesGrokAllowsOnlyResponsesHTTP(t *testing.T) {
+	router := newGatewayRoutesTestRouterForPlatform(service.PlatformGrok)
+
+	accepted := []string{
+		"/v1/responses",
+		"/v1/responses/compact",
+		"/responses",
+		"/responses/compact",
+		"/backend-api/codex/responses",
+		"/backend-api/codex/responses/compact",
+	}
+	for _, path := range accepted {
+		t.Run("accept "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"grok","input":"ping"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.NotEqual(t, http.StatusNotFound, w.Code)
+			require.NotContains(t, w.Body.String(), "not supported for Grok groups")
+		})
+	}
+
+	unsupported := []struct {
+		method  string
+		path    string
+		message string
+	}{
+		{http.MethodPost, "/v1/messages", "not supported for Grok groups"},
+		{http.MethodPost, "/v1/chat/completions", "not supported for Grok groups"},
+		{http.MethodPost, "/chat/completions", "not supported for Grok groups"},
+		{http.MethodPost, "/v1/embeddings", "not supported for Grok groups"},
+		{http.MethodPost, "/embeddings", "not supported for Grok groups"},
+		{http.MethodPost, "/v1/images/generations", "not supported for Grok groups"},
+		{http.MethodPost, "/images/generations", "not supported for Grok groups"},
+		{http.MethodPost, "/v1/images/edits", "not supported for Grok groups"},
+		{http.MethodPost, "/images/edits", "not supported for Grok groups"},
+		{http.MethodGet, "/v1/responses", "not supported for Grok groups"},
+		{http.MethodGet, "/responses", "not supported for Grok groups"},
+		{http.MethodGet, "/backend-api/codex/responses", "not supported for Grok groups"},
+		{http.MethodPost, "/v1/messages/count_tokens", "Token counting is not supported for this platform"},
+	}
+	for _, tt := range unsupported {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(`{"model":"grok"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusNotFound, w.Code)
+			require.Contains(t, w.Body.String(), tt.message)
+		})
 	}
 }

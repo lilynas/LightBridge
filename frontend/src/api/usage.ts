@@ -54,6 +54,7 @@ export interface TrendParams {
   start_date?: string
   end_date?: string
   granularity?: 'day' | 'hour'
+  api_key_id?: number
 }
 
 export interface TrendResponse {
@@ -67,6 +68,7 @@ export interface ModelStatsResponse {
   models: ModelStat[]
   start_date: string
   end_date: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
 }
 
 export interface ApiKeyDailyUsagePoint {
@@ -248,6 +250,8 @@ export async function getDashboardTrend(params?: TrendParams): Promise<TrendResp
 export async function getDashboardModels(params?: {
   start_date?: string
   end_date?: string
+  api_key_id?: number
+  model_source?: 'requested' | 'upstream' | 'mapping'
 }): Promise<ModelStatsResponse> {
   const { data } = await apiClient.get<ModelStatsResponse>('/usage/dashboard/models', { params })
   return data

@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"

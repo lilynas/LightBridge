@@ -208,6 +208,8 @@ var modelInfoMap = map[string]modelInfo{
 	"claude-opus-4-7":   {DisplayName: "Claude Opus 4.7", CanonicalID: "claude-opus-4-7"},
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"},
 	"claude-opus-4-6":   {DisplayName: "Claude Opus 4.6", CanonicalID: "claude-opus-4-6"},
+	"claude-fable-5":    {DisplayName: "Claude Fable 5", CanonicalID: "claude-fable-5"},
+	"claude-sonnet-5":   {DisplayName: "Claude Sonnet 5", CanonicalID: "claude-sonnet-5"},
 	"claude-sonnet-4-6": {DisplayName: "Claude Sonnet 4.6", CanonicalID: "claude-sonnet-4-6"},
 	"claude-sonnet-4-5": {DisplayName: "Claude Sonnet 4.5", CanonicalID: "claude-sonnet-4-5-20250929"},
 	"claude-haiku-4-5":  {DisplayName: "Claude Haiku 4.5", CanonicalID: "claude-haiku-4-5-20251001"},
@@ -759,4 +761,56 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	}
 
 	return declarations
+}
+
+// isGeminiReasoningModel 判断模型是否为 Gemini 推理模型
+// 推理模型不支持 temperature/topP/topK 参数
+func isGeminiReasoningModel(model string) bool {
+	lower := strings.ToLower(model)
+	// gemini-2.5-flash-thinking / gemini-2.5-pro 等推理模型
+	if strings.HasSuffix(lower, "-thinking") {
+		return true
+	}
+	// gemini-2.5-pro 也属于推理模型
+	if strings.HasPrefix(lower, "gemini-2.5-pro") {
+		return true
+	}
+	// gemini-3-pro-high / gemini-3.1-pro-high 等高级推理模型
+	if strings.Contains(lower, "-pro-high") || strings.Contains(lower, "-pro-low") {
+		return true
+	}
+	return false
+}
+
+// StripInvalidGeminiReasoningParams 从 Gemini 请求体中移除推理模型不支持的参数
+// 推理模型（如 gemini-2.5-flash-thinking）不支持 temperature/topP/topK，
+// 发送这些参数会导致 INVALID_ARGUMENT 错误
+func StripInvalidGeminiReasoningParams(body []byte, model string) ([]byte, error) {
+	if !isGeminiReasoningModel(model) {
+		return body, nil
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body, nil
+	}
+
+	genConfig, ok := payload["generationConfig"].(map[string]any)
+	if !ok {
+		return body, nil
+	}
+
+	modified := false
+	for _, param := range []string{"temperature", "topP", "topK"} {
+		if _, exists := genConfig[param]; exists {
+			delete(genConfig, param)
+			modified = true
+		}
+	}
+
+	if !modified {
+		return body, nil
+	}
+
+	return json.Marshal(payload)
 }

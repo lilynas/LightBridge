@@ -695,6 +695,7 @@ const isOpenAI = computed(() => props.platform === 'openai')
 const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
+  if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   return `admin.accounts.oauth.${key}`
 }
@@ -765,10 +766,10 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
+// Auto-extract code from callback URL (OpenAI/Gemini/Grok/Antigravity)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'grok' && props.platform !== 'antigravity') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -778,7 +779,7 @@ watch(authCodeInput, (newVal) => {
       const url = new URL(trimmed)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'grok' || props.platform === 'antigravity') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -789,7 +790,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'grok' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {

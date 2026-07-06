@@ -255,6 +255,108 @@ describe('ImportDataModal', () => {
     })
   })
 
+  it('支持 JSONL 多行对象并通过 authconv 转换', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 2,
+      account_failed: 0
+    })
+    const wrapper = mount(ImportDataModal, {
+      props: { show: true },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
+        }
+      }
+    })
+
+    const content = [
+      '{"type":"codex","email":"first@example.com","refresh_token":"rt-1"}',
+      '{"type":"codex","email":"second@example.com","refresh_token":"rt-2"}'
+    ].join('\n')
+    const input = wrapper.find('input[type="file"]')
+    const file = new File([content], 'accounts.jsonl', { type: 'application/jsonl' })
+    Object.defineProperty(file, 'text', {
+      value: () => Promise.resolve(content)
+    })
+    Object.defineProperty(input.element, 'files', {
+      value: [file]
+    })
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
+      data: {
+        type: 'lightbridge',
+        version: 1,
+        exported_at: expect.any(String),
+        proxies: [],
+        accounts: [
+          expect.objectContaining({
+            name: 'first@example.com',
+            credentials: expect.objectContaining({
+              email: 'first@example.com',
+              refresh_token: 'rt-1'
+            })
+          }),
+          expect.objectContaining({
+            name: 'second@example.com',
+            credentials: expect.objectContaining({
+              email: 'second@example.com',
+              refresh_token: 'rt-2'
+            })
+          })
+        ]
+      },
+      skip_default_group_bind: true,
+      compatibility_mode: false,
+      group_ids: [],
+      account_defaults: undefined
+    })
+  })
+
+  it('格式覆盖会按指定格式转换而不是继续自动识别', async () => {
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const wrapper = mount(ImportDataModal, {
+      props: { show: true },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
+        }
+      }
+    })
+
+    const content = '{"type":"codex","email":"forced@example.com","refresh_token":"rt","expired":"1893456000"}'
+    const input = wrapper.find('input[type="file"]')
+    const file = new File([content], 'account.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: () => Promise.resolve(content)
+    })
+    Object.defineProperty(input.element, 'files', {
+      value: [file]
+    })
+
+    await input.trigger('change')
+    await flushPromises()
+    const selects = wrapper.findAll('select')
+    await selects[0].setValue('codex2api')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const [{ data }] = vi.mocked(adminAPI.accounts.importData).mock.calls[0]
+    expect((data as any).accounts[0].expires_at).toBe(1893456000)
+  })
+
   it('导入时支持选择分组并批量覆盖账号设置', async () => {
     vi.mocked(adminAPI.groups.getAll).mockResolvedValue([
       { id: 10, name: 'Group A', platform: 'openai', status: 'active', sort_order: 1 },
@@ -375,7 +477,7 @@ describe('ImportDataModal', () => {
     })
   })
 
-  it('选择 ZIP 后保留 CPA Codex JSON 给后端转换', async () => {
+  it('选择 ZIP 后将 CPA Codex JSON 转换为 LightBridge 导入数据', async () => {
     vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
       proxy_created: 0,
       proxy_reused: 0,
@@ -417,10 +519,22 @@ describe('ImportDataModal', () => {
     })
     expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
       data: {
-        type: 'codex',
-        email: 'zip-cpa@example.com',
-        refresh_token: 'zip-cpa-refresh',
-        id_token: 'zip-cpa-id'
+        type: 'lightbridge',
+        version: 1,
+        exported_at: expect.any(String),
+        proxies: [],
+        accounts: [
+          expect.objectContaining({
+            name: 'zip-cpa@example.com',
+            platform: 'openai',
+            type: 'oauth',
+            credentials: expect.objectContaining({
+              email: 'zip-cpa@example.com',
+              refresh_token: 'zip-cpa-refresh',
+              id_token: 'zip-cpa-id'
+            })
+          })
+        ]
       },
       skip_default_group_bind: true,
       compatibility_mode: false,

@@ -298,6 +298,34 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 	return startTime, endTime
 }
 
+func (h *UsageHandler) parseOwnedAPIKeyID(c *gin.Context, userID int64, unauthorizedMessage string) (int64, bool) {
+	apiKeyIDStr := strings.TrimSpace(c.Query("api_key_id"))
+	if apiKeyIDStr == "" {
+		return 0, true
+	}
+
+	apiKeyID, err := strconv.ParseInt(apiKeyIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid api_key_id")
+		return 0, false
+	}
+	if apiKeyID <= 0 {
+		response.BadRequest(c, "Invalid api_key_id")
+		return 0, false
+	}
+
+	apiKey, err := h.apiKeyService.GetByID(c.Request.Context(), apiKeyID)
+	if err != nil {
+		response.NotFound(c, "API key not found")
+		return 0, false
+	}
+	if apiKey.UserID != userID {
+		response.Forbidden(c, unauthorizedMessage)
+		return 0, false
+	}
+	return apiKeyID, true
+}
+
 const (
 	defaultAPIKeyDailyUsageDays = 30
 	maxAPIKeyDailyUsageDays     = 90
@@ -350,8 +378,12 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 
 	startTime, endTime := parseUserTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
+	apiKeyID, ok := h.parseOwnedAPIKeyID(c, subject.UserID, "Not authorized to access this API key's usage trend")
+	if !ok {
+		return
+	}
 
-	trend, err := h.usageService.GetUserUsageTrendByUserID(c.Request.Context(), subject.UserID, startTime, endTime, granularity)
+	trend, err := h.usageService.GetUserUsageTrendByUserID(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime, granularity)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -375,17 +407,23 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	}
 
 	startTime, endTime := parseUserTimeRange(c)
+	apiKeyID, ok := h.parseOwnedAPIKeyID(c, subject.UserID, "Not authorized to access this API key's model statistics")
+	if !ok {
+		return
+	}
+	modelSource := usagestats.NormalizeModelSource(strings.TrimSpace(c.Query("model_source")))
 
-	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), subject.UserID, startTime, endTime)
+	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime, modelSource)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	response.Success(c, gin.H{
-		"models":     stats,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"models":       stats,
+		"start_date":   startTime.Format("2006-01-02"),
+		"end_date":     endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"model_source": modelSource,
 	})
 }
 

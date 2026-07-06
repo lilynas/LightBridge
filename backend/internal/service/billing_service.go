@@ -253,6 +253,21 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:     false,
 	}
 
+	// Grok 4.3
+	s.fallbackPrices["grok-4.3"] = &ModelPricing{
+		InputPricePerToken:          1.25e-6, // $1.25 per MTok
+		OutputPricePerToken:         2.5e-6,  // $2.5 per MTok
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   1_000_000,
+		LongContextInputMultiplier:  1,
+		LongContextOutputMultiplier: 1,
+	}
+	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
+		InputPricePerToken:     1e-6, // $1 per MTok
+		OutputPricePerToken:    2e-6, // $2 per MTok
+		SupportsCacheBreakdown: false,
+	}
+
 	// OpenAI GPT-5.4（业务指定价格）
 	s.fallbackPrices["gpt-5.4"] = &ModelPricing{
 		InputPricePerToken:             2.5e-6,  // $2.5 per MTok
@@ -341,6 +356,12 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
+	}
+	if strings.HasPrefix(modelLower, "grok-build") {
+		return s.fallbackPrices["grok-build-0.1"]
+	}
+	if strings.HasPrefix(modelLower, "grok") {
+		return s.fallbackPrices["grok-4.3"]
 	}
 
 	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。

@@ -145,6 +145,19 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		filter.UserID = &id
 	}
 
+	if v := strings.TrimSpace(c.Query("owner_category")); v != "" {
+		switch strings.ToLower(v) {
+		case "admin", "user":
+			filter.OwnerCategory = strings.ToLower(v)
+		default:
+			response.BadRequest(c, "Invalid owner_category")
+			return
+		}
+	}
+	if v := strings.TrimSpace(c.Query("sort")); v != "" {
+		filter.Sort = v
+	}
+
 	if v := strings.TrimSpace(c.Query("resolved")); v != "" {
 		switch strings.ToLower(v) {
 		case "1", "true", "yes":
@@ -262,6 +275,19 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 			return
 		}
 		filter.UserID = &id
+	}
+
+	if v := strings.TrimSpace(c.Query("owner_category")); v != "" {
+		switch strings.ToLower(v) {
+		case "admin", "user":
+			filter.OwnerCategory = strings.ToLower(v)
+		default:
+			response.BadRequest(c, "Invalid owner_category")
+			return
+		}
+	}
+	if v := strings.TrimSpace(c.Query("sort")); v != "" {
+		filter.Sort = v
 	}
 
 	if v := strings.TrimSpace(c.Query("resolved")); v != "" {

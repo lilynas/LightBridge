@@ -136,6 +136,19 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'grok'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'grok'
+                ? 'bg-white text-zinc-700 shadow-sm dark:bg-dark-600 dark:text-zinc-200'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <span class="text-sm font-bold leading-none">xAI</span>
+            {{ t('admin.accounts.platforms.grok') }}
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'custom'"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
@@ -543,6 +556,41 @@
           </button>
 
         </div>
+      </div>
+
+      <!-- Account Type Selection (Grok) -->
+      <div v-if="form.platform === 'grok'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'; form.concurrency = 1"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-zinc-500 bg-zinc-50 dark:bg-zinc-900/20'
+                : 'border-gray-200 hover:border-zinc-300 dark:border-dark-600 dark:hover:border-zinc-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold',
+                accountCategory === 'oauth-based'
+                  ? 'bg-zinc-700 text-white dark:bg-zinc-200 dark:text-zinc-900'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              xAI
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.grokOauth') }}</span>
+            </div>
+          </button>
+        </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.oauth.grok.oauthOnlyHint') }}
+        </p>
       </div>
 
       <!-- Account Type Selection (Gemini) -->
@@ -2126,9 +2174,9 @@
         />
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2878,8 +2926,16 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
-            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+          <input
+            v-model.number="form.concurrency"
+            type="number"
+            min="1"
+            :max="form.platform === 'grok' ? 1 : undefined"
+            :disabled="form.platform === 'grok'"
+            class="input disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-dark-700 dark:disabled:text-gray-400"
+            @input="form.concurrency = form.platform === 'grok' ? 1 : Math.max(1, form.concurrency || 1)"
+          />
+          <p v-if="form.platform === 'grok'" class="input-hint">{{ t('admin.accounts.oauth.grok.concurrencyHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
@@ -3284,13 +3340,13 @@
         :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
         :show-codex-session-import-option="form.platform === 'openai'"
         :platform="form.platform"
-        :show-project-id="geminiOAuthType === 'code_assist'"
+        :show-project-id="form.platform === 'gemini' && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
@@ -3646,6 +3702,7 @@ import {
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
+import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import {
   PRESETS_BY_PROTOCOL,
   findPresetById
@@ -3715,6 +3772,7 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'custom') return t('admin.accounts.custom.accountAddTitle')
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
+  if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   return t('admin.accounts.oauth.title')
 })
@@ -3744,11 +3802,13 @@ const oauth = useAccountOAuth() // For Anthropic OAuth
 const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
+const grokOAuth = useGrokOAuth() // For Grok OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.authUrl.value
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
+  if (form.platform === 'grok') return grokOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   return oauth.authUrl.value
 })
@@ -3756,6 +3816,7 @@ const currentAuthUrl = computed(() => {
 const currentSessionId = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.sessionId.value
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
+  if (form.platform === 'grok') return grokOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   return oauth.sessionId.value
 })
@@ -3763,6 +3824,7 @@ const currentSessionId = computed(() => {
 const currentOAuthLoading = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
+  if (form.platform === 'grok') return grokOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   return oauth.loading.value
 })
@@ -3770,6 +3832,7 @@ const currentOAuthLoading = computed(() => {
 const currentOAuthError = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.error.value
   if (form.platform === 'gemini') return geminiOAuth.error.value
+  if (form.platform === 'grok') return grokOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   return oauth.error.value
 })
@@ -4327,6 +4390,9 @@ const canExchangeCode = computed(() => {
   if (form.platform === 'gemini') {
     return authCode.trim() && geminiOAuth.sessionId.value && !geminiOAuth.loading.value
   }
+  if (form.platform === 'grok') {
+    return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
+  }
   if (form.platform === 'antigravity') {
     return authCode.trim() && antigravityOAuth.sessionId.value && !antigravityOAuth.loading.value
   }
@@ -4371,6 +4437,14 @@ watch(
       form.type = 'apikey'
       return
     }
+    if (form.platform === 'grok') {
+      form.type = 'oauth'
+      if (category !== 'oauth-based') {
+        accountCategory.value = 'oauth-based'
+      }
+      form.concurrency = 1
+      return
+    }
     // Bedrock 类型
     if (form.platform === 'anthropic' && category === 'bedrock') {
       form.type = 'bedrock' as AccountType
@@ -4401,7 +4475,9 @@ watch(
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newPlatform === 'grok'
+            ? 'https://api.x.ai'
+            : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4420,6 +4496,11 @@ watch(
       antigravityWhitelistModels.value = []
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
+    }
+    if (newPlatform === 'grok') {
+      accountCategory.value = 'oauth-based'
+      form.type = 'oauth'
+      form.concurrency = 1
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
@@ -4467,6 +4548,7 @@ watch(
 
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
+    grokOAuth.resetState()
   }
 )
 
@@ -4958,6 +5040,7 @@ const resetForm = () => {
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
+  grokOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
@@ -5396,6 +5479,7 @@ const goBackToBasicInfo = () => {
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
+  grokOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -5411,6 +5495,8 @@ const handleGenerateUrl = async () => {
     )
   } else if (form.platform === 'antigravity') {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'grok') {
+    await grokOAuth.generateAuthUrl(form.proxy_id)
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -5421,6 +5507,8 @@ const handleValidateRefreshToken = (rt: string) => {
     handleOpenAIValidateRT(rt)
   } else if (form.platform === 'antigravity') {
     handleAntigravityValidateRT(rt)
+  } else if (form.platform === 'grok') {
+    handleGrokValidateRT(rt)
   }
 }
 
@@ -5485,6 +5573,7 @@ const createAccountAndFinish = async (
     }
   }
   finalExtra = buildModelListExtra(finalExtra)
+  const concurrency = platform === 'grok' ? 1 : form.concurrency
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -5493,7 +5582,7 @@ const createAccountAndFinish = async (
     credentials,
     extra: finalExtra,
     proxy_id: form.proxy_id,
-    concurrency: form.concurrency,
+    concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
@@ -5903,6 +5992,95 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
   }
 }
 
+// Grok 手动 RT 批量验证和创建
+const handleGrokValidateRT = async (refreshTokenInput: string) => {
+  if (!refreshTokenInput.trim()) return
+
+  const refreshTokens = refreshTokenInput
+    .split('\n')
+    .map((rt) => rt.trim())
+    .filter((rt) => rt)
+
+  if (refreshTokens.length === 0) {
+    grokOAuth.error.value = t('admin.accounts.oauth.grok.pleaseEnterRefreshToken')
+    return
+  }
+
+  grokOAuth.loading.value = true
+  grokOAuth.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < refreshTokens.length; i++) {
+      try {
+        const tokenInfo = await grokOAuth.validateRefreshToken(refreshTokens[i], form.proxy_id)
+        if (!tokenInfo) {
+          failedCount++
+          errors.push(`#${i + 1}: ${grokOAuth.error.value || 'Validation failed'}`)
+          grokOAuth.error.value = ''
+          continue
+        }
+
+        const credentials = grokOAuth.buildCredentials(tokenInfo)
+        const modelMapping = buildAdvancedModelMapping()
+        if (modelMapping) {
+          credentials.model_mapping = modelMapping
+        }
+        const extra = buildModelListExtra(grokOAuth.buildExtraInfo(tokenInfo))
+        const baseName = form.name || tokenInfo.email || tokenInfo.name || 'Grok OAuth Account'
+        const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
+
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'grok',
+          type: 'oauth',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: 1,
+          load_factor: form.load_factor ?? undefined,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        })
+
+        successCount++
+      } catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1}: ${errMsg}`)
+      }
+    }
+
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        refreshTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount })
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    } else if (successCount > 0 && failedCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount })
+      )
+      grokOAuth.error.value = errors.join('\n')
+      emit('created')
+    } else {
+      grokOAuth.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } finally {
+    grokOAuth.loading.value = false
+  }
+}
+
 // Gemini OAuth 授权码兑换
 const handleGeminiExchange = async (authCode: string) => {
   if (!authCode.trim() || !geminiOAuth.sessionId.value) return
@@ -5982,6 +6160,40 @@ const handleAntigravityExchange = async (authCode: string) => {
     appStore.showError(antigravityOAuth.error.value)
   } finally {
     antigravityOAuth.loading.value = false
+  }
+}
+
+// Grok OAuth 授权码兑换
+const handleGrokExchange = async (authCode: string) => {
+  if (!authCode.trim() || !grokOAuth.sessionId.value) return
+
+  grokOAuth.loading.value = true
+  grokOAuth.error.value = ''
+
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || grokOAuth.state.value
+
+    const tokenInfo = await grokOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: grokOAuth.sessionId.value,
+      state: stateToUse,
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo) return
+
+    const credentials = grokOAuth.buildCredentials(tokenInfo)
+    const modelMapping = buildAdvancedModelMapping()
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+    const extra = buildModelListExtra(grokOAuth.buildExtraInfo(tokenInfo))
+    await createAccountAndFinish('grok', 'oauth', credentials, extra)
+  } catch (error: any) {
+    grokOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(grokOAuth.error.value)
+  } finally {
+    grokOAuth.loading.value = false
   }
 }
 
@@ -6075,6 +6287,8 @@ const handleExchangeCode = async () => {
       return handleOpenAIExchange(authCode)
     case 'gemini':
       return handleGeminiExchange(authCode)
+    case 'grok':
+      return handleGrokExchange(authCode)
     case 'antigravity':
       return handleAntigravityExchange(authCode)
     default:

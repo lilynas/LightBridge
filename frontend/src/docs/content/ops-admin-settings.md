@@ -48,7 +48,7 @@
 | 默认并发数 | 数字输入 | 新用户默认并发请求数 |
 | 默认 RPM 限制 | 数字输入 | 新用户默认 RPM |
 | 默认订阅列表 | 可增删列表 | 新用户默认获得的订阅 |
-| 全局平台限额 | 矩阵配置 | anthropic / openai / gemini / antigravity 的 daily / weekly / monthly |
+| 全局平台限额 | 矩阵配置 | anthropic / openai / gemini / grok / antigravity 的 daily / weekly / monthly |
 | 认证来源默认值 | 按来源配置 | 各 OAuth 来源的注册授予、余额、并发、订阅、平台限额 |
 
 ### Tab 4：网关 (Gateway)

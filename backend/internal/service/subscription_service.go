@@ -530,6 +530,11 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 
 	// 失效订阅缓存
 	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	// Ristretto's Del() is asynchronous; Wait() ensures the key is
+	// actually removed before the next Get() call on this instance.
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
 	if s.billingCacheService != nil {
 		userID, groupID := sub.UserID, sub.GroupID
 		go func() {

@@ -676,6 +676,90 @@
         </template>
       </div>
 
+      <!-- Grok OAuth Model Mapping -->
+      <div
+        v-if="account.platform === 'grok' && account.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+
+        <template>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">
+              {{ t('admin.accounts.mapRequestModels') }}
+            </p>
+          </div>
+
+          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in modelMappings"
+              :key="getModelMappingKey(mapping)"
+              class="flex items-center gap-2"
+            >
+              <input
+                v-model="mapping.from"
+                type="text"
+                :class="[
+                  'input flex-1',
+                  !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : '',
+                  mapping.to.includes('*') ? '' : ''
+                ]"
+                :placeholder="t('admin.accounts.requestModel')"
+              />
+              <span class="text-gray-400">→</span>
+              <input
+                v-model="mapping.to"
+                type="text"
+                :class="[
+                  'input flex-1',
+                  mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : ''
+                ]"
+                :placeholder="t('admin.accounts.actualModel')"
+              />
+              <button
+                type="button"
+                @click="removeModelMapping(index)"
+                class="text-red-500 hover:text-red-700"
+              >
+                <Icon name="x" size="sm" :stroke-width="2" />
+              </button>
+            </div>
+            <template v-for="(mapping, index) in modelMappings" :key="'grok-warn-' + index">
+              <p
+                v-if="!isValidWildcardPattern(mapping.from)"
+                class="text-xs text-red-500"
+              >
+                {{ t('admin.accounts.wildcardOnlyAtEnd') }}
+              </p>
+            </template>
+          </div>
+
+          <button
+            type="button"
+            @click="addModelMapping"
+            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+          >
+            <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.addMapping') }}
+          </button>
+
+          <!-- Quick Add Buttons -->
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in presetMappings"
+              :key="'grok-' + preset.label"
+              type="button"
+              @click="addPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label }}
+            </button>
+          </div>
+        </template>
+      </div>
+
       <!-- Vertex Service Account -->
       <div v-if="(account.platform === 'gemini' || account.platform === 'anthropic') && account.type === 'service_account'" class="space-y-4">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -3342,7 +3426,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? 'https://api.openai.com'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newAccount.platform === 'grok'
+            ? 'https://api.x.ai'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
@@ -3427,6 +3513,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(
         oauthCredentials.model_mapping as Record<string, unknown> | undefined,
+        newAccount.extra as Record<string, unknown> | undefined
+      )
+    } else if (newAccount.platform === 'grok' && newAccount.credentials) {
+      // Load model mappings for Grok OAuth accounts
+      const grokCredentials = newAccount.credentials as Record<string, unknown>
+      loadModelRestrictionFromMapping(
+        grokCredentials.model_mapping as Record<string, unknown> | undefined,
         newAccount.extra as Record<string, unknown> | undefined
       )
     } else {
@@ -4177,6 +4270,22 @@ const handleSubmit = async () => {
         newCredentials.compact_model_mapping = compactModelMapping
       } else {
         delete newCredentials.compact_model_mapping
+      }
+
+      updatePayload.credentials = newCredentials
+    }
+
+    // Grok OAuth: persist model mapping to credentials
+    if (props.account.platform === 'grok' && props.account.type === 'oauth') {
+      const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      const modelMapping = buildModelRestrictionMapping()
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
       }
 
       updatePayload.credentials = newCredentials

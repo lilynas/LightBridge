@@ -21,6 +21,9 @@ const (
 	PlatformAnthropic = "anthropic"
 	PlatformOpenAI    = "openai"
 	PlatformGemini    = "gemini"
+	// PlatformGrok 表示 xAI Grok 订阅账号。Grok 使用 OpenAI Responses 形态的入站/出站
+	// 数据结构，但在调度、配额、渠道定价与模型目录中必须保持独立平台语义。
+	PlatformGrok = "grok"
 	// PlatformAntigravity 历史上是一个独立平台值。自 Gemini/Antigravity 合并后，
 	// Antigravity 账号在数据库中以 platform="gemini" + sub_platform="antigravity" 存储，
 	// 该常量不再作为 accounts.platform 的取值，而是继续承担两个角色：
@@ -126,6 +129,8 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"claude-opus-4-6-thinking":   "claude-opus-4-6-thinking", // 官方模型
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
 	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
+	"claude-fable-5":             "claude-fable-5",
+	"claude-sonnet-5":            "claude-sonnet-5",
 	"claude-sonnet-4-6":          "claude-sonnet-4-6",
 	"claude-sonnet-4-5":          "claude-sonnet-4-5",
 	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
@@ -154,6 +159,8 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.1-pro-low":  "gemini-3.1-pro-low",
 	// Gemini 3.1 preview 映射
 	"gemini-3.1-pro-preview": "gemini-3.1-pro-high",
+	// Gemini 3.1 别名映射
+	"gemini-3.1-pro": "gemini-3.1-pro-high",
 	// Gemini 3.1 image 白名单
 	"gemini-3.1-flash-image": "gemini-3.1-flash-image",
 	// Gemini 3.1 image preview 映射
@@ -180,7 +187,10 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-opus-4-5-20251101": "us.anthropic.claude-opus-4-5-20251101-v1:0",
 	"claude-opus-4-1":          "us.anthropic.claude-opus-4-1-20250805-v1:0",
 	"claude-opus-4-20250514":   "us.anthropic.claude-opus-4-20250514-v1:0",
+	// Claude Fable
+	"claude-fable-5": "us.anthropic.claude-fable-5-v1:0",
 	// Claude Sonnet
+	"claude-sonnet-5":            "us.anthropic.claude-sonnet-5-v1:0",
 	"claude-sonnet-4-6-thinking": "us.anthropic.claude-sonnet-4-6",
 	"claude-sonnet-4-6":          "us.anthropic.claude-sonnet-4-6",
 	"claude-sonnet-4-5":          "us.anthropic.claude-sonnet-4-5-20250929-v1:0",

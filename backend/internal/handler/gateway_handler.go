@@ -25,6 +25,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/logger"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/timezone"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	middleware2 "github.com/WilliamWang1721/LightBridge/internal/server/middleware"
 	"github.com/WilliamWang1721/LightBridge/internal/service"
 	"github.com/WilliamWang1721/LightBridge/internal/service/aistudio_proxy"
@@ -1055,6 +1056,14 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	if platform == service.PlatformGrok {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   xai.DefaultModels(),
+		})
+		return
+	}
+
 	if platform == service.PlatformGemini {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
@@ -1090,6 +1099,10 @@ func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
 		writeOpenAIModelsList(c, modelIDs)
 		return
 	}
+	if platform == service.PlatformGrok {
+		writeGrokModelsList(c, modelIDs)
+		return
+	}
 	writeModelsList(c, modelIDs)
 }
 
@@ -1111,6 +1124,31 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 			Created:     1704067200,
 			OwnedBy:     "openai",
 			Type:        "model",
+			DisplayName: modelID,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func writeGrokModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]xai.Model, len(xai.DefaultModels()))
+	for _, model := range xai.DefaultModels() {
+		defaultsByID[model.ID] = model
+	}
+
+	models := make([]xai.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, xai.Model{
+			ID:          modelID,
+			Object:      "model",
+			OwnedBy:     "xai",
 			DisplayName: modelID,
 		})
 	}
@@ -1175,6 +1213,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 	switch platform {
 	case service.PlatformOpenAI:
 		return openai.DefaultModelIDs()
+	case service.PlatformGrok:
+		return xai.DefaultModelIDs()
 	case service.PlatformGemini:
 		ids := make([]string, 0, len(geminicli.DefaultModels))
 		for _, model := range geminicli.DefaultModels {

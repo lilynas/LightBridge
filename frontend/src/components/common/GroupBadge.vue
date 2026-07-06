@@ -121,6 +121,9 @@ const labelClass = computed(() => {
   if (props.platform === 'openai') {
     return `${base} bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
   }
+  if (props.platform === 'grok') {
+    return `${base} bg-zinc-200/70 text-zinc-800 dark:bg-zinc-700/60 dark:text-zinc-200`
+  }
   if (props.platform === 'gemini') {
     return `${base} bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
   }
@@ -139,6 +142,10 @@ const badgeClass = computed(() => {
     return isSubscription.value
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
       : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  } else if (props.platform === 'grok') {
+    return isSubscription.value
+      ? 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200'
+      : 'bg-zinc-50 text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-300'
   }
   if (props.platform === 'gemini') {
     return isSubscription.value

@@ -1,6 +1,6 @@
 # LightBridge Router
 
-LightBridge Router 是 LightBridge 的全协议消息中转组件。它把入站协议、账号出站协议和中转模式拆开处理，让同一个分组内的 OpenAI、Claude、Gemini、Antigravity 与自定义 Provider 账号可以一起参与轮询，不再被分组所属平台限制。
+LightBridge Router 是 LightBridge 的全协议消息中转组件。它把入站协议、账号出站协议和中转模式拆开处理，让同一个分组内的 OpenAI、Claude、Gemini、Antigravity 与自定义 Provider 账号可以一起参与轮询，不再被分组所属平台限制。Grok 订阅账号作为独立平台按 Responses-only 路由处理，不参与通用混合调度。
 
 ## 设计目标
 
@@ -25,7 +25,7 @@ LightBridge Router 是 LightBridge 的全协议消息中转组件。它把入站
 | Claude Messages | `anthropic_messages` | `/v1/messages` |
 | Gemini generateContent | `gemini` | `/v1beta/models/*:generateContent` |
 
-当前 LightBridge Router 覆盖消息生成类协议。Embeddings、Images、Realtime/WebSocket 仍保留各自专用路径。
+当前 LightBridge Router 覆盖消息生成类协议。Embeddings、Images、Realtime/WebSocket 仍保留各自专用路径。Grok 仅开放 OpenAI Responses HTTP 入口（`/v1/responses`、`/responses`、`/backend-api/codex/responses`），不开放 Chat、Messages、Embeddings、Images、WebSocket 和 Count Tokens。
 
 ## 中转模式
 
@@ -96,6 +96,7 @@ LightBridge Router 上线后，分组不再限制所属平台：
 3. `passthrough` 账号只在同协议请求中可选。
 4. `router` 账号可以被跨协议请求选中。
 5. `full_passthrough` 账号走原样转发路径，适合需要完全保留上游协议行为的场景。
+6. Grok 分组只调度 Grok OAuth 账号，并且只接受 Responses HTTP 请求。
 
 如果仍看到 `503 no available accounts`，优先检查：
 

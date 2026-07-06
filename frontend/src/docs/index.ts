@@ -4,6 +4,7 @@ import release029Preview1 from './content/release-0.2.9-preview.1.md?raw'
 import release0210Preview from './content/release-0.2.10-preview.md?raw'
 import release0213Preview from './content/release-0.2.13-preview.md?raw'
 import release0230 from './content/release-0.2.30.md?raw'
+import release0240Preview from './content/release-0.2.40-preview.md?raw'
 import opsPublicPages from './content/ops-public-pages.md?raw'
 import opsUserCenter from './content/ops-user-center.md?raw'
 import opsUserPayment from './content/ops-user-payment.md?raw'
@@ -115,6 +116,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '操作文档',
     description: '订阅管理、公告管理、兑换码管理、优惠码管理、风控管理功能说明',
     content: opsAdminDistribution,
+  },
+  {
+    id: 'release-0.2.40-preview',
+    title: '0.2.40-preview 版本更新',
+    group: '版本更新',
+    description: 'Grok 平台接入、账号导入导出增强与用量统计修复预览版',
+    content: release0240Preview,
   },
   {
     id: 'release-0.2.30',

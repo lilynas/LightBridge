@@ -29,10 +29,10 @@
 | 描述 | 渠道描述 |
 | 限制模型 | 仅允许定价列表中的模型 |
 | 计费基础 | 按渠道映射模型 / 按请求模型 / 按最终上游模型 |
-| 平台配置 | 选择 Anthropic / OpenAI / Gemini / Antigravity |
+| 平台配置 | 选择 Anthropic / OpenAI / Gemini / Grok / Antigravity |
 | 应用定价到账号统计 | 开关 |
 
-**平台 Tab（Anthropic / OpenAI / Gemini / Antigravity 各一个）**：
+**平台 Tab（Anthropic / OpenAI / Gemini / Grok / Antigravity 各一个）**：
 
 | 字段 | 说明 |
 |------|------|

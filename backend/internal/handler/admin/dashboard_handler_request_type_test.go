@@ -52,6 +52,18 @@ func (s *dashboardUsageRepoCapture) GetModelStatsWithFilters(
 	return []usagestats.ModelStat{}, nil
 }
 
+func (s *dashboardUsageRepoCapture) GetModelStatsWithFiltersBySource(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	userID, apiKeyID, accountID, groupID int64,
+	requestType *int16,
+	stream *bool,
+	billingType *int8,
+	source string,
+) ([]usagestats.ModelStat, error) {
+	return s.GetModelStatsWithFilters(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+}
+
 func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	ctx context.Context,
 	startTime, endTime time.Time,

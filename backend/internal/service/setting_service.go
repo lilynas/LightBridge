@@ -181,7 +181,7 @@ type SettingService struct {
 	cfg                         *config.Config
 	onUpdateMu                  sync.RWMutex
 	onUpdateCallbacks           []func() // Callbacks when settings are updated (cache invalidation, progressive workers)
-	version                     string // Application version
+	version                     string   // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
 	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
 	antigravityUAVersionSF      singleflight.Group
@@ -879,10 +879,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled:   settings[SettingKeyRiskControlEnabled] == "true",
 		PrivacyFilterEnabled: settings[SettingKeyPrivacyFilterEnabled] == "true",
 
-		AnnouncementsEnabled: settings[SettingKeyAnnouncementsEnabled] != "false",
-		RedeemEnabled:        settings[SettingKeyRedeemEnabled] != "false",
-		PromoEnabled:         settings[SettingKeyPromoCodeEnabled] != "false",
-		ProxiesEnabled:       settings[SettingKeyProxiesEnabled] != "false",
+		AnnouncementsEnabled:  settings[SettingKeyAnnouncementsEnabled] != "false",
+		RedeemEnabled:         settings[SettingKeyRedeemEnabled] != "false",
+		PromoEnabled:          settings[SettingKeyPromoCodeEnabled] != "false",
+		ProxiesEnabled:        settings[SettingKeyProxiesEnabled] != "false",
 		ChannelPricingEnabled: settings[SettingKeyChannelPricingEnabled] != "false",
 
 		DeploymentMode: NormalizeDeploymentMode(settings[SettingKeyDeploymentMode]),
@@ -1215,18 +1215,18 @@ type PublicSettingsInjectionPayload struct {
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
-	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
-	AffiliateEnabled                     bool `json:"affiliate_enabled"`
-	RiskControlEnabled                   bool `json:"risk_control_enabled"`
-	PrivacyFilterEnabled                 bool `json:"privacy_filter_enabled"`
+	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
+	AvailableChannelsEnabled             bool   `json:"available_channels_enabled"`
+	AffiliateEnabled                     bool   `json:"affiliate_enabled"`
+	RiskControlEnabled                   bool   `json:"risk_control_enabled"`
+	PrivacyFilterEnabled                 bool   `json:"privacy_filter_enabled"`
 	DeploymentMode                       string `json:"deployment_mode"`
-	AnnouncementsEnabled                 bool `json:"announcements_enabled"`
-	RedeemEnabled                        bool `json:"redeem_enabled"`
-	PromoEnabled                         bool `json:"promo_enabled"`
-	ProxiesEnabled                       bool `json:"proxies_enabled"`
-	ChannelPricingEnabled                bool `json:"channel_pricing_enabled"`
+	AnnouncementsEnabled                 bool   `json:"announcements_enabled"`
+	RedeemEnabled                        bool   `json:"redeem_enabled"`
+	PromoEnabled                         bool   `json:"promo_enabled"`
+	ProxiesEnabled                       bool   `json:"proxies_enabled"`
+	ChannelPricingEnabled                bool   `json:"channel_pricing_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -4930,17 +4930,15 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
 
-// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回 4 platform x 3 window 的设置。
-// 永远返回包含全部 4 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
+// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回所有允许平台 x 3 window 的设置。
+// 永远返回包含全部允许 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
 //
 // 使用单个 JSON key（default_platform_quotas），一次 DB roundtrip，消除旧 12-KV 格式的 N+1 问题。
-// 容错语义：取值失败或 unmarshal 失败 → 返回补齐 4 key 的空 map（fail-open，注册不被阻断）。
+// 容错语义：取值失败或 unmarshal 失败 → 返回补齐全部允许平台的空 map（fail-open，注册不被阻断）。
 func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[string]*DefaultPlatformQuotaSetting, error) {
-	out := map[string]*DefaultPlatformQuotaSetting{
-		"anthropic":   {},
-		"openai":      {},
-		"gemini":      {},
-		"antigravity": {},
+	out := make(map[string]*DefaultPlatformQuotaSetting, len(AllowedQuotaPlatforms))
+	for _, platform := range AllowedQuotaPlatforms {
+		out[platform] = &DefaultPlatformQuotaSetting{}
 	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultPlatformQuotas)
 	if err != nil || raw == "" {
@@ -4956,7 +4954,7 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 			out[platform] = v
 		}
 	}
-	return out, nil // 补齐 4 platform key，保持与旧实现一致的下游契约
+	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
 }
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。

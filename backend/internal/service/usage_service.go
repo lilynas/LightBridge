@@ -298,8 +298,8 @@ func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int
 }
 
 // GetUserUsageTrendByUserID returns per-user usage trend.
-func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
-	trend, err := s.usageRepo.GetUserUsageTrendByUserID(ctx, userID, startTime, endTime, granularity)
+func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
+	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, granularity, userID, apiKeyID, 0, 0, "", nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get user usage trend: %w", err)
 	}
@@ -307,8 +307,8 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 }
 
 // GetUserModelStats returns per-user model usage stats.
-func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
-	stats, err := s.usageRepo.GetUserModelStats(ctx, userID, startTime, endTime)
+func (s *UsageService) GetUserModelStats(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time, modelSource string) ([]usagestats.ModelStat, error) {
+	stats, err := s.usageRepo.GetModelStatsWithFiltersBySource(ctx, startTime, endTime, userID, apiKeyID, 0, 0, nil, nil, nil, modelSource)
 	if err != nil {
 		return nil, fmt.Errorf("get user model stats: %w", err)
 	}

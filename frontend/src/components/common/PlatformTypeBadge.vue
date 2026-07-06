@@ -75,6 +75,7 @@ const props = defineProps<Props>()
 const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
   if (props.platform === 'openai') return 'OpenAI'
+  if (props.platform === 'grok') return 'Grok'
   if (props.platform === 'antigravity') return 'Gemini'
   if (props.platform === 'custom') return 'Custom'
   return 'Gemini'
@@ -124,6 +125,9 @@ const platformClass = computed(() => {
   if (props.platform === 'openai') {
     return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
   }
+  if (props.platform === 'grok') {
+    return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200'
+  }
   if (props.platform === 'antigravity') {
     return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
   }
@@ -139,6 +143,9 @@ const typeClass = computed(() => {
   }
   if (props.platform === 'openai') {
     return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+  }
+  if (props.platform === 'grok') {
+    return 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800/70 dark:text-zinc-200'
   }
   if (props.platform === 'antigravity') {
     return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'

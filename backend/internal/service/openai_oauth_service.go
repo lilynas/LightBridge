@@ -303,15 +303,16 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 		accessToken := account.GetCredential("access_token")
 		if accessToken != "" {
 			tokenInfo := &OpenAITokenInfo{
-				AccessToken:      accessToken,
-				RefreshToken:     "",
-				IDToken:          account.GetCredential("id_token"),
-				ClientID:         account.GetCredential("client_id"),
-				Email:            account.GetCredential("email"),
-				ChatGPTAccountID: account.GetCredential("chatgpt_account_id"),
-				ChatGPTUserID:    account.GetCredential("chatgpt_user_id"),
-				OrganizationID:   account.GetCredential("organization_id"),
-				PlanType:         account.GetCredential("plan_type"),
+				AccessToken:           accessToken,
+				RefreshToken:          "",
+				IDToken:               account.GetCredential("id_token"),
+				ClientID:              account.GetCredential("client_id"),
+				Email:                 account.GetCredential("email"),
+				ChatGPTAccountID:      account.GetCredential("chatgpt_account_id"),
+				ChatGPTUserID:         account.GetCredential("chatgpt_user_id"),
+				OrganizationID:        account.GetCredential("organization_id"),
+				PlanType:              account.GetCredential("plan_type"),
+				SubscriptionExpiresAt: account.GetCredential("subscription_expires_at"),
 			}
 			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
 				tokenInfo.ExpiresAt = expiresAt.Unix()

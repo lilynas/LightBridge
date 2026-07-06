@@ -12,6 +12,7 @@ type OpsSystemLog struct {
 	ClientRequestID string         `json:"client_request_id"`
 	UserID          *int64         `json:"user_id"`
 	AccountID       *int64         `json:"account_id"`
+	APIKeyID        *int64         `json:"api_key_id,omitempty"`
 	Platform        string         `json:"platform"`
 	Model           string         `json:"model"`
 	Extra           map[string]any `json:"extra,omitempty"`
@@ -118,6 +119,12 @@ type OpsErrorLogFilter struct {
 	// - excluded: only show excluded errors
 	// - all: show everything
 	View string
+
+	// OwnerCategory filters by error owner category: "admin", "user", or "" (all).
+	OwnerCategory string
+
+	// Sort field: "created_at_desc" (default), "status_code_asc", "status_code_desc".
+	Sort string
 
 	Page     int
 	PageSize int

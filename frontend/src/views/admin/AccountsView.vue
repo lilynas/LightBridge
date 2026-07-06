@@ -230,6 +230,9 @@
           <template #cell-select="{ row }">
             <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
+          <template #cell-id="{ value }">
+            <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ value }}</span>
+          </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -409,12 +412,14 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
-    <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
-        <span>{{ t('admin.accounts.dataExportIncludeProxies') }}</span>
-      </label>
-    </ConfirmDialog>
+    <ExportFormatModal
+      :show="showExportDataDialog"
+      :exporting="exportingData"
+      :payload="exportPayload"
+      :account-count="selIds.length > 0 ? selIds.length : 0"
+      @close="showExportDataDialog = false"
+      @export="handleExportDataWithFormat"
+    />
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
   </AppLayout>
@@ -441,6 +446,7 @@ import AccountTableFilters from '@/components/admin/account/AccountTableFilters.
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
+import ExportFormatModal from '@/components/admin/account/ExportFormatModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -458,7 +464,9 @@ import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfil
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { lightBridgeConnectAPI, type LightBridgeConnectBalanceItem } from '@/api/lightbridge-connect'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import { convertFromPayload } from '@/utils/authconv'
+import type { OutputFormat } from '@/utils/authconv'
+import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, AdminDataPayload } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -512,6 +520,7 @@ const showEdit = ref(false)
 const showSync = ref(false)
 const showImportData = ref(false)
 const showExportDataDialog = ref(false)
+const exportPayload = ref<AdminDataPayload | null>(null)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
@@ -1227,6 +1236,7 @@ function getAntigravityTierClass(row: any): string {
 const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false },
+    { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: true },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: true },
@@ -1254,13 +1264,13 @@ const allColumns = computed(() => {
 
 // Columns that can be toggled (exclude select, name, and actions)
 const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'name' && col.key !== 'actions')
+  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'id' && col.key !== 'name' && col.key !== 'actions')
 )
 
 // Filtered columns based on visibility
 const cols = computed(() =>
   allColumns.value.filter(col =>
-    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
+    col.key === 'select' || col.key === 'id' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
   )
 )
 
@@ -1611,13 +1621,11 @@ const formatExportTimestamp = () => {
   const pad2 = (value: number) => String(value).padStart(2, '0')
   return `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`
 }
-const openExportDataDialog = () => {
+const openExportDataDialog = async () => {
   includeProxyOnExport.value = true
+  exportPayload.value = null
   showExportDataDialog.value = true
-}
-const handleExportData = async () => {
-  if (exportingData.value) return
-  exportingData.value = true
+  // Pre-fetch the data payload for the modal
   try {
     const dataPayload = await adminAPI.accounts.exportData(
       selIds.value.length > 0
@@ -1627,9 +1635,44 @@ const handleExportData = async () => {
             filters: buildAccountQueryFilters()
           }
     )
+    exportPayload.value = dataPayload
+  } catch {
+    // Modal will still work; just won't have pre-fetched data
+  }
+}
+const handleExportDataWithFormat = async (format: OutputFormat | 'native', includeProxies: boolean) => {
+  if (exportingData.value) return
+  exportingData.value = true
+  try {
+    // If payload not pre-fetched or proxies option changed, fetch again
+    let dataPayload = exportPayload.value
+    if (!dataPayload || includeProxies !== includeProxyOnExport.value) {
+      dataPayload = await adminAPI.accounts.exportData(
+        selIds.value.length > 0
+          ? { ids: selIds.value, includeProxies }
+          : {
+              includeProxies,
+              filters: buildAccountQueryFilters()
+            }
+      )
+      exportPayload.value = dataPayload
+    }
+
     const timestamp = formatExportTimestamp()
-    const filename = `LightBridge-account-${timestamp}.json`
-    const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
+    let downloadData: unknown
+    let filename: string
+
+    if (format === 'native') {
+      // Native LightBridge format
+      downloadData = dataPayload
+      filename = `LightBridge-account-${timestamp}.json`
+    } else {
+      // Convert to authconv format
+      downloadData = convertFromPayload(dataPayload, format)
+      filename = `LightBridge-account-${format}-${timestamp}.json`
+    }
+
+    const blob = new Blob([JSON.stringify(downloadData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

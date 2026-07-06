@@ -239,7 +239,7 @@ LEFT JOIN groups g ON e.group_id = g.id
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN users u2 ON e.resolved_by_user_id = u2.id
 ` + where + `
-ORDER BY e.created_at DESC
+` + buildOpsErrorLogsSortClause(filter.Sort) + `
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 	rows, err := r.db.QueryContext(ctx, selectSQL, argsWithLimit...)
@@ -838,6 +838,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 		"client_request_id",
 		"user_id",
 		"account_id",
+		"api_key_id",
 		"platform",
 		"model",
 		"extra",
@@ -879,6 +880,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 			opsNullString(input.ClientRequestID),
 			opsNullInt64(input.UserID),
 			opsNullInt64(input.AccountID),
+			opsNullInt64(input.APIKeyID),
 			opsNullString(input.Platform),
 			opsNullString(input.Model),
 			extra,
@@ -945,6 +947,7 @@ SELECT
   COALESCE(l.client_request_id, ''),
   l.user_id,
   l.account_id,
+  l.api_key_id,
   COALESCE(l.platform, ''),
   COALESCE(l.model, ''),
   COALESCE(l.extra::text, '{}')
@@ -964,6 +967,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		item := &service.OpsSystemLog{}
 		var userID sql.NullInt64
 		var accountID sql.NullInt64
+		var apiKeyID sql.NullInt64
 		var extraRaw string
 		if err := rows.Scan(
 			&item.ID,
@@ -975,6 +979,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.ClientRequestID,
 			&userID,
 			&accountID,
+			&apiKeyID,
 			&item.Platform,
 			&item.Model,
 			&extraRaw,
@@ -988,6 +993,10 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		if accountID.Valid {
 			v := accountID.Int64
 			item.AccountID = &v
+		}
+		if apiKeyID.Valid {
+			v := apiKeyID.Int64
+			item.APIKeyID = &v
 		}
 		extraRaw = strings.TrimSpace(extraRaw)
 		if extraRaw != "" && extraRaw != "null" && extraRaw != "{}" {
@@ -1051,6 +1060,17 @@ INSERT INTO ops_system_log_cleanup_audits (
 ) VALUES ($1,$2,$3,$4)
 `, createdAt.UTC(), input.OperatorID, input.Conditions, input.DeletedRows)
 	return err
+}
+
+func buildOpsErrorLogsSortClause(sort string) string {
+	switch strings.TrimSpace(strings.ToLower(sort)) {
+	case "status_code_asc":
+		return "ORDER BY COALESCE(e.upstream_status_code, e.status_code, 0) ASC, e.created_at DESC"
+	case "status_code_desc":
+		return "ORDER BY COALESCE(e.upstream_status_code, e.status_code, 0) DESC, e.created_at DESC"
+	default:
+		return "ORDER BY e.created_at DESC"
+	}
 }
 
 func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
@@ -1173,6 +1193,16 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		clauses = append(clauses, "EXISTS (SELECT 1 FROM users u WHERE u.id = e.user_id AND u.email ILIKE $"+n+")")
 	}
 
+	// Owner category filter: "admin" = platform/server errors, "user" = client-side errors.
+	if cat := strings.TrimSpace(strings.ToLower(filter.OwnerCategory)); cat != "" {
+		switch cat {
+		case "admin":
+			clauses = append(clauses, "COALESCE(e.error_owner,'') IN ('platform','provider')")
+		case "user":
+			clauses = append(clauses, "COALESCE(e.error_owner,'') = 'client'")
+		}
+	}
+
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
@@ -1223,6 +1253,11 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 			clauses = append(clauses, "l.account_id = $"+itoa(len(args)))
 			hasConstraint = true
 		}
+		if filter.APIKeyID != nil && *filter.APIKeyID > 0 {
+			args = append(args, *filter.APIKeyID)
+			clauses = append(clauses, "l.api_key_id = $"+itoa(len(args)))
+			hasConstraint = true
+		}
 		if v := strings.TrimSpace(filter.Platform); v != "" {
 			args = append(args, v)
 			clauses = append(clauses, "COALESCE(l.platform,'') = $"+itoa(len(args)))
@@ -1258,6 +1293,7 @@ func buildOpsSystemLogsCleanupWhere(filter *service.OpsSystemLogCleanupFilter) (
 		ClientRequestID: filter.ClientRequestID,
 		UserID:          filter.UserID,
 		AccountID:       filter.AccountID,
+		APIKeyID:        filter.APIKeyID,
 		Platform:        filter.Platform,
 		Model:           filter.Model,
 		Query:           filter.Query,

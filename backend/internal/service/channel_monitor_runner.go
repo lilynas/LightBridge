@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -158,6 +159,12 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 		return
 	}
 	interval := time.Duration(m.IntervalSeconds) * time.Second
+	// Apply ±10% random jitter to prevent thundering herd when multiple
+	// monitors share the same interval or are created at the same time.
+	if interval > 0 {
+		jitter := time.Duration(rand.Int63n(int64(interval)/5)) - time.Duration(interval)/10
+		interval += jitter
+	}
 	if interval <= 0 {
 		// Create/Update 已通过 validateInterval 校验区间，正常路径不可能到这里。
 		// 真触发说明数据库中存在违反约束的数据或校验链路有 bug，记 Error 暴露问题。

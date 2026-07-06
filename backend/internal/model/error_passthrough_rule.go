@@ -35,13 +35,14 @@ const (
 	PlatformAnthropic   = "anthropic"
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
+	PlatformGrok        = "grok"
 	PlatformAntigravity = "antigravity"
 	PlatformCustom      = "custom"
 )
 
 // AllPlatforms 返回所有支持的平台列表
 func AllPlatforms() []string {
-	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformCustom}
+	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformGrok, PlatformAntigravity, PlatformCustom}
 }
 
 // Validate 验证规则配置的有效性

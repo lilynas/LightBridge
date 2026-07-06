@@ -3385,7 +3385,7 @@
                       </tr>
                     </thead>
                     <tbody class="space-y-2">
-                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
+                      <tr v-for="p in platformQuotaPlatforms" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                         </td>
@@ -3720,7 +3720,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                            <tr v-for="p in platformQuotaPlatforms" :key="`${authSource.source}-pq-${p}`" class="align-top">
                               <td class="pr-4 py-1">
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
@@ -6862,6 +6862,7 @@ import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  PLATFORM_QUOTA_PLATFORMS,
   normalizePlatformQuotasMap,
   sanitizePlatformQuotasMap,
   defaultWeChatConnectScopesForMode,
@@ -7181,9 +7182,11 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
-  // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
+  // 系统全局平台限额 map；form 内始终归一化为完整平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
+
+const platformQuotaPlatforms = PLATFORM_QUOTA_PLATFORMS
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,

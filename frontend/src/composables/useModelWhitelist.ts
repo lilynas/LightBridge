@@ -30,6 +30,8 @@ export const claudeModels = [
   'claude-opus-4-6',
   'claude-opus-4-7',
   'claude-opus-4-8',
+  'claude-fable-5',
+  'claude-sonnet-5',
   'claude-sonnet-4-6'
 ]
 
@@ -56,6 +58,8 @@ const antigravityModels = [
   'claude-opus-4-7',
   'claude-opus-4-8',
   'claude-opus-4-5-thinking',
+  'claude-fable-5',
+  'claude-sonnet-5',
   'claude-sonnet-4-6',
   'claude-sonnet-4-5',
   'claude-sonnet-4-5-thinking',
@@ -129,10 +133,14 @@ const metaModels = [
 
 // xAI Grok
 const xaiModels = [
-  'grok-4', 'grok-4-0709',
-  'grok-3-beta', 'grok-3-mini-beta', 'grok-3-fast-beta',
-  'grok-2', 'grok-2-vision', 'grok-2-image',
-  'grok-beta', 'grok-vision-beta'
+  'grok', 'grok-latest', 'grok-build',
+  'grok-4.3',
+  'grok-build-0.1',
+  'grok-4.20-reasoning',
+  'grok-4.20-non-reasoning',
+  'grok-4.20-multi-agent-0309',
+  'grok-4.20-0309-reasoning',
+  'grok-4.20-0309-non-reasoning'
 ]
 
 // Cohere
@@ -270,6 +278,14 @@ const geminiPresetMappings = [
   { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
 ]
 
+const grokPresetMappings = [
+  { label: 'Grok 4.3', from: 'grok', to: 'grok-4.3', color: 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800/70 dark:text-zinc-200' },
+  { label: 'Grok Latest', from: 'grok-latest', to: 'grok-4.3', color: 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800/70 dark:text-neutral-200' },
+  { label: 'Grok Build', from: 'grok-build', to: 'grok-build-0.1', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/70 dark:text-slate-200' },
+  { label: '4.20 Reasoning', from: 'grok-4.20-reasoning', to: 'grok-4.20-0309-reasoning', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' }
+]
+
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
   // Claude 通配符映射
@@ -309,6 +325,8 @@ const bedrockPresetMappings = [
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'us.anthropic.claude-opus-4-6-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'us.anthropic.claude-opus-4-7-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'us.anthropic.claude-opus-4-8-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
+  { label: 'Fable 5', from: 'claude-fable-5', to: 'us.anthropic.claude-fable-5-v1:0', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
+  { label: 'Sonnet 5', from: 'claude-sonnet-5', to: 'us.anthropic.claude-sonnet-5-v1:0', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: 'Sonnet 4.6', from: 'claude-sonnet-4-6', to: 'us.anthropic.claude-sonnet-4-6', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: 'Opus 4.5', from: 'claude-opus-4-5-thinking', to: 'us.anthropic.claude-opus-4-5-20251101-v1:0', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
@@ -360,6 +378,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'anthropic':
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
+    case 'grok': return xaiModels
     case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
@@ -384,6 +403,7 @@ export function getModelsByPlatform(platform: string): string[] {
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

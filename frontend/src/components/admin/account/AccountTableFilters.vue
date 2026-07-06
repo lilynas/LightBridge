@@ -25,7 +25,7 @@ const updateType = (value: string | number | boolean | null) => { emit('update:f
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value }) }
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
-const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, { value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'gemini', label: 'Gemini' }, { value: 'custom', label: 'Custom' }])
+const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, { value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'gemini', label: 'Gemini' }, { value: 'grok', label: 'Grok' }, { value: 'antigravity', label: 'Gemini' }, { value: 'custom', label: 'Custom' }])
 const tOpts = computed(() => {
   const all = t('admin.accounts.allTypes')
   // 平台为「全部平台」时显示全部类型
@@ -55,6 +55,12 @@ const tOpts = computed(() => {
       { value: '', label: all },
       { value: 'oauth', label: t('admin.accounts.oauthType') },
       { value: 'apikey', label: t('admin.accounts.apiKey') }
+    ]
+  }
+  if (platform === 'grok') {
+    return [
+      { value: '', label: all },
+      { value: 'oauth', label: t('admin.accounts.oauthType') }
     ]
   }
   if (platform === 'gemini') {

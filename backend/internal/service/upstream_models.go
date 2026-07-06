@@ -12,6 +12,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/antigravity"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/claude"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/geminicli"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 )
 
 const upstreamModelsBodyLimit int64 = 8 << 20
@@ -131,6 +132,8 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 	switch {
 	case account.IsAntigravity():
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
+	case account.IsGrok():
+		return s.buildGrokUpstreamModelsRequest(ctx, account)
 	case account.IsOpenAI():
 		return s.buildOpenAIUpstreamModelsRequest(ctx, account)
 	case account.IsGemini():
@@ -279,6 +282,40 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	return req, nil
+}
+
+func (s *AccountTestService) buildGrokUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.Type != AccountTypeOAuth {
+		return nil, newUpstreamModelSyncUnsupportedError(
+			fmt.Sprintf("Unsupported Grok account type for upstream model sync: %s", account.Type), nil,
+		)
+	}
+
+	accessToken := strings.TrimSpace(account.GetGrokAccessToken())
+	if accessToken == "" && s.grokTokenProvider != nil {
+		token, tokenErr := s.grokTokenProvider.GetAccessToken(ctx, account)
+		if tokenErr != nil {
+			return nil, newUpstreamModelSyncUpstreamError("Failed to get Grok access token", tokenErr)
+		}
+		accessToken = strings.TrimSpace(token)
+	}
+	if accessToken == "" {
+		return nil, newUpstreamModelSyncConfigError("No Grok access token is available", nil)
+	}
+
+	normalizedBaseURL, err := xai.ValidatedBaseURL(account.GetGrokBaseURL())
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Grok base URL", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid Grok model list URL", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", "lightbridge-grok/1.0")
 	return req, nil
 }
 

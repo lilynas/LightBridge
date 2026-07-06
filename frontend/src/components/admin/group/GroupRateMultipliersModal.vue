@@ -284,6 +284,7 @@ const platformColorClass = computed(() => {
   switch (props.group?.platform) {
     case 'anthropic': return 'text-orange-700 dark:text-orange-400'
     case 'openai': return 'text-emerald-700 dark:text-emerald-400'
+    case 'grok': return 'text-zinc-700 dark:text-zinc-200'
     case 'antigravity': return 'text-blue-700 dark:text-blue-400'
     default: return 'text-blue-700 dark:text-blue-400'
   }

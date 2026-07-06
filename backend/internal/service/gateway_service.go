@@ -5036,6 +5036,14 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		return nil, err
 	}
 
+	// Check if the channel requires Bearer auth for Anthropic
+	useBearerAuth := false
+	if gid := apiKeyGroupID(getAPIKeyFromContext(c)); gid != nil && s.channelService != nil {
+		if ch, chErr := s.channelService.GetChannelForGroup(ctx, *gid); chErr == nil {
+			useBearerAuth = ch.IsAnthropicBearerAuthEnabled()
+		}
+	}
+
 	logger.LegacyPrintf("service.gateway", "[Anthropic 自动透传] 命中 API Key 透传分支: account=%d name=%s model=%s stream=%v",
 		account.ID, account.Name, input.RequestModel, input.RequestStream)
 
@@ -5049,7 +5057,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
-		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
+		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token, useBearerAuth)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -5247,6 +5255,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	account *Account,
 	body []byte,
 	token string,
+	useBearerAuth bool,
 ) (*http.Request, error) {
 	targetURL := claudeAPIURL
 	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
@@ -5295,7 +5304,11 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
-	setHeaderRaw(req.Header, "x-api-key", token)
+	if useBearerAuth {
+		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
+	} else {
+		setHeaderRaw(req.Header, "x-api-key", token)
+	}
 
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")
@@ -5427,6 +5440,15 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	lastDataAt := time.Now()
 	inPartialEvent := false
 
+	// resetKeepaliveTicker resets the keepalive ticker so the next tick fires
+	// keepaliveInterval after the most recent data event. This prevents stale
+	// ticks from sending pings too early or too late after upstream data.
+	resetKeepaliveTicker := func() {
+		if keepaliveTicker != nil {
+			keepaliveTicker.Reset(keepaliveInterval)
+		}
+	}
+
 	for {
 		select {
 		case ev, ok := <-events:
@@ -5494,6 +5516,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
 					flusher.Flush()
 					lastDataAt = time.Now()
+					resetKeepaliveTicker()
 					inPartialEvent = false
 				} else {
 					inPartialEvent = true
@@ -7503,6 +7526,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 	lastDataAt := time.Now()
 
+	// resetKeepaliveTicker resets the keepalive ticker so the next tick fires
+	// keepaliveInterval after the most recent data event.
+	resetKeepaliveTicker := func() {
+		if keepaliveTicker != nil {
+			keepaliveTicker.Reset(keepaliveInterval)
+		}
+	}
+
 	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）。
 	// 事件格式遵循 Anthropic SSE 标准：{"type":"error","error":{"type":<reason>,"message":<message>}}
 	// 这样 Anthropic SDK / Claude Code 等客户端能按标准 error 类型解析，UI 能显示具体错误文案，
@@ -7742,6 +7773,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 						}
 						flusher.Flush()
 						lastDataAt = time.Now()
+						resetKeepaliveTicker()
 					}
 					if data != "" {
 						if firstTokenMs == nil && data != "[DONE]" {

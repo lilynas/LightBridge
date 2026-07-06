@@ -186,6 +186,7 @@ type OpsInsertSystemLogInput struct {
 	ClientRequestID string
 	UserID          *int64
 	AccountID       *int64
+	APIKeyID        *int64
 	Platform        string
 	Model           string
 	ExtraJSON       string
@@ -202,6 +203,7 @@ type OpsSystemLogFilter struct {
 	ClientRequestID string
 	UserID          *int64
 	AccountID       *int64
+	APIKeyID        *int64
 	Platform        string
 	Model           string
 	Query           string
@@ -221,6 +223,7 @@ type OpsSystemLogCleanupFilter struct {
 	ClientRequestID string
 	UserID          *int64
 	AccountID       *int64
+	APIKeyID        *int64
 	Platform        string
 	Model           string
 	Query           string

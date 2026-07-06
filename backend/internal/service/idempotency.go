@@ -454,7 +454,7 @@ func (c *IdempotencyCoordinator) marshalStoredResponse(data any) (string, error)
 	}
 	redacted := logredact.RedactText(string(raw))
 	if c.cfg.MaxStoredResponseLen > 0 && len(redacted) > c.cfg.MaxStoredResponseLen {
-		redacted = redacted[:c.cfg.MaxStoredResponseLen] + "...(truncated)"
+		redacted = truncateString(redacted, c.cfg.MaxStoredResponseLen) + "...(truncated)"
 	}
 	return redacted, nil
 }

@@ -455,6 +455,9 @@ func channelPlatformForContext(ctx context.Context, fallback string) string {
 		if forcePlatform, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && strings.TrimSpace(forcePlatform) != "" {
 			return strings.TrimSpace(forcePlatform)
 		}
+		if fallback == PlatformGrok && channelPlatformForProtocol(InboundProtocolFromContext(ctx)) == PlatformOpenAI {
+			return PlatformGrok
+		}
 		if platform := channelPlatformForProtocol(InboundProtocolFromContext(ctx)); platform != "" {
 			return platform
 		}

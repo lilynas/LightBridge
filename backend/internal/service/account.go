@@ -14,6 +14,7 @@ import (
 
 	"github.com/WilliamWang1721/LightBridge/internal/config"
 	"github.com/WilliamWang1721/LightBridge/internal/domain"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 )
 
 type Account struct {
@@ -429,6 +430,9 @@ func (a *Account) TargetProtocol() string {
 	if a.IsCustom() {
 		return a.CustomProtocol()
 	}
+	if a.IsGrok() {
+		return CustomProtocolOpenAIResponses
+	}
 	if a.IsOpenAI() {
 		return CustomProtocolOpenAIResponses
 	}
@@ -453,6 +457,9 @@ func (a *Account) SupportedTargetProtocols() []string {
 	}
 	if a.IsAntigravity() {
 		return []string{CustomProtocolAnthropicMessages, CustomProtocolGemini}
+	}
+	if a.IsGrok() {
+		return []string{CustomProtocolOpenAIResponses}
 	}
 	if a.IsOpenAI() {
 		return []string{
@@ -811,6 +818,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.IsAntigravity() {
 			return domain.DefaultAntigravityModelMapping
 		}
+		if a.IsGrok() {
+			return xai.DefaultModelMapping()
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -818,6 +828,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		// Antigravity 平台使用默认映射
 		if a.IsAntigravity() {
 			return domain.DefaultAntigravityModelMapping
+		}
+		if a.IsGrok() {
+			return xai.DefaultModelMapping()
 		}
 		return nil
 	}
@@ -832,9 +845,17 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.IsAntigravity() {
 			ensureAntigravityDefaultPassthroughs(result, []string{
 				"gemini-3-flash",
+				"gemini-3.1-pro",
 				"gemini-3.1-pro-high",
 				"gemini-3.1-pro-low",
 			})
+		}
+		if a.IsGrok() {
+			defaults := xai.DefaultModelMapping()
+			for k, v := range result {
+				defaults[k] = v
+			}
+			return defaults
 		}
 		return result
 	}
@@ -842,6 +863,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	// Antigravity 平台使用默认映射
 	if a.IsAntigravity() {
 		return domain.DefaultAntigravityModelMapping
+	}
+	if a.IsGrok() {
+		return xai.DefaultModelMapping()
 	}
 	return nil
 }
@@ -1411,6 +1435,17 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI || (a.IsCustom() && a.IsCustomOpenAIProtocol())
 }
 
+// IsGrok reports whether this is a native xAI Grok subscription account.
+// Grok is OpenAI-Responses-shaped at the API layer, but remains a distinct
+// platform for scheduling, quota, model catalog and billing semantics.
+func (a *Account) IsGrok() bool {
+	return a != nil && a.Platform == PlatformGrok
+}
+
+func (a *Account) IsOpenAICompatible() bool {
+	return a.IsOpenAI() || a.IsGrok()
+}
+
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic ||
 		(a.IsCustom() && a.CustomProtocol() == CustomProtocolAnthropicMessages)
@@ -1461,6 +1496,41 @@ func (a *Account) GetOpenAIApiKey() string {
 		return ""
 	}
 	return a.GetCredential("api_key")
+}
+
+func (a *Account) GetGrokBaseURL() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	return xai.EffectiveBaseURL(a.GetCredential("base_url"))
+}
+
+func (a *Account) GetGrokAccessToken() string {
+	if !a.IsGrok() || a.Type != AccountTypeOAuth {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetGrokRefreshToken() string {
+	if !a.IsGrok() || a.Type != AccountTypeOAuth {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetGrokIDToken() string {
+	if !a.IsGrok() || a.Type != AccountTypeOAuth {
+		return ""
+	}
+	return a.GetCredential("id_token")
+}
+
+func (a *Account) GetGrokClientID() string {
+	if !a.IsGrok() || a.Type != AccountTypeOAuth {
+		return ""
+	}
+	return a.GetCredential("client_id")
 }
 
 func (a *Account) GetOpenAIUserAgent() string {

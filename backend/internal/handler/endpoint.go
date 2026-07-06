@@ -81,7 +81,15 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		if inbound == EndpointEmbeddings || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits {
 			return inbound
 		}
-		// OpenAI forwards everything to the Responses API.
+		// OpenAI forwards everything else to the Responses API.
+		// Preserve subresource suffix (e.g. /v1/responses/compact).
+		if suffix := responsesSubpathSuffix(rawRequestPath); suffix != "" {
+			return EndpointResponses + suffix
+		}
+		return EndpointResponses
+
+	case service.PlatformGrok:
+		// Grok subscription support is intentionally Responses-only.
 		// Preserve subresource suffix (e.g. /v1/responses/compact).
 		if suffix := responsesSubpathSuffix(rawRequestPath); suffix != "" {
 			return EndpointResponses + suffix

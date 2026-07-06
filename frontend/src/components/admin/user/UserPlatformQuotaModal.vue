@@ -128,7 +128,7 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const PLATFORMS: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
+const PLATFORM_ORDER: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'grok', 'antigravity', 'custom']
 
 interface QuotaRow {
   platform: PlatformQuotaPlatform
@@ -164,7 +164,14 @@ function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
 function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
   const byPlatform = new Map<PlatformQuotaPlatform, PlatformQuotaItem>()
   for (const it of items) byPlatform.set(it.platform, it)
-  return PLATFORMS.map((p) => {
+  const platforms = [
+    ...PLATFORM_ORDER,
+    ...items
+      .map((it) => it.platform)
+      .filter((platform) => !PLATFORM_ORDER.includes(platform))
+      .sort((a, b) => a.localeCompare(b)),
+  ]
+  return platforms.map((p) => {
     const it = byPlatform.get(p)
     if (!it) return emptyRow(p)
     return {
@@ -192,7 +199,7 @@ async function load() {
     quotas.value = normalize(data.platform_quotas || [])
   } catch {
     appStore.showError(t('admin.users.platformQuota.loadFailed'))
-    quotas.value = PLATFORMS.map(emptyRow)
+    quotas.value = PLATFORM_ORDER.map(emptyRow)
   } finally {
     loading.value = false
   }

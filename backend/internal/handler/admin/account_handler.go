@@ -25,6 +25,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/response"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/timezone"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/WilliamWang1721/LightBridge/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -1953,6 +1954,11 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 			}
 		}
 		response.Success(c, models)
+		return
+	}
+
+	if account.IsGrok() {
+		response.Success(c, xai.DefaultModels())
 		return
 	}
 

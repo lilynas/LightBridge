@@ -53,6 +53,39 @@
         </div>
       </div>
 
+      <!-- Referenced Projects -->
+      <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.feedback.referencedProjects') }}
+        </h2>
+        <p class="mb-4 text-sm text-gray-600 dark:text-dark-300">
+          {{ t('admin.feedback.referencedProjectsDesc') }}
+        </p>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <!-- authconv -->
+          <a
+            href="https://github.com/ltxgit/authconv"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex items-center gap-4 rounded-lg border border-gray-200 p-4 transition-all hover:border-primary-300 hover:shadow-md dark:border-dark-600 dark:hover:border-primary-600"
+          >
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-900/30 dark:text-blue-400">
+              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-medium text-gray-900 group-hover:text-primary-600 dark:text-white dark:group-hover:text-primary-400">
+                {{ t('admin.feedback.authconvName') }}
+              </h3>
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.feedback.authconvDesc') }}
+              </p>
+            </div>
+          </a>
+        </div>
+      </div>
+
       <!-- Contact Information -->
       <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
         <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">

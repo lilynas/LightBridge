@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"strconv"
@@ -555,15 +556,15 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 // BatchUpdateUsers 批量更新用户（状态 / 并发数 / 备注 / 分组）
 // POST /api/v1/admin/users/batch-update
 type BatchUpdateUsersRequest struct {
-	UserIDs        []int64  `json:"user_ids"`
-	UpdateStatus   *bool    `json:"update_status"`     // 是否更新 status
-	Status         *string  `json:"status"`            // active / inactive
-	UpdateConcurrency *bool `json:"update_concurrency"`
-	Concurrency    *int     `json:"concurrency"`
-	UpdateNotes    *bool    `json:"update_notes"`
-	Notes          *string  `json:"notes"`
-	UpdateGroups   *bool    `json:"update_groups"`
-	GroupIDs       *[]int64 `json:"group_ids"`
+	UserIDs           []int64  `json:"user_ids"`
+	UpdateStatus      *bool    `json:"update_status"` // 是否更新 status
+	Status            *string  `json:"status"`        // active / inactive
+	UpdateConcurrency *bool    `json:"update_concurrency"`
+	Concurrency       *int     `json:"concurrency"`
+	UpdateNotes       *bool    `json:"update_notes"`
+	Notes             *string  `json:"notes"`
+	UpdateGroups      *bool    `json:"update_groups"`
+	GroupIDs          *[]int64 `json:"group_ids"`
 }
 
 func (h *UserHandler) BatchUpdateUsers(c *gin.Context) {
@@ -678,8 +679,8 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 		return
 	}
 
-	if len(req.Quotas) > 4 {
-		response.BadRequest(c, "quotas length must be <= 4")
+	if len(req.Quotas) > len(service.AllowedQuotaPlatforms) {
+		response.BadRequest(c, fmt.Sprintf("quotas length must be <= %d", len(service.AllowedQuotaPlatforms)))
 		return
 	}
 	seen := make(map[string]struct{}, len(req.Quotas))
@@ -798,7 +799,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 
 	// 失效 cache：对全部允许的 platform 统一 invalidate。
 	// Trade-off：精确失效（仅 req 涉及平台 + 被软删平台）需 upsert 前额外 ListByUser，
-	// 增加一次 DB 查询和逻辑复杂度。由于 AllowedQuotaPlatforms 只有 4 个元素，
+	// 增加一次 DB 查询和逻辑复杂度。由于 AllowedQuotaPlatforms 规模很小，
 	// 全量 invalidate 的额外开销可接受，且能可靠覆盖软删除场景。
 	if h.billingCache != nil {
 		for _, p := range service.AllowedQuotaPlatforms {

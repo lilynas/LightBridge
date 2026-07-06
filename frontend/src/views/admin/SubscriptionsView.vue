@@ -970,6 +970,7 @@ const platformFilterOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'gemini', label: 'Gemini' },
+  { value: 'grok', label: 'Grok' },
   { value: 'antigravity', label: 'Gemini' }
 ])
 

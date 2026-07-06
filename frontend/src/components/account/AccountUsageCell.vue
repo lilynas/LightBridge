@@ -105,6 +105,103 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- Grok OAuth accounts: quota headers + local usage -->
+    <template v-else-if="account.platform === 'grok' && account.type === 'oauth'">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="usageInfo" class="space-y-1">
+        <div v-if="usageInfo.error" class="max-w-[200px] truncate text-xs text-amber-600 dark:text-amber-400" :title="usageInfo.error">
+          {{ usageInfo.error }}
+        </div>
+
+        <div
+          v-if="grokLocalUsage"
+          class="mb-0.5 flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400"
+        >
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+            {{ grokLocalRequests }} {{ t('admin.accounts.usageWindow.grokLocalRequests') }}
+          </span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+            {{ grokLocalTokens }} {{ t('admin.accounts.usageWindow.grokLocalTokens') }}
+          </span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
+            {{ t('admin.accounts.usageWindow.grokAccountCost') }} ${{ grokLocalCost }}
+          </span>
+          <span
+            v-if="grokLocalUsage.user_cost != null"
+            class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+            :title="t('usage.userBilled')"
+          >
+            {{ t('admin.accounts.usageWindow.grokUserCost') }} ${{ grokLocalUserCost }}
+          </span>
+        </div>
+
+        <UsageProgressBar
+          v-for="bar in grokQuotaBars"
+          :key="bar.key"
+          :label="bar.label"
+          :utilization="bar.utilization"
+          :resets-at="bar.resetsAt"
+          :color="bar.color"
+        />
+
+        <div v-if="grokStatusBadges.length" class="flex flex-wrap gap-1">
+          <span
+            v-for="badge in grokStatusBadges"
+            :key="badge.key"
+            :class="['rounded px-1.5 py-0.5 text-[9px] font-medium', badge.class]"
+            :title="badge.title"
+          >
+            {{ badge.label }}
+          </span>
+        </div>
+
+        <div v-if="grokQuotaBars.length === 0 && !grokLocalUsage" class="text-xs text-gray-400">
+          {{ t('admin.accounts.usageWindow.grokNoQuota') }}
+        </div>
+
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+            :disabled="activeQueryLoading"
+            :title="t('admin.accounts.usageWindow.grokProbeTooltip')"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.grokProbe') }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
@@ -497,7 +594,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
+import type { Account, AccountUsageInfo, GeminiCredentials, GrokQuotaWindow, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
@@ -561,6 +658,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'grok') {
+    return props.account.type === 'oauth'
+  }
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
@@ -602,6 +702,111 @@ interface AntigravityUsageResult {
   utilization: number
   resetTime: string | null
 }
+
+interface GrokQuotaBar {
+  key: string
+  label: string
+  utilization: number
+  resetsAt: string | null
+  color: 'indigo' | 'emerald'
+}
+
+const grokLocalUsage = computed(() => {
+  if (props.account.platform !== 'grok') return null
+  return usageInfo.value?.grok_local_usage || null
+})
+
+const quotaWindowToBar = (
+  key: string,
+  label: string,
+  window: GrokQuotaWindow | null | undefined,
+  color: 'indigo' | 'emerald'
+): GrokQuotaBar | null => {
+  if (!window) return null
+  const limit = typeof window.limit === 'number' ? window.limit : null
+  const remaining = typeof window.remaining === 'number' ? window.remaining : null
+  const utilization =
+    limit && limit > 0 && remaining !== null
+      ? Math.max(0, Math.min(999, ((limit - remaining) / limit) * 100))
+      : 0
+
+  let resetsAt = window.reset_at || null
+  if (!resetsAt && typeof window.reset_unix === 'number' && window.reset_unix > 0) {
+    resetsAt = new Date(window.reset_unix * 1000).toISOString()
+  }
+
+  return { key, label, utilization, resetsAt, color }
+}
+
+const grokQuotaBars = computed(() => {
+  if (props.account.platform !== 'grok' || !usageInfo.value) return []
+  return [
+    quotaWindowToBar('requests', t('admin.accounts.usageWindow.grokRequests'), usageInfo.value.grok_request_quota, 'indigo'),
+    quotaWindowToBar('tokens', t('admin.accounts.usageWindow.grokTokens'), usageInfo.value.grok_token_quota, 'emerald')
+  ].filter((bar): bar is GrokQuotaBar => !!bar)
+})
+
+const grokStatusBadges = computed(() => {
+  if (props.account.platform !== 'grok' || !usageInfo.value) return []
+  const badges: Array<{ key: string; label: string; title?: string; class: string }> = []
+  const state = usageInfo.value.grok_quota_snapshot_state
+  if (state) {
+    badges.push({
+      key: 'state',
+      label: state === 'observed' ? t('admin.accounts.usageWindow.grokObserved') : t('admin.accounts.usageWindow.grokUnknown'),
+      title: state,
+      class: state === 'observed'
+        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+    })
+  }
+  if (usageInfo.value.grok_entitlement_status) {
+    badges.push({
+      key: 'entitlement',
+      label: usageInfo.value.grok_entitlement_status,
+      title: t('admin.accounts.usageWindow.grokEntitlement'),
+      class: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-200'
+    })
+  }
+  if (typeof usageInfo.value.grok_retry_after_seconds === 'number') {
+    badges.push({
+      key: 'retry',
+      label: t('admin.accounts.usageWindow.grokRetryAfter', { seconds: usageInfo.value.grok_retry_after_seconds }),
+      class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    })
+  }
+  if (usageInfo.value.grok_last_status_code) {
+    badges.push({
+      key: 'status',
+      label: String(usageInfo.value.grok_last_status_code),
+      title: t('admin.accounts.usageWindow.grokLastStatus'),
+      class: usageInfo.value.grok_last_status_code >= 400
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+    })
+  }
+  return badges
+})
+
+const grokLocalRequests = computed(() => {
+  if (!grokLocalUsage.value) return ''
+  return formatCompactNumber(grokLocalUsage.value.requests, { allowBillions: false })
+})
+
+const grokLocalTokens = computed(() => {
+  if (!grokLocalUsage.value) return ''
+  return formatCompactNumber(grokLocalUsage.value.tokens)
+})
+
+const grokLocalCost = computed(() => {
+  if (!grokLocalUsage.value) return '0.00'
+  return grokLocalUsage.value.cost.toFixed(2)
+})
+
+const grokLocalUserCost = computed(() => {
+  if (!grokLocalUsage.value || grokLocalUsage.value.user_cost == null) return '0.00'
+  return grokLocalUsage.value.user_cost.toFixed(2)
+})
 
 // ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
 
@@ -1026,7 +1231,9 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id, options?.source)
+    const fetchFn = () => options?.source
+      ? adminAPI.accounts.getUsage(props.account.id, options.source)
+      : adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1094,10 +1301,22 @@ const attachVisibilityObserver = () => {
 
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
+  error.value = null
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    if (props.account.platform === 'grok' && props.account.type === 'oauth') {
+      await adminAPI.grok.queryQuota(props.account.id)
+      usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'passive', true)
+    } else {
+      usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    }
+    if (usageInfo.value) {
+      _usageCache.set(props.account.id, { data: usageInfo.value, ts: Date.now() })
+    }
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
+    if (props.account.platform === 'grok') {
+      error.value = e?.response?.data?.message || e?.response?.data?.error || t('admin.accounts.usageWindow.grokProbeFailed')
+    }
   } finally {
     activeQueryLoading.value = false
   }
@@ -1213,7 +1432,10 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
+  _usageCache.delete(props.account.id)
+  loadUsage({ bypassCache: true }).catch((e) => {
+    console.error('Failed to refresh OpenAI usage after account row update:', e)
+  })
 })
 
 watch(

@@ -26,6 +26,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/logger"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/pagination"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/WilliamWang1721/LightBridge/internal/util/httputil"
 )
 
@@ -1710,6 +1711,9 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 }
 
 func defaultModelsListCandidateIDs(platform string) []string {
+	if strings.TrimSpace(platform) == PlatformGrok {
+		return xai.DefaultModelIDs()
+	}
 	switch NormalizeGroupUpstreamProtocolFilter(platform) {
 	case CustomProtocolOpenAIResponses, CustomProtocolOpenAIChatCompletions:
 		return openai.DefaultModelIDs()
@@ -1747,6 +1751,7 @@ func allDefaultModelsListCandidateIDs() []string {
 		}
 	}
 	add(openai.DefaultModelIDs())
+	add(xai.DefaultModelIDs())
 	claudeIDs := make([]string, 0, len(claude.DefaultModels))
 	for _, model := range claude.DefaultModels {
 		claudeIDs = append(claudeIDs, model.ID)
@@ -2559,6 +2564,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	// 注意：分组绑定/混合渠道检查（上方）仍使用 input.Platform 别名，以匹配
 	// 历史上以 platform="antigravity" 存在的 antigravity-default 分组。
 	normalizedPlatform, subPlatform := NormalizePlatform(input.Platform)
+	if normalizedPlatform == PlatformGrok && input.Type == AccountTypeOAuth && input.Concurrency <= 0 {
+		input.Concurrency = 1
+	}
+	if err := validateGrokOAuthConcurrency(normalizedPlatform, input.Type, input.Concurrency); err != nil {
+		return nil, err
+	}
 
 	account := &Account{
 		Name:        input.Name,
@@ -2640,6 +2651,13 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	return account, nil
 }
 
+func validateGrokOAuthConcurrency(platform, accountType string, concurrency int) error {
+	if platform == PlatformGrok && accountType == AccountTypeOAuth && concurrency > 1 && !xai.AllowUnsafeHighConcurrency() {
+		return errors.New("grok oauth accounts support concurrency <= 1; set XAI_GROK_UNSAFE_ALLOW_CONCURRENCY_GT_ONE=true to override")
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -2699,6 +2717,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
+		if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && *input.Concurrency <= 0 {
+			*input.Concurrency = 1
+		}
+		if err := validateGrokOAuthConcurrency(account.Platform, account.Type, *input.Concurrency); err != nil {
+			return nil, err
+		}
 		account.Concurrency = *input.Concurrency
 	}
 	// 只在指针非 nil 时更新 Priority（支持设置为 0）
@@ -2747,6 +2771,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				return nil, err
 			}
 		}
+	}
+	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && account.Concurrency <= 0 {
+		account.Concurrency = 1
+	}
+	if err := validateGrokOAuthConcurrency(account.Platform, account.Type, account.Concurrency); err != nil {
+		return nil, err
 	}
 
 	if err := s.accountRepo.Update(ctx, account); err != nil {

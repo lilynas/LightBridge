@@ -24,6 +24,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/geminicli"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai_compat"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/WilliamWang1721/LightBridge/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -68,6 +69,7 @@ type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
+	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
@@ -82,6 +84,7 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
+	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
@@ -93,6 +96,7 @@ func NewAccountTestService(
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
+		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
@@ -200,11 +204,117 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGeminiAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.IsGrok() {
+		return s.testGrokAccountConnection(c, account, modelID, prompt)
+	}
+
 	if account.IsAntigravity() {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	ctx := c.Request.Context()
+	if account.Type != AccountTypeOAuth {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Grok account type: %s", account.Type))
+	}
+
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "grok"
+	}
+	testModelID = account.GetMappedModel(testModelID)
+	if strings.TrimSpace(testModelID) == "" {
+		testModelID = "grok-4.3"
+	}
+
+	authToken := strings.TrimSpace(account.GetGrokAccessToken())
+	if s.grokTokenProvider != nil {
+		token, err := s.grokTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Grok access token: %s", err.Error()))
+		}
+		authToken = strings.TrimSpace(token)
+	}
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No Grok access token available")
+	}
+
+	apiURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
+	}
+
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "hi"
+	}
+	payload := map[string]any{
+		"model": testModelID,
+		"input": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "input_text",
+						"text": testPrompt,
+					},
+				},
+			},
+		},
+		"stream":            true,
+		"max_output_tokens": 64,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("User-Agent", "lightbridge-grok/1.0")
+
+	proxyURL, err := s.resolveAccountTestProxyURL(c, ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve proxy: %s", err.Error()))
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if s.accountRepo != nil {
+		if snapshot := xai.ParseQuotaHeaders(resp.Header, resp.StatusCode); snapshot != nil {
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				grokQuotaSnapshotExtraKey: snapshot,
+			})
+		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
+		if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	return s.processOpenAIStream(c, resp.Body)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection

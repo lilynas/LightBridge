@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/ctxkey"
 )
@@ -27,6 +28,7 @@ import (
 //   - platform=="anthropic" 且 useMixed  → 纯 Anthropic + 启用 mixed 的 Antigravity + 全部 Custom。
 //   - platform=="anthropic" 且 !useMixed → 纯 Anthropic + 全部 Custom。
 //   - platform=="openai"                 → 纯 OpenAI + 全部 Custom。
+//   - platform=="grok"                   → 仅 Grok 账号（Custom 一律排除）。
 //   - platform=="custom"                 → 仅 Custom 账号。
 //   - 其他                                → account.Platform == platform + 全部 Custom。
 
@@ -38,6 +40,8 @@ func schedulingQueryPlatforms(platform string, useMixed bool) []string {
 	case PlatformAntigravity:
 		// Antigravity 专用：账号在 gemini 平台下，且不混入 Custom。
 		return []string{PlatformGemini}
+	case PlatformGrok:
+		return []string{PlatformGrok}
 	case PlatformAnthropic:
 		if useMixed {
 			return []string{PlatformAnthropic, PlatformGemini, PlatformCustom}
@@ -50,6 +54,13 @@ func schedulingQueryPlatforms(platform string, useMixed bool) []string {
 	default:
 		return []string{platform, PlatformCustom}
 	}
+}
+
+func normalizeOpenAICompatiblePlatform(platform string) string {
+	if strings.TrimSpace(platform) == PlatformGrok {
+		return PlatformGrok
+	}
+	return PlatformOpenAI
 }
 
 func schedulingQueryPlatformsForRequest(ctx context.Context, platform string, useMixed bool) []string {
@@ -65,6 +76,9 @@ func schedulingQueryPlatformsForRequest(ctx context.Context, platform string, us
 	}
 	if platform == PlatformAntigravity {
 		return []string{PlatformGemini}
+	}
+	if platform == PlatformGrok {
+		return []string{PlatformGrok}
 	}
 	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformCustom}
 }
@@ -107,6 +121,9 @@ func accountServesSchedulingPlatform(a *Account, platform string, useMixed bool)
 	// Antigravity 专用调度：只接受 Antigravity 账号（Custom 等一律排除）。
 	if platform == PlatformAntigravity {
 		return a.IsAntigravity()
+	}
+	if platform == PlatformGrok {
+		return a.IsGrok()
 	}
 	// Custom 账号不受分组类型限制：可进入任意（非 antigravity）平台的候选集。
 	if a.IsCustom() {

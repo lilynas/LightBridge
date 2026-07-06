@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/WilliamWang1721/LightBridge/internal/config"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +23,10 @@ type openAISnapshotCacheStub struct {
 type schedulerTestOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
+}
+
+func schedulerTestInt64Ptr(v int64) *int64 {
+	return &v
 }
 
 func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -977,6 +982,110 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshUsageWind
 	require.NoError(t, err)
 	require.NotNil(t, account)
 	require.Equal(t, int64(35602), account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokQuotaSnapshotPausesFreshExhaustion(t *testing.T) {
+	ctx := context.Background()
+	zero := int64(0)
+	limit := int64(10)
+	primary := Account{
+		ID:          35611,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
+				Requests: &xai.QuotaWindow{
+					Limit:     &limit,
+					Remaining: &zero,
+					ResetUnix: schedulerTestInt64Ptr(time.Now().Add(time.Hour).Unix()),
+				},
+				UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+			},
+		},
+	}
+	secondary := Account{ID: 35612, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35612), account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokStaleQuotaSnapshotAllowsSelfHeal(t *testing.T) {
+	ctx := context.Background()
+	zero := int64(0)
+	limit := int64(10)
+	primary := Account{
+		ID:          35621,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
+				Requests: &xai.QuotaWindow{
+					Limit:     &limit,
+					Remaining: &zero,
+					ResetUnix: schedulerTestInt64Ptr(time.Now().Add(time.Hour).Unix()),
+				},
+				UpdatedAt: time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),
+			},
+		},
+	}
+	secondary := Account{ID: 35622, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35621), account.ID)
+}
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokRetryAfterPausesOnlyWhileActive(t *testing.T) {
+	ctx := context.Background()
+	retryAfter := 30
+	tests := []struct {
+		name      string
+		updatedAt time.Time
+		wantID    int64
+	}{
+		{name: "active retry-after", updatedAt: time.Now(), wantID: 35632},
+		{name: "expired retry-after", updatedAt: time.Now().Add(-time.Minute), wantID: 35631},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			primary := Account{
+				ID:          35631,
+				Platform:    PlatformGrok,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    0,
+				Extra: map[string]any{
+					grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
+						RetryAfterSeconds: &retryAfter,
+						UpdatedAt:         tt.updatedAt.UTC().Format(time.RFC3339),
+					},
+				},
+			}
+			secondary := Account{ID: 35632, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+			svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+			account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
+			require.NoError(t, err)
+			require.NotNil(t, account)
+			require.Equal(t, tt.wantID, account.ID)
+		})
+	}
 }
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {

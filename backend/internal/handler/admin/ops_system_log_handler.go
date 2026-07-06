@@ -79,6 +79,14 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		}
 		filter.AccountID = &id
 	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		filter.APIKeyID = &id
+	}
 
 	result, err := h.opsService.ListSystemLogs(c.Request.Context(), filter)
 	if err != nil {

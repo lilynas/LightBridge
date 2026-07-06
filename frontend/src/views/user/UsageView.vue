@@ -86,6 +86,26 @@
         </div>
       </template>
 
+      <template #charts>
+        <!-- Trend Chart -->
+        <div class="card p-4">
+          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+        </div>
+        <!-- Model Distribution Chart -->
+        <div class="card p-4">
+          <ModelDistributionChart
+            v-model:source="modelDistributionSource"
+            v-model:metric="modelDistributionMetric"
+            :model-stats="requestedModelStats"
+            :upstream-model-stats="upstreamModelStats"
+            :mapping-model-stats="mappingModelStats"
+            :loading="modelStatsLoading"
+            :show-source-toggle="true"
+            :show-metric-toggle="true"
+          />
+        </div>
+      </template>
+
       <template #filters>
         <div class="card">
           <div class="px-6 py-4">
@@ -550,7 +570,9 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse } from '@/types'
+import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
+import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse, TrendDataPoint, ModelStat } from '@/types'
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -589,6 +611,18 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
+
+// Chart data
+const trendData = ref<TrendDataPoint[]>([])
+const requestedModelStats = ref<ModelStat[]>([])
+const upstreamModelStats = ref<ModelStat[]>([])
+const mappingModelStats = ref<ModelStat[]>([])
+const chartsLoading = ref(false)
+const modelStatsLoading = ref(false)
+type DistributionMetric = 'tokens' | 'actual_cost'
+type ModelDistributionSource = 'requested' | 'upstream' | 'mapping'
+const modelDistributionMetric = ref<DistributionMetric>('tokens')
+const modelDistributionSource = ref<ModelDistributionSource>('requested')
 
 const columns = computed<Column[]>(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
@@ -805,10 +839,60 @@ const loadUsageStats = async () => {
   }
 }
 
+const buildChartParams = () => {
+  const params: {
+    start_date: string
+    end_date: string
+    api_key_id?: number
+  } = {
+    start_date: filters.value.start_date || startDate.value,
+    end_date: filters.value.end_date || endDate.value
+  }
+  if (filters.value.api_key_id) {
+    params.api_key_id = Number(filters.value.api_key_id)
+  }
+  return params
+}
+
+const loadTrend = async () => {
+  chartsLoading.value = true
+  try {
+    const res = await usageAPI.getDashboardTrend(buildChartParams())
+    trendData.value = res.trend || []
+  } catch {
+    trendData.value = []
+  } finally {
+    chartsLoading.value = false
+  }
+}
+
+const loadModelStats = async () => {
+  modelStatsLoading.value = true
+  try {
+    const params = buildChartParams()
+    const [requested, upstream, mapping] = await Promise.all([
+      usageAPI.getDashboardModels({ ...params, model_source: 'requested' }),
+      usageAPI.getDashboardModels({ ...params, model_source: 'upstream' }),
+      usageAPI.getDashboardModels({ ...params, model_source: 'mapping' })
+    ])
+    requestedModelStats.value = requested.models || []
+    upstreamModelStats.value = upstream.models || []
+    mappingModelStats.value = mapping.models || []
+  } catch {
+    requestedModelStats.value = []
+    upstreamModelStats.value = []
+    mappingModelStats.value = []
+  } finally {
+    modelStatsLoading.value = false
+  }
+}
+
 const applyFilters = () => {
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadTrend()
+  loadModelStats()
 }
 
 const resetFilters = () => {
@@ -828,6 +912,8 @@ const resetFilters = () => {
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadTrend()
+  loadModelStats()
 }
 
 const handlePageChange = (page: number) => {
@@ -992,5 +1078,7 @@ onMounted(() => {
   loadApiKeys()
   loadUsageLogs()
   loadUsageStats()
+  loadTrend()
+  loadModelStats()
 })
 </script>

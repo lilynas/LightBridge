@@ -2147,6 +2147,11 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] Failed to clean schema: %v", err)
 	}
 
+	// 推理模型参数清理：移除 temperature/topP/topK 等不支持的参数
+	if strippedBody, err := antigravity.StripInvalidGeminiReasoningParams(injectedBody, mappedModel); err == nil {
+		injectedBody = strippedBody
+	}
+
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {

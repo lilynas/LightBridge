@@ -2015,6 +2015,7 @@ export default {
         usageAnthropic: '用量 (Claude)',
         usageOpenAI: '用量 (OpenAI)',
         usageGemini: '用量 (Gemini)',
+        usageGrok: '用量 (Grok)',
         usageAntigravity: '用量 (Gemini)',
         concurrency: '并发数',
         status: '状态',
@@ -2382,6 +2383,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        grok: 'Grok',
         antigravity: 'Gemini',
       },
       upstreamProtocols: {
@@ -3347,6 +3349,7 @@ export default {
       dataExportConfirm: '确认导出',
       dataExported: '数据导出成功',
       dataExportFailed: '数据导出失败',
+      dataExporting: '导出中...',
       dataImportTitle: '导入数据',
       dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',
       dataImportFile: '数据文件',
@@ -3377,6 +3380,25 @@ export default {
       dataImportErrors: '失败详情',
       dataImportSuccess: '导入完成：账号 {account_created}，失败 {account_failed}',
       dataImportCompletedWithErrors: '导入完成但有错误：账号失败 {account_failed}，代理失败 {proxy_failed}',
+      dataImportFormatDetected: '检测到格式：{format}',
+      dataImportFormatOverride: '手动指定格式',
+      dataImportFormatAuto: '自动识别',
+      dataImportFormatNative: 'LightBridge 原生格式',
+      dataImportFormatConverted: '已转换为 LightBridge 格式',
+      dataExportFormat: '导出格式',
+      dataExportFormatHint: '选择导出的文件格式，非原生格式可用于与其他工具互操作。',
+      dataExportFormatNative: 'LightBridge 原生格式',
+      dataExportFormatNativeDesc: 'LightBridge 内部数据格式，支持完整导入导出。',
+      dataExportFormatCpa: 'CPA',
+      dataExportFormatCpaDesc: 'CLIProxyAPI 格式，适用于 Codex CLI。',
+      dataExportFormatSub2api: 'sub2api',
+      dataExportFormatSub2apiDesc: 'sub2api 格式，支持多账号聚合。',
+      dataExportFormatCodex2api: 'codex2api',
+      dataExportFormatCodex2apiDesc: 'codex2api 格式，适用于 Codex2Api 代理。',
+      dataExportFormatCodexManager: 'Codex Manager',
+      dataExportFormatCodexManagerDesc: 'Codex-Manager 格式。',
+      dataExportFormatCodexAuth: 'Codex Auth',
+      dataExportFormatCodexAuthDesc: 'Codex CLI auth.json 格式。',
       syncFromCrsTitle: '从 CRS 同步账号',
       syncFromCrsDesc:
         '将 claude-relay-service（CRS）中的账号同步到当前系统（不会在浏览器侧直接请求 CRS）。',
@@ -3432,6 +3454,7 @@ export default {
       failedToToggleSchedulable: '切换调度状态失败',
       groupCountTotal: '共 {count} 个分组',
       columns: {
+        id: 'ID',
         name: '名称',
         platformType: '平台/类型',
         platform: '平台',
@@ -3549,12 +3572,14 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
+        grok: 'Grok',
         antigravity: 'Gemini',
       },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
+        grokOauth: 'Grok OAuth',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Gemini OAuth',
@@ -3638,7 +3663,22 @@ export default {
         gemini3Image: 'G31FI',
         claude: 'Claude',
         passiveSampled: '被动采样',
-        activeQuery: '查询'
+        activeQuery: '查询',
+        grokProbe: '探测',
+        grokProbeTooltip: '向 xAI 发起一次轻量请求，刷新 Grok 额度快照',
+        grokProbeFailed: 'Grok 额度探测失败',
+        grokRequests: '请求',
+        grokTokens: 'Token',
+        grokLocalRequests: '次',
+        grokLocalTokens: 'tok',
+        grokAccountCost: '账',
+        grokUserCost: '用',
+        grokNoQuota: '暂无 Grok 额度快照',
+        grokObserved: '已观测',
+        grokUnknown: '未知',
+        grokEntitlement: '权益状态',
+        grokRetryAfter: '{seconds}s 后重试',
+        grokLastStatus: '上游最近状态'
       },
       tier: {
         free: 'Free',
@@ -4206,6 +4246,32 @@ export default {
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           pleaseEnterSessionToken: '请输入 Session Token'
         },
+        // Grok specific
+        grok: {
+          title: 'Grok 账户授权',
+          followSteps: '请按照以下步骤完成 Grok 账户授权：',
+          step1GenerateUrl: '点击下方按钮生成 xAI 授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 xAI 账户并授权 Grok 访问。',
+          step3EnterCode: '输入回调链接或 Code',
+          authCodeDesc: '授权完成后，复制类似 http://127.0.0.1:56121/callback?code=... 的回调链接，或仅粘贴 code。',
+          authCode: '回调链接或 Code',
+          authCodePlaceholder: '方式1：粘贴回调链接\n方式2：仅粘贴 code 参数值',
+          authCodeHint: '系统会自动从回调链接中解析 code 和 state。',
+          failedToGenerateUrl: '生成 Grok 授权链接失败',
+          missingExchangeParams: '缺少 code / session_id / state',
+          failedToExchangeCode: 'Grok 授权码兑换失败',
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入您已有的 xAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建 Grok 账号。',
+          refreshTokenPlaceholder: '每行一个 Refresh Token',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToValidateRT: '验证 Refresh Token 失败',
+          oauthOnlyHint: 'Grok 账号支持 xAI OAuth 授权码或 Refresh Token 创建，当前不支持 API Key。',
+          concurrencyHint: 'Grok 订阅账号为保证稳定调度，并发固定为 1。'
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -4534,6 +4600,7 @@ export default {
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
+      grokAccount: 'Grok 账号',
       antigravityAccount: 'Gemini 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
@@ -5172,7 +5239,11 @@ export default {
       linuxDoProfile: 'LinuxDo 主页',
       contactInfo: '联系信息',
       howToReport: '如何报告问题',
-      howToReportDesc: '报告问题时请包含：1) 重现步骤，2) 期望行为，3) 实际行为，4) 浏览器/操作系统信息。'
+      howToReportDesc: '报告问题时请包含：1) 重现步骤，2) 期望行为，3) 实际行为，4) 浏览器/操作系统信息。',
+      referencedProjects: '引用项目',
+      referencedProjectsDesc: 'LightBridge 的开发受益于以下开源项目，在此表示感谢。',
+      authconvName: 'authconv',
+      authconvDesc: 'ChatGPT / Codex OAuth 凭证格式转换工具，支持 CPA、sub2api、codex2api、Codex-Manager、Codex auth.json 互转。'
     },
 
     // Ops Monitoring
@@ -7608,7 +7679,7 @@ export default {
       groupPlatform: {
         title: '🤖 2. 选择平台',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li><li><b>Grok</b> - xAI Grok 订阅模型</li><li><b>Antigravity</b> - Antigravity 专用模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
         nextBtn: '下一步'
       },
       groupMultiplier: {
@@ -7631,7 +7702,7 @@ export default {
       accountManage: {
         title: '🔗 第二步：添加账号',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 两种方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT、Gemini、Grok 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 等授权方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
       },
       createAccount: {
         title: '➕ 添加新账号',
@@ -7653,7 +7724,7 @@ export default {
       accountType: {
         title: '🔐 3. 授权方式',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth、Grok OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
         nextBtn: '下一步'
       },
       accountPriority: {
@@ -7748,7 +7819,7 @@ export default {
       },
       accountManage: {
         title: '🌐 账户管理',
-        description: '<div style="line-height: 1.7;"><p>这里管理您接入的 AI 账户（如 Claude、OpenAI、Gemini）。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入账户页面</p></div>'
+        description: '<div style="line-height: 1.7;"><p>这里管理您接入的 AI 账户（如 Claude、OpenAI、Gemini、Grok）。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入账户页面</p></div>'
       },
       createAccount: {
         title: '➕ 添加账户',
@@ -7761,7 +7832,7 @@ export default {
       },
       accountPlatform: {
         title: '🧩 平台类型',
-        description: '<div style="line-height: 1.7;"><p>选择该账户所属的平台（Anthropic / OpenAI / Gemini / 自定义）。</p></div>',
+        description: '<div style="line-height: 1.7;"><p>选择该账户所属的平台（Anthropic / OpenAI / Gemini / Grok / Antigravity / 自定义）。</p></div>',
         nextBtn: '下一步'
       },
       accountType: {

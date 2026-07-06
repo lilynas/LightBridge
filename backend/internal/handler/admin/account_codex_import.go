@@ -809,7 +809,11 @@ func buildCodexIdentityKeys(accountID, userID, email, accessToken string) []stri
 	if accountID != "" {
 		keys = append(keys, "account:"+accountID)
 	}
-	if userID != "" {
+	// Only use chatgpt_user_id as a matching key when there is no chatgpt_account_id.
+	// Same-team members share the same chatgpt_user_id but have different
+	// chatgpt_account_id values; using user alone would cause accounts to
+	// overwrite each other during import.
+	if userID != "" && accountID == "" {
 		keys = append(keys, "user:"+userID)
 	}
 	if accountID == "" && userID == "" {

@@ -1993,6 +1993,7 @@ export default {
         usageAnthropic: 'Usage (Claude)',
         usageOpenAI: 'Usage (OpenAI)',
         usageGemini: 'Usage (Gemini)',
+        usageGrok: 'Usage (Grok)',
         usageAntigravity: 'Usage (Gemini)',
         concurrency: 'Concurrency',
         status: 'Status',
@@ -2354,6 +2355,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        grok: 'Grok',
         antigravity: 'Gemini',
       },
       upstreamProtocols: {
@@ -3270,6 +3272,7 @@ export default {
       dataExportConfirm: 'Confirm Export',
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
+      dataExporting: 'Exporting...',
       dataImportTitle: 'Import Data',
       dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',
       dataImportFile: 'Data file',
@@ -3300,6 +3303,25 @@ export default {
       dataImportErrors: 'Error Details',
       dataImportSuccess: 'Import completed: accounts {account_created}, failed {account_failed}',
       dataImportCompletedWithErrors: 'Import completed with errors: account failed {account_failed}, proxy failed {proxy_failed}',
+      dataImportFormatDetected: 'Detected format: {format}',
+      dataImportFormatOverride: 'Manual format',
+      dataImportFormatAuto: 'Auto detect',
+      dataImportFormatNative: 'LightBridge native format',
+      dataImportFormatConverted: 'Converted to LightBridge format',
+      dataExportFormat: 'Export Format',
+      dataExportFormatHint: 'Choose the export file format. Non-native formats enable interoperability with other tools.',
+      dataExportFormatNative: 'LightBridge Native',
+      dataExportFormatNativeDesc: 'LightBridge internal format with full import/export support.',
+      dataExportFormatCpa: 'CPA',
+      dataExportFormatCpaDesc: 'CLIProxyAPI format for Codex CLI.',
+      dataExportFormatSub2api: 'sub2api',
+      dataExportFormatSub2apiDesc: 'sub2api format with multi-account aggregation.',
+      dataExportFormatCodex2api: 'codex2api',
+      dataExportFormatCodex2apiDesc: 'codex2api format for Codex2Api proxy.',
+      dataExportFormatCodexManager: 'Codex Manager',
+      dataExportFormatCodexManagerDesc: 'Codex-Manager format.',
+      dataExportFormatCodexAuth: 'Codex Auth',
+      dataExportFormatCodexAuthDesc: 'Codex CLI auth.json format.',
       syncFromCrsTitle: 'Sync Accounts from CRS',
       syncFromCrsDesc:
         'Sync accounts from claude-relay-service (CRS) into this system (CRS is called server-to-server).',
@@ -3358,12 +3380,14 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        grok: 'Grok',
         antigravity: 'Gemini',
       },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
+        grokOauth: 'Grok OAuth',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Gemini OAuth',
@@ -3393,6 +3417,7 @@ export default {
         viewTempUnschedDetails: 'View temp unschedulable details'
       },
       columns: {
+        id: 'ID',
         name: 'Name',
         platformType: 'Platform/Type',
         platform: 'Platform',
@@ -4073,6 +4098,32 @@ export default {
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
           pleaseEnterSessionToken: 'Please enter Session Token'
         },
+        // Grok specific
+        grok: {
+          title: 'Grok Account Authorization',
+          followSteps: 'Follow these steps to authorize your Grok account:',
+          step1GenerateUrl: 'Click the button below to generate the xAI authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, log in to your xAI account and authorize Grok access.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc: 'After authorization, copy the callback URL such as http://127.0.0.1:56121/callback?code=... or paste only the code.',
+          authCode: 'Callback URL or Code',
+          authCodePlaceholder: 'Option 1: Paste the callback URL\nOption 2: Paste only the code parameter value',
+          authCodeHint: 'The system will auto-extract code and state from the callback URL.',
+          failedToGenerateUrl: 'Failed to generate Grok auth URL',
+          missingExchangeParams: 'Missing code, session ID, or state',
+          failedToExchangeCode: 'Failed to exchange Grok auth code',
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter your existing xAI Refresh Token(s). Supports batch input, one token per line. The system will validate and create Grok accounts.',
+          refreshTokenPlaceholder: 'One Refresh Token per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          failedToValidateRT: 'Failed to validate Refresh Token',
+          oauthOnlyHint: 'Grok accounts can be created with an xAI OAuth code or Refresh Token. API keys are not supported here.',
+          concurrencyHint: 'Grok subscription accounts are limited to concurrency 1 for stable scheduling.'
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -4406,6 +4457,7 @@ export default {
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
+      grokAccount: 'Grok Account',
       antigravityAccount: 'Gemini Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
@@ -4482,7 +4534,22 @@ export default {
         gemini3Image: 'G31FI',
         claude: 'Claude',
         passiveSampled: 'Passive',
-        activeQuery: 'Query'
+        activeQuery: 'Query',
+        grokProbe: 'Probe',
+        grokProbeTooltip: 'Send a lightweight xAI request to refresh the Grok quota snapshot',
+        grokProbeFailed: 'Failed to probe Grok quota',
+        grokRequests: 'Req',
+        grokTokens: 'Tok',
+        grokLocalRequests: 'req',
+        grokLocalTokens: 'tok',
+        grokAccountCost: 'A',
+        grokUserCost: 'U',
+        grokNoQuota: 'No Grok quota snapshot yet',
+        grokObserved: 'Observed',
+        grokUnknown: 'Unknown',
+        grokEntitlement: 'Entitlement status',
+        grokRetryAfter: 'Retry in {seconds}s',
+        grokLastStatus: 'Last upstream status'
       },
       tier: {
         free: 'Free',
@@ -5018,7 +5085,11 @@ export default {
       linuxDoProfile: 'LinuxDo Profile',
       contactInfo: 'Contact Information',
       howToReport: 'How to Report Issues',
-      howToReportDesc: 'For bug reports, please include: 1) Steps to reproduce, 2) Expected behavior, 3) Actual behavior, 4) Browser/OS information.'
+      howToReportDesc: 'For bug reports, please include: 1) Steps to reproduce, 2) Expected behavior, 3) Actual behavior, 4) Browser/OS information.',
+      referencedProjects: 'Referenced Projects',
+      referencedProjectsDesc: 'LightBridge development benefits from the following open-source projects. Special thanks to their authors.',
+      authconvName: 'authconv',
+      authconvDesc: 'ChatGPT / Codex OAuth credential format converter. Supports CPA, sub2api, codex2api, Codex-Manager, and Codex auth.json interconversion.'
     },
 
     // Ops Monitoring
@@ -7449,7 +7520,7 @@ export default {
       },
       groupPlatform: {
         title: '🤖 2. Select Platform',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Choose the AI platform this group supports.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 Platform Guide:</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude models</li><li><b>OpenAI</b> - GPT models</li><li><b>Google</b> - Gemini models</li></ul></div><p style="font-size: 13px; color: #6b7280;">One group can only have one platform</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Choose the AI platform this group supports.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 Platform Guide:</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude models</li><li><b>OpenAI</b> - GPT models</li><li><b>Google</b> - Gemini models</li><li><b>Grok</b> - xAI Grok subscription models</li><li><b>Antigravity</b> - Antigravity-specific models</li></ul></div><p style="font-size: 13px; color: #6b7280;">One group can only have one platform</p></div>',
         nextBtn: 'Next'
       },
       groupMultiplier: {
@@ -7468,7 +7539,7 @@ export default {
       },
       accountManage: {
         title: '🔗 Step 2: Add Account',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>Great! Group created successfully 🎉</b></p><p style="margin-bottom: 12px;">Now add upstream AI service accounts to enable actual service delivery.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 Account Purpose:</b><ul style="margin: 8px 0 0 16px;"><li>Connect to upstream AI services (Claude, GPT, etc.)</li><li>One group can contain multiple accounts (load balancing)</li><li>Supports OAuth and Session Key methods</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 Click "Account Management" on the left sidebar</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>Great! Group created successfully 🎉</b></p><p style="margin-bottom: 12px;">Now add upstream AI service accounts to enable actual service delivery.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 Account Purpose:</b><ul style="margin: 8px 0 0 16px;"><li>Connect to upstream AI services (Claude, GPT, Gemini, Grok, etc.)</li><li>One group can contain multiple accounts (load balancing)</li><li>Supports OAuth, Session Key, and other authorization methods</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 Click "Account Management" on the left sidebar</p></div>'
       },
       createAccount: {
         title: '➕ Add New Account',
@@ -7486,7 +7557,7 @@ export default {
       },
       accountType: {
         title: '🔐 3. Authorization Method',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Choose the account authorization method.</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ Recommended: OAuth Method</b><ul style="margin: 8px 0 0 16px;"><li>No manual key extraction needed</li><li>More secure with auto-refresh support</li><li>Works with Claude Code, ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key Method</b><ul style="margin: 8px 0 0 16px;"><li>Requires manual extraction from browser</li><li>May need periodic updates</li><li>For platforms without OAuth support</li></ul></div></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Choose the account authorization method.</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ Recommended: OAuth Method</b><ul style="margin: 8px 0 0 16px;"><li>No manual key extraction needed</li><li>More secure with auto-refresh support</li><li>Works with Claude Code, ChatGPT OAuth, and Grok OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key Method</b><ul style="margin: 8px 0 0 16px;"><li>Requires manual extraction from browser</li><li>May need periodic updates</li><li>For platforms without OAuth support</li></ul></div></div>',
         nextBtn: 'Next'
       },
       accountPriority: {
@@ -7566,7 +7637,7 @@ export default {
       },
       accountManage: {
         title: '🌐 Account Management',
-        description: '<div style="line-height: 1.7;"><p>Manage the AI accounts you connect (Claude, OpenAI, Gemini).</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Open the accounts page</p></div>'
+        description: '<div style="line-height: 1.7;"><p>Manage the AI accounts you connect (Claude, OpenAI, Gemini, Grok).</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Open the accounts page</p></div>'
       },
       createAccount: {
         title: '➕ Add Account',
@@ -7579,7 +7650,7 @@ export default {
       },
       accountPlatform: {
         title: '🧩 Platform Type',
-        description: '<div style="line-height: 1.7;"><p>Pick the platform this account belongs to (Anthropic / OpenAI / Gemini / Custom).</p></div>',
+        description: '<div style="line-height: 1.7;"><p>Pick the platform this account belongs to (Anthropic / OpenAI / Gemini / Grok / Antigravity / Custom).</p></div>',
         nextBtn: 'Next'
       },
       accountType: {
