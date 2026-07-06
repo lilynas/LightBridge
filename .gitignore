@@ -1,5 +1,8 @@
 docs/claude-relay-service/
 .codex
+.codex-go-cache/
+.codex-go-mod-cache/
+.mimocode/
 
 # ===================
 # Go 后端

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WilliamWang1721/LightBridge/internal/modules"
+	openaipkg "github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 )
 
 const (
@@ -640,6 +641,7 @@ func normalizeOpenAIAccount(record *accountRecord, row sourceRow) {
 	copyCredential(record.Credentials, row, "id_token", "id_token")
 	copyCredential(record.Credentials, row, "client_id", "client_id")
 	copyCredential(record.Credentials, row, "base_url", "base_url", "api_base")
+	copyOpenAIOAuthMetadata(record.Credentials, row)
 	copyLegacyFlag(record.Extra, row, "openai_passthrough")
 	copyLegacyFlag(record.Extra, row, "codex_cli_only")
 	copyLegacyFlag(record.Extra, row, "openai_ws_mode")
@@ -719,12 +721,111 @@ func hasOpenAIIndicators(row sourceRow, record accountRecord) bool {
 	if key := stringFromAny(first(row, "api_key", "key", "sk")); strings.HasPrefix(key, "sk-") && !strings.HasPrefix(key, "sk-ant-") {
 		return true
 	}
-	// Check credentials for OpenAI-specific fields
+	if hasOpenAIOAuthMetadata(map[string]any(row)) || hasOpenAIOAuthMetadata(record.Credentials) || hasOpenAIOAuthMetadata(record.Extra) {
+		return true
+	}
+	// Check credentials for legacy OpenAI-specific flags
 	if _, ok := record.Credentials["openai_passthrough"]; ok {
 		return true
 	}
 	if _, ok := record.Credentials["codex_cli_only"]; ok {
 		return true
+	}
+	return false
+}
+
+func copyOpenAIOAuthMetadata(credentials map[string]any, row sourceRow) {
+	copyCredential(credentials, row, "session_token", "session_token", "sessionToken")
+	copyCredential(credentials, row, "chatgpt_account_id", "chatgpt_account_id", "chatgptAccountID", "account_id", "accountId")
+	copyCredential(credentials, row, "chatgpt_user_id", "chatgpt_user_id", "chatgptUserID")
+	copyCredential(credentials, row, "organization_id", "organization_id", "organizationId", "org_id", "orgId")
+	copyCredential(credentials, row, "plan_type", "plan_type", "planType")
+	copyCredential(credentials, row, "chatgpt_plan_type", "chatgpt_plan_type", "chatgptPlanType")
+	copyCredential(credentials, row, "subscription_expires_at", "subscription_expires_at", "subscriptionExpiresAt")
+	copyCredential(credentials, row, "email", "email")
+
+	if stringFromAny(credentials["plan_type"]) == "" {
+		if planType := stringFromAny(credentials["chatgpt_plan_type"]); planType != "" {
+			credentials["plan_type"] = planType
+		}
+	}
+}
+
+func hasOpenAIOAuthMetadata(values map[string]any) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, key := range []string{
+		"chatgpt_account_id",
+		"chatgpt_user_id",
+		"chatgpt_plan_type",
+	} {
+		if stringFromAny(values[key]) != "" {
+			return true
+		}
+	}
+	if boolFromAny(values["id_token_synthetic"], false) {
+		return true
+	}
+	if nested := jsonMapFromAny(values["https://api.openai.com/auth"]); hasOpenAIOAuthMetadata(nested) {
+		return true
+	}
+	if hasOpenAIIDToken(values) {
+		return true
+	}
+	if stringFromAny(values["session_token"]) != "" && hasAnyCredential(values, "access_token", "refresh_token", "id_token", "plan_type", "organization_id", "org_id") {
+		return true
+	}
+	if hasOpenAIPlanType(values) &&
+		hasAnyCredential(values, "access_token", "refresh_token", "id_token") &&
+		!hasGeminiOAuthMetadata(values) {
+		return true
+	}
+	return false
+}
+
+func hasOpenAIIDToken(values map[string]any) bool {
+	idToken := stringFromAny(values["id_token"])
+	if idToken == "" {
+		return false
+	}
+	claims, err := openaipkg.DecodeIDToken(idToken)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(claims.Iss), "openai") {
+		return true
+	}
+	for _, aud := range claims.Aud {
+		if strings.Contains(strings.ToLower(aud), "openai") {
+			return true
+		}
+	}
+	if claims.OpenAIAuth != nil {
+		return true
+	}
+	info := claims.GetUserInfo()
+	return info != nil && (info.ChatGPTAccountID != "" || info.ChatGPTUserID != "" || info.OrganizationID != "" || info.PlanType != "")
+}
+
+func hasGeminiOAuthMetadata(values map[string]any) bool {
+	return hasAnyCredential(values, "project_id", "oauth_type", "tier_id", "google_account_id", "google_user_id")
+}
+
+func hasOpenAIPlanType(values map[string]any) bool {
+	switch normalizeLegacyToken(stringFromAny(values["plan_type"])) {
+	case "plus", "team", "enterprise", "business", "edu", "education", "k12", "k_12":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasAnyCredential(values map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if stringFromAny(values[key]) != "" {
+			return true
+		}
 	}
 	return false
 }

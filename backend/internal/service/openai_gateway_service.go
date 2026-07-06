@@ -1336,7 +1336,7 @@ func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, re
 			)
 			return false
 		}
-		if requiredCapability != "" && requiredCapability != OpenAIEndpointCapabilityChatCompletions {
+		if requiredCapability != "" && !isOpenAITextEndpointCapability(requiredCapability) {
 			return false
 		}
 		if requestedModel != "" && !account.IsModelSupported(requestedModel) {

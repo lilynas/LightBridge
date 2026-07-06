@@ -74,6 +74,7 @@ type Account struct {
 type OpenAIEndpointCapability string
 
 const (
+	OpenAIEndpointCapabilityResponses       OpenAIEndpointCapability = "responses"
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 )
@@ -1572,6 +1573,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return false
 	}
 	switch capability {
+	case OpenAIEndpointCapabilityResponses:
 	case OpenAIEndpointCapabilityChatCompletions:
 	case OpenAIEndpointCapabilityEmbeddings:
 		if a.Type != AccountTypeAPIKey {
@@ -1585,7 +1587,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if !found {
 		return true
 	}
+	if isOpenAITextEndpointCapability(capability) {
+		return configured[string(OpenAIEndpointCapabilityResponses)] ||
+			configured[string(OpenAIEndpointCapabilityChatCompletions)]
+	}
 	return configured[string(capability)]
+}
+
+func isOpenAITextEndpointCapability(capability OpenAIEndpointCapability) bool {
+	return capability == OpenAIEndpointCapabilityResponses ||
+		capability == OpenAIEndpointCapabilityChatCompletions
 }
 
 func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
@@ -1602,6 +1613,14 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 		value = strings.ToLower(strings.TrimSpace(value))
 		if value == "" {
 			return
+		}
+		switch value {
+		case CustomProtocolOpenAIResponses, "openai-responses":
+			value = string(OpenAIEndpointCapabilityResponses)
+		case CustomProtocolOpenAIChatCompletions, "openai-chat-completions":
+			value = string(OpenAIEndpointCapabilityChatCompletions)
+		case CustomProtocolOpenAIEmbeddings, "openai-embeddings":
+			value = string(OpenAIEndpointCapabilityEmbeddings)
 		}
 		result[value] = true
 	}

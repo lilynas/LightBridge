@@ -1266,7 +1266,7 @@ func accountSupportsOpenAICapabilities(ctx context.Context, account *Account, pl
 		if !account.IsGrok() || requireCompact || requiredImageCapability != "" {
 			return false
 		}
-		if requiredCapability != "" && requiredCapability != OpenAIEndpointCapabilityChatCompletions {
+		if requiredCapability != "" && !isOpenAITextEndpointCapability(requiredCapability) {
 			return false
 		}
 		return accountMatchesRequestProtocol(ctx, account)
@@ -1275,7 +1275,7 @@ func accountSupportsOpenAICapabilities(ctx context.Context, account *Account, pl
 		if requireCompact || requiredImageCapability != "" {
 			return false
 		}
-		if requiredCapability != "" && requiredCapability != OpenAIEndpointCapabilityChatCompletions {
+		if requiredCapability != "" && !isOpenAITextEndpointCapability(requiredCapability) {
 			return false
 		}
 		return IsMessageProtocol(InboundProtocolFromContext(ctx)) && accountMatchesRequestProtocol(ctx, account)

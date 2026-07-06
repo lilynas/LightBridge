@@ -6,6 +6,7 @@ import release0213Preview from './content/release-0.2.13-preview.md?raw'
 import release0230 from './content/release-0.2.30.md?raw'
 import release0240Preview from './content/release-0.2.40-preview.md?raw'
 import release0250 from './content/release-0.2.50.md?raw'
+import release0260 from './content/release-0.2.60.md?raw'
 import opsPublicPages from './content/ops-public-pages.md?raw'
 import opsUserCenter from './content/ops-user-center.md?raw'
 import opsUserPayment from './content/ops-user-payment.md?raw'
@@ -117,6 +118,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '操作文档',
     description: '订阅管理、公告管理、兑换码管理、优惠码管理、风控管理功能说明',
     content: opsAdminDistribution,
+  },
+  {
+    id: 'release-0.2.60',
+    title: '0.2.60 版本更新',
+    group: '版本更新',
+    description: 'OAuth 平台迁移修复、CRS 同步保护与 OpenAI Responses 调度修复正式版',
+    content: release0260,
   },
   {
     id: 'release-0.2.50',

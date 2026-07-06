@@ -14,6 +14,7 @@ import (
 
 	"github.com/WilliamWang1721/LightBridge/internal/config"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/httpclient"
+	openaipkg "github.com/WilliamWang1721/LightBridge/internal/pkg/openai"
 	"github.com/WilliamWang1721/LightBridge/internal/util/urlvalidator"
 )
 
@@ -827,6 +828,8 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			continue
 		}
 
+		targetPlatform := crsGeminiOAuthTargetPlatform(existing, credentials, extra)
+
 		if existing == nil {
 			if !shouldCreateAccount(src.ID, selectedSet) {
 				item.Action = "skipped"
@@ -837,7 +840,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			}
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
-				Platform:    PlatformGemini,
+				Platform:    targetPlatform,
 				Type:        AccountTypeOAuth,
 				Credentials: credentials,
 				Extra:       extra,
@@ -865,7 +868,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 
 		existing.Extra = mergeMap(existing.Extra, extra)
 		existing.Name = defaultName(src.Name, src.ID)
-		existing.Platform = PlatformGemini
+		existing.Platform = targetPlatform
 		existing.Type = AccountTypeOAuth
 		existing.Credentials = mergeMap(existing.Credentials, credentials)
 		if proxyID != nil {
@@ -1104,6 +1107,133 @@ func sanitizeCredentialsMap(input map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+func crsGeminiOAuthTargetPlatform(existing *Account, credentials map[string]any, extra map[string]any) string {
+	if existing != nil && existing.Platform == PlatformOpenAI && existing.Type == AccountTypeOAuth {
+		return PlatformOpenAI
+	}
+	if hasOpenAIOAuthCredentialIndicators(credentials) || hasOpenAIOAuthCredentialIndicators(extra) {
+		return PlatformOpenAI
+	}
+	return PlatformGemini
+}
+
+func hasOpenAIOAuthCredentialIndicators(values map[string]any) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, key := range []string{
+		"chatgpt_account_id",
+		"chatgpt_user_id",
+		"chatgpt_plan_type",
+	} {
+		if credentialString(values, key) != "" {
+			return true
+		}
+	}
+	if boolFromCredential(values["id_token_synthetic"]) {
+		return true
+	}
+	if nested := credentialsMapFromAny(values["https://api.openai.com/auth"]); hasOpenAIOAuthCredentialIndicators(nested) {
+		return true
+	}
+	if hasOpenAIIDTokenCredential(values) {
+		return true
+	}
+	if credentialString(values, "session_token") != "" && hasAnyCredentialValue(values, "access_token", "refresh_token", "id_token", "plan_type", "organization_id", "org_id") {
+		return true
+	}
+	if hasOpenAIPlanTypeCredential(values) &&
+		hasAnyCredentialValue(values, "access_token", "refresh_token", "id_token") &&
+		!hasGeminiOAuthCredentialIndicators(values) {
+		return true
+	}
+	return false
+}
+
+func hasOpenAIIDTokenCredential(values map[string]any) bool {
+	idToken := credentialString(values, "id_token")
+	if idToken == "" {
+		return false
+	}
+	claims, err := openaipkg.DecodeIDToken(idToken)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(strings.ToLower(claims.Iss), "openai") {
+		return true
+	}
+	for _, aud := range claims.Aud {
+		if strings.Contains(strings.ToLower(aud), "openai") {
+			return true
+		}
+	}
+	if claims.OpenAIAuth != nil {
+		return true
+	}
+	info := claims.GetUserInfo()
+	return info != nil && (info.ChatGPTAccountID != "" || info.ChatGPTUserID != "" || info.OrganizationID != "" || info.PlanType != "")
+}
+
+func hasGeminiOAuthCredentialIndicators(values map[string]any) bool {
+	return hasAnyCredentialValue(values, "project_id", "oauth_type", "tier_id", "google_account_id", "google_user_id")
+}
+
+func hasOpenAIPlanTypeCredential(values map[string]any) bool {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(credentialString(values, "plan_type")), "-", "_")) {
+	case "plus", "team", "enterprise", "business", "edu", "education", "k12", "k_12":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasAnyCredentialValue(values map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if credentialString(values, key) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func credentialString(values map[string]any, key string) string {
+	value, ok := values[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func boolFromCredential(value any) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(v))
+		return err == nil && parsed
+	default:
+		return false
+	}
+}
+
+func credentialsMapFromAny(value any) map[string]any {
+	switch v := value.(type) {
+	case map[string]any:
+		return v
+	case []byte:
+		var result map[string]any
+		if json.Unmarshal(v, &result) == nil {
+			return result
+		}
+	case string:
+		var result map[string]any
+		if json.Unmarshal([]byte(v), &result) == nil {
+			return result
+		}
+	}
+	return nil
 }
 
 func mapCRSStatus(isActive bool, status string) string {
@@ -1363,7 +1493,7 @@ func (s *CRSSyncService) PreviewFromCRS(ctx context.Context, input SyncFromCRSIn
 		classify(src.ID, src.Kind, src.Name, PlatformOpenAI, AccountTypeAPIKey)
 	}
 	for _, src := range exported.Data.GeminiOAuthAccounts {
-		classify(src.ID, src.Kind, src.Name, PlatformGemini, AccountTypeOAuth)
+		classify(src.ID, src.Kind, src.Name, crsGeminiOAuthTargetPlatform(nil, src.Credentials, src.Extra), AccountTypeOAuth)
 	}
 	for _, src := range exported.Data.GeminiAPIKeyAccounts {
 		classify(src.ID, src.Kind, src.Name, PlatformGemini, AccountTypeAPIKey)

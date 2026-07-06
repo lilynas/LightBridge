@@ -147,6 +147,64 @@ func TestFilterAccountsByRequestProtocol_MixedGroupAllowsRouterButRestrictsPasst
 	require.ElementsMatch(t, []int64{1, 2, 5, 6}, ids)
 }
 
+func TestFilterAccountsByRequestProtocol_RouterMessageProtocolMatrix(t *testing.T) {
+	inbounds := []string{
+		CustomProtocolOpenAIResponses,
+		CustomProtocolOpenAIChatCompletions,
+		CustomProtocolAnthropicMessages,
+		CustomProtocolGemini,
+	}
+	targets := []string{
+		CustomProtocolOpenAIResponses,
+		CustomProtocolOpenAIChatCompletions,
+		CustomProtocolAnthropicMessages,
+		CustomProtocolGemini,
+	}
+
+	for _, inbound := range inbounds {
+		for _, target := range targets {
+			t.Run(inbound+"->"+target, func(t *testing.T) {
+				ctx := WithInboundProtocol(context.Background(), inbound)
+				router := Account{
+					ID:       1,
+					Platform: PlatformCustom,
+					Type:     AccountTypeAPIKey,
+					Extra: map[string]any{
+						"protocol": target,
+					},
+				}
+				passthrough := Account{
+					ID:       2,
+					Platform: PlatformCustom,
+					Type:     AccountTypeAPIKey,
+					Extra: map[string]any{
+						"protocol":   target,
+						"relay_mode": RelayModePassthrough,
+					},
+				}
+				fullPassthrough := Account{
+					ID:       3,
+					Platform: PlatformCustom,
+					Type:     AccountTypeAPIKey,
+					Extra: map[string]any{
+						"protocol":   target,
+						"relay_mode": RelayModeFullPassthrough,
+					},
+				}
+
+				filtered := filterAccountsByRequestProtocol(ctx, []Account{router, passthrough, fullPassthrough})
+				require.NotEmpty(t, filtered)
+				require.Equal(t, int64(1), filtered[0].ID)
+				if inbound == target {
+					require.Len(t, filtered, 3)
+				} else {
+					require.Len(t, filtered, 1)
+				}
+			})
+		}
+	}
+}
+
 func TestAccountMatchesRequestProtocol_RouterIgnoresMessageProtocolMismatch(t *testing.T) {
 	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIChatCompletions)
 	router := &Account{

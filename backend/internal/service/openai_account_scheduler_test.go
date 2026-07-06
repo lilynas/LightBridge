@@ -664,6 +664,181 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RouterCustomResponsesSe
 	require.Equal(t, 1, decision.CandidateCount)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_MessagesDispatchSelectsCustomResponsesMIMO(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+	groupID := int64(10114)
+	accounts := []Account{
+		{
+			ID:          37040,
+			Name:        "embedding-only",
+			Platform:    PlatformCustom,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Credentials: map[string]any{
+				"openai_capabilities": []any{"embeddings"},
+				"model_mapping": map[string]any{
+					"mimo-v2.5-pro": "mimo-v2.5-pro",
+				},
+			},
+			Extra: map[string]any{
+				"protocol": CustomProtocolOpenAIResponses,
+			},
+		},
+		{
+			ID:          37041,
+			Name:        "hub mimo",
+			Platform:    PlatformCustom,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+			Credentials: map[string]any{
+				"openai_capabilities": []any{"responses"},
+				"model_mapping": map[string]any{
+					"mimo-v2.5-pro": "mimo-v2.5-pro",
+				},
+			},
+			Extra: map[string]any{
+				"protocol": CustomProtocolOpenAIResponses,
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = true
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"mimo-v2.5-pro",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityResponses,
+		false,
+		PlatformOpenAI,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(37041), selection.Account.ID)
+	require.Equal(t, "hub mimo", selection.Account.Name)
+	require.Equal(t, PlatformCustom, selection.Account.Platform)
+	require.Equal(t, CustomProtocolOpenAIResponses, selection.Account.CustomProtocol())
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, 1, decision.CandidateCount)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_TextCapabilitiesAreProtocolAgnostic(t *testing.T) {
+	tests := []struct {
+		name               string
+		inboundProtocol    string
+		accountProtocol    string
+		accountCapability  string
+		requiredCapability OpenAIEndpointCapability
+	}{
+		{
+			name:               "chat ingress can use responses upstream capability",
+			inboundProtocol:    CustomProtocolOpenAIChatCompletions,
+			accountProtocol:    CustomProtocolOpenAIResponses,
+			accountCapability:  "responses",
+			requiredCapability: OpenAIEndpointCapabilityChatCompletions,
+		},
+		{
+			name:               "responses ingress can use chat upstream capability",
+			inboundProtocol:    CustomProtocolOpenAIResponses,
+			accountProtocol:    CustomProtocolOpenAIChatCompletions,
+			accountCapability:  "chat_completions",
+			requiredCapability: OpenAIEndpointCapabilityResponses,
+		},
+		{
+			name:               "messages dispatch can use openai_responses protocol capability alias",
+			inboundProtocol:    CustomProtocolOpenAIResponses,
+			accountProtocol:    CustomProtocolOpenAIResponses,
+			accountCapability:  CustomProtocolOpenAIResponses,
+			requiredCapability: OpenAIEndpointCapabilityResponses,
+		},
+		{
+			name:               "chat ingress can use openai_chat_completions protocol capability alias",
+			inboundProtocol:    CustomProtocolOpenAIChatCompletions,
+			accountProtocol:    CustomProtocolOpenAIChatCompletions,
+			accountCapability:  CustomProtocolOpenAIChatCompletions,
+			requiredCapability: OpenAIEndpointCapabilityChatCompletions,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+			ctx := WithInboundProtocol(context.Background(), tt.inboundProtocol)
+			groupID := int64(10115)
+			accounts := []Account{
+				{
+					ID:          37050,
+					Name:        "text account",
+					Platform:    PlatformCustom,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Priority:    0,
+					Credentials: map[string]any{
+						"openai_capabilities": []any{tt.accountCapability},
+						"model_mapping": map[string]any{
+							"mimo-v2.5-pro": "mimo-v2.5-pro",
+						},
+					},
+					Extra: map[string]any{
+						"protocol": tt.accountProtocol,
+					},
+				},
+			}
+			cfg := &config.Config{}
+			cfg.Gateway.Scheduling.LoadBatchEnabled = true
+			svc := &OpenAIGatewayService{
+				accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+				cache:              &schedulerTestGatewayCache{},
+				cfg:                cfg,
+				rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+			}
+
+			selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+				ctx,
+				&groupID,
+				"",
+				"",
+				"mimo-v2.5-pro",
+				nil,
+				OpenAIUpstreamTransportAny,
+				tt.requiredCapability,
+				false,
+				PlatformOpenAI,
+			)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, int64(37050), selection.Account.ID)
+			require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+			require.Equal(t, 1, decision.CandidateCount)
+		})
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkipsChatOnlyAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 

@@ -3,6 +3,8 @@ package modulemigration
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -53,9 +55,9 @@ func TestSub2APIOpenAIAccountDetectionHonorsExplicitProvider(t *testing.T) {
 		{
 			name: "openai oauth with mislabeled gemini provider detected by openai_passthrough",
 			row: sourceRow{
-				"__source_kind":    SourceSub2API,
-				"platform":         "gemini",
-				"refresh_token":    "openai-rt",
+				"__source_kind":      SourceSub2API,
+				"platform":           "gemini",
+				"refresh_token":      "openai-rt",
 				"openai_passthrough": true,
 			},
 			want: true,
@@ -78,6 +80,59 @@ func TestSub2APIOpenAIAccountDetectionHonorsExplicitProvider(t *testing.T) {
 				"api_key":       "sk-openai-oauth",
 			},
 			want: true,
+		},
+		{
+			name: "openai oauth with mislabeled gemini provider detected by chatgpt metadata",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"platform":      "gemini",
+				"credentials": map[string]any{
+					"access_token":       "openai-at",
+					"refresh_token":      "openai-rt",
+					"chatgpt_account_id": "chatgpt-acc",
+					"plan_type":          "plus",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "openai oauth with mislabeled gemini provider detected by openai plan type",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"platform":      "gemini",
+				"credentials": map[string]any{
+					"access_token":  "openai-at",
+					"refresh_token": "openai-rt",
+					"plan_type":     "team",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "openai oauth with gemini oauth type detected by id token claims",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"type":          "gemini_oauth",
+				"credentials": map[string]any{
+					"refresh_token": "openai-rt",
+					"id_token":      fakeOpenAIIDToken(t, "chatgpt-acc", "team"),
+				},
+			},
+			want: true,
+		},
+		{
+			name: "gemini oauth with project metadata stays compatible",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"platform":      "gemini",
+				"credentials": map[string]any{
+					"refresh_token": "gemini-rt",
+					"oauth_type":    "code_assist",
+					"project_id":    "project-123",
+					"plan_type":     "Pro",
+				},
+			},
+			want: false,
 		},
 		{
 			name: "anthropic key not misidentified as openai",
@@ -196,6 +251,20 @@ func TestSub2APIProviderSpecificOAuthTypeDoesNotCollapseToGemini(t *testing.T) {
 			wantOpenAI: true,
 		},
 		{
+			name: "mislabeled gemini oauth with chatgpt metadata goes to openai module",
+			row: sourceRow{
+				"__source_kind": SourceSub2API,
+				"id":            "gemini-labeled-openai-oauth",
+				"type":          "gemini_oauth",
+				"credentials": map[string]any{
+					"refresh_token":      "openai-rt",
+					"chatgpt_account_id": "chatgpt-acc",
+					"chatgpt_plan_type":  "plus",
+				},
+			},
+			wantOpenAI: true,
+		},
+		{
 			name: "gemini api type becomes gemini apikey",
 			row: sourceRow{
 				"__source_kind": SourceSub2API,
@@ -256,6 +325,57 @@ func TestNormalizeCompatibleAccountSkipsRowsWithoutProviderHint(t *testing.T) {
 	if ok := normalizeCompatibleAccount(&record, row); ok {
 		t.Fatalf("normalizeCompatibleAccount() = true, want false; platform=%q type=%q", record.Platform, record.Type)
 	}
+}
+
+func TestNormalizeOpenAIAccountCopiesOAuthMetadata(t *testing.T) {
+	row := sourceRow{
+		"__source_kind":           SourceSub2API,
+		"platform":                "gemini",
+		"access_token":            "openai-at",
+		"refresh_token":           "openai-rt",
+		"chatgpt_account_id":      "chatgpt-acc",
+		"chatgpt_user_id":         "chatgpt-user",
+		"chatgpt_plan_type":       "team",
+		"organization_id":         "org-123",
+		"session_token":           "session-token",
+		"subscription_expires_at": "2027-01-01T00:00:00Z",
+	}
+	record := accountFromRow(SourceSub2API, row)
+
+	normalizeOpenAIAccount(&record, row)
+
+	if record.Platform != "module" {
+		t.Fatalf("Platform = %q, want module", record.Platform)
+	}
+	for key, want := range map[string]any{
+		"chatgpt_account_id":      "chatgpt-acc",
+		"chatgpt_user_id":         "chatgpt-user",
+		"chatgpt_plan_type":       "team",
+		"plan_type":               "team",
+		"organization_id":         "org-123",
+		"session_token":           "session-token",
+		"subscription_expires_at": "2027-01-01T00:00:00Z",
+	} {
+		if got := record.Credentials[key]; got != want {
+			t.Fatalf("Credentials[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func fakeOpenAIIDToken(t *testing.T, accountID, planType string) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"iss": "https://auth.openai.com",
+		"aud": []string{"https://api.openai.com"},
+		"https://api.openai.com/auth": map[string]any{
+			"chatgpt_account_id": accountID,
+			"chatgpt_plan_type":  planType,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal fake token payload: %v", err)
+	}
+	return "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }
 
 func TestSourceRowDeleted(t *testing.T) {
