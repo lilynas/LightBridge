@@ -1,4 +1,4 @@
-name: Trusted PR17 Finalizer
+name: Trusted PR17 Source Capture
 
 on:
   push:
@@ -12,32 +12,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply:
-    if: contains(github.event.head_commit.message, '[pr17-apply]')
+  capture:
+    if: contains(github.event.head_commit.message, '[pr17-capture]')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
           ref: fix/universal-router-diagnostics-phase1
           fetch-depth: 0
-
-      - name: Configure and synchronize
+      - name: Run source repair with captured output
+        id: repair
+        continue-on-error: true
+        shell: bash
         run: |
-          set -euo pipefail
-          git config user.name 'openai-ci-fixer'
-          git config user.email 'openai-ci-fixer@users.noreply.github.com'
-          git fetch origin main
-          git merge --no-edit origin/main
-          date -u +%FT%TZ > .pr17-apply-state
-          git add .pr17-apply-state
-          git commit -m 'chore(ci): mark staged PR17 remediation'
-          git push origin HEAD:fix/universal-router-diagnostics-phase1
-
-      - name: Apply source and contract fixes
-        run: |
-          set -euo pipefail
-          python <<'PY'
+          set -o pipefail
+          {
+            set -euxo pipefail
+            python <<'PY'
           from pathlib import Path
           import importlib.util
           import re
@@ -63,58 +54,15 @@ jobs:
           fixes.patch_audit_exceptions()
           fixes.patch_workflow_go_versions()
           PY
-          cd backend
-          gofmt -w cmd internal
-          cd ..
-          git add -A
-          git reset .github/workflows/fix-pr17-checks.yml tools/fix_pr17_checks.py .pr17-ci-trigger .pr17-apply-state
-          git commit -m 'fix: repair CI contracts and lint failures'
-          git push origin HEAD:fix/universal-router-diagnostics-phase1
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.5'
-          check-latest: false
-          cache: true
-          cache-dependency-path: backend/go.sum
-
-      - name: Apply Go security dependency fixes
+            cd backend
+            gofmt -w cmd internal
+          } > pr17-source-repair.log 2>&1
+      - name: Push captured result
+        if: always()
         run: |
           set -euo pipefail
-          cd backend
-          go mod edit -go=1.26.5
-          go get github.com/aws/aws-sdk-go-v2/service/s3@v1.97.3
-          go get github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream@v1.7.8
-          go mod tidy
-          cd ..
-          git add backend/go.mod backend/go.sum
-          git commit -m 'fix(security): update Go and AWS SDK dependencies'
-          git push origin HEAD:fix/universal-router-diagnostics-phase1
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22.13'
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Apply SheetJS security fix
-        run: |
-          set -euo pipefail
-          cd frontend
-          pnpm add 'xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'
-          pnpm install --frozen-lockfile
-          cd ..
-          git add frontend/package.json frontend/pnpm-lock.yaml .github/audit-exceptions.yml
-          git commit -m 'fix(security): update SheetJS and audit exceptions'
-          git push origin HEAD:fix/universal-router-diagnostics-phase1
-
-      - name: Remove temporary state
-        run: |
-          set -euo pipefail
-          rm -f .pr17-apply-state
-          git add -u .pr17-apply-state
-          git commit -m 'chore(ci): finish staged PR17 remediation'
+          git config user.name 'openai-ci-fixer'
+          git config user.email 'openai-ci-fixer@users.noreply.github.com'
+          git add pr17-source-repair.log
+          git commit -m 'chore(ci): capture source remediation output'
           git push origin HEAD:fix/universal-router-diagnostics-phase1
