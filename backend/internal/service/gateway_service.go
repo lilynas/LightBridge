@@ -1588,7 +1588,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, s.schedulerNoAvailableError(ctx, groupID, accounts, requestedModel, platform, excludedIDs, "no schedulable accounts returned for group and request")
 	}
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
@@ -2028,7 +2028,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, s.schedulerNoAvailableError(ctx, groupID, accounts, requestedModel, platform, excludedIDs, "all accounts rejected before load-aware selection")
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -2112,7 +2112,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
 	}
-	return nil, ErrNoAvailableAccounts
+	return nil, schedulerSessionLimitError(ctx, groupID, candidates, requestedModel, platform)
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
@@ -2279,9 +2279,9 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
-			// 请求级 Custom 协议过滤（快照按 group/platform 缓存、跨入站 endpoint 共享，
-			// 故协议过滤必须在此处按当前请求做）。
-			accounts = filterAccountsByRequestProtocol(ctx, accounts)
+			// Group snapshots contain every schedulable upstream. The protocol router,
+			// rather than group.platform, is the authority for message compatibility.
+			accounts, err = filterAccountsByRequestProtocolForScheduling(ctx, groupID, platform, accounts)
 			slog.Debug("account_scheduling_list_snapshot",
 				"group_id", derefGroupID(groupID),
 				"platform", platform,
@@ -2310,7 +2310,10 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 			return nil, useMixed, err
 		}
 		rawCount := len(accounts)
-		accounts = filterAccountsByRequestProtocol(ctx, accounts)
+		accounts, err = filterAccountsByRequestProtocolForScheduling(ctx, groupID, platform, accounts)
+		if err != nil {
+			return nil, useMixed, err
+		}
 		slog.Debug("account_scheduling_list",
 			"group_id", derefGroupID(groupID),
 			"platform", platform,
@@ -2366,8 +2369,12 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 			filtered = append(filtered, accounts[i])
 		}
 	}
-	// 请求级 Custom 协议过滤（按当前入站 endpoint 推导的 requiredProtocol）。
-	filtered = filterAccountsByRequestProtocol(ctx, filtered)
+	// 请求级协议过滤（按当前入站 endpoint 推导）；如果全部账号在这里
+	// 被淘汰，返回包含逐账号原因的错误，而不是无信息的空候选集。
+	filtered, err = filterAccountsByRequestProtocolForScheduling(ctx, groupID, platform, filtered)
+	if err != nil {
+		return nil, useMixed, err
+	}
 	slog.Debug("account_scheduling_list",
 		"group_id", derefGroupID(groupID),
 		"platform", platform,
@@ -3299,10 +3306,14 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
+		summary := summarizeSelectionFailureStats(stats)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
+			return nil, newSchedulerSelectionError(
+				fmt.Sprintf("%s supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summary),
+				stats.Diagnostics,
+			)
 		}
-		return nil, ErrNoAvailableAccounts
+		return nil, newSchedulerSelectionError(fmt.Sprintf("%s (%s)", ErrNoAvailableAccounts, summary), stats.Diagnostics)
 	}
 
 	// 4. 建立粘性绑定
@@ -3552,10 +3563,14 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
+		summary := summarizeSelectionFailureStats(stats)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
+			return nil, newSchedulerSelectionError(
+				fmt.Sprintf("%s supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summary),
+				stats.Diagnostics,
+			)
 		}
-		return nil, ErrNoAvailableAccounts
+		return nil, newSchedulerSelectionError(fmt.Sprintf("%s (%s)", ErrNoAvailableAccounts, summary), stats.Diagnostics)
 	}
 
 	// 4. 建立粘性绑定
@@ -3577,6 +3592,7 @@ type selectionFailureStats struct {
 	ModelRateLimited   int
 	SampleMappingIDs   []int64
 	SampleRateLimitIDs []string
+	Diagnostics        string
 }
 
 type selectionFailureDiagnosis struct {
@@ -3595,6 +3611,7 @@ func (s *GatewayService) logDetailedSelectionFailure(
 	allowMixedScheduling bool,
 ) selectionFailureStats {
 	stats := s.collectSelectionFailureStats(ctx, accounts, requestedModel, platform, excludedIDs, allowMixedScheduling)
+	stats.Diagnostics = s.encodeSchedulerSelectionDiagnostics(ctx, groupID, accounts, requestedModel, platform, excludedIDs)
 	logger.LegacyPrintf(
 		"service.gateway",
 		"[SelectAccountDetailed] group_id=%v model=%s platform=%s session=%s total=%d eligible=%d excluded=%d unschedulable=%d model_unsupported=%d model_rate_limited=%d sample_model_unsupported=%v sample_model_rate_limited=%v",
@@ -9124,18 +9141,6 @@ func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, gro
 
 // billingModelForRestriction 根据计费基准确定限制检查使用的模型。
 // upstream 返回空（需逐账号检查）。
-func billingModelForRestriction(source, requestedModel, channelMappedModel string) string {
-	switch source {
-	case BillingModelSourceRequested:
-		return requestedModel
-	case BillingModelSourceUpstream:
-		return ""
-	case BillingModelSourceChannelMapped:
-		return channelMappedModel
-	default:
-		return channelMappedModel
-	}
-}
 
 // isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
 // 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
@@ -9144,12 +9149,6 @@ func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context,
 }
 
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
-func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
-	if account.IsAntigravity() {
-		return mapAntigravityModel(account, requestedModel)
-	}
-	return account.GetMappedModel(requestedModel)
-}
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
 func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
