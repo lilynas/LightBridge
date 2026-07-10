@@ -108,3 +108,29 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	require.Equal(t, true, got.Extra["auto_pause_5h_disabled"])
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 }
+
+func TestBuildSchedulerMetadataAccount_KeepsCustomRoutingMetadata(t *testing.T) {
+	account := service.Account{
+		ID:       5906,
+		Name:     "LinuxDO Hub",
+		Platform: service.PlatformCustom,
+		Credentials: map[string]any{
+			"protocol":            service.CustomProtocolOpenAIResponses,
+			"openai_capabilities": []any{"responses"},
+			"unused_secret":       "drop-me",
+		},
+		Extra: map[string]any{
+			"protocol":   service.CustomProtocolOpenAIResponses,
+			"relay_mode": service.RelayModeRouter,
+			"unused":     "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, service.CustomProtocolOpenAIResponses, got.CustomProtocol())
+	require.Equal(t, service.RelayModeRouter, got.RelayMode())
+	require.Equal(t, []any{"responses"}, got.Credentials["openai_capabilities"])
+	require.Nil(t, got.Credentials["unused_secret"])
+	require.Nil(t, got.Extra["unused"])
+}

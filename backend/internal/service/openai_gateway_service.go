@@ -2204,6 +2204,16 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if err != nil {
 			return nil, err
 		}
+		// Compatibility for snapshots written before Custom routing metadata
+		// (extra.protocol / extra.relay_mode) was retained in slim account
+		// records. Fall back before filtering: another platform account may survive
+		// protocol filtering and only fail later on model/capability checks, otherwise
+		// hiding the stale Custom account and still producing a false 503.
+		for i := range accounts {
+			if accounts[i].IsCustom() && accounts[i].CustomProtocol() == "" && s.accountRepo != nil {
+				return s.listSchedulableAccountsFromDB(ctx, groupID, platform)
+			}
+		}
 		return filterAccountsByRequestProtocol(ctx, accounts), nil
 	}
 	return s.listSchedulableAccountsFromDB(ctx, groupID, platform)

@@ -517,7 +517,20 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	if len(credentials) == 0 {
 		return nil
 	}
-	keys := []string{"model_mapping", "api_key", "project_id", "oauth_type"}
+	keys := []string{
+		"model_mapping",
+		"api_key",
+		"project_id",
+		"oauth_type",
+		// Custom Provider routing metadata may exist in credentials on legacy
+		// accounts. Snapshot candidates must preserve it or CustomProtocol()
+		// becomes empty and the protocol router rejects the account before the
+		// scheduler can hydrate the full record.
+		"protocol",
+		"openai_capabilities",
+		service.AccountExtraKeySupportedModels,
+		service.AccountExtraKeyRestrictToModelList,
+	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -535,6 +548,16 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		return nil
 	}
 	keys := []string{
+		// These fields are required during candidate filtering. Omitting them
+		// makes a valid Custom Provider look like it supports no protocol and
+		// silently changes passthrough accounts back to router mode.
+		"protocol",
+		"relay_mode",
+		"openai_passthrough",
+		"openai_oauth_passthrough",
+		"anthropic_passthrough",
+		service.AccountExtraKeySupportedModels,
+		service.AccountExtraKeyRestrictToModelList,
 		"mixed_scheduling",
 		"window_cost_limit",
 		"window_cost_sticky_reserve",

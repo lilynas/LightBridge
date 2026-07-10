@@ -620,7 +620,9 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverAnthropicMessagesPanic(c, &streamStarted)
-	setCustomRequiredProtocol(c, service.CustomProtocolOpenAIResponses)
+	// Preserve the true ingress protocol for /v1/messages. The target protocol
+	// is selected later by the router; do not rewrite ingress as Responses.
+	setCustomRequiredProtocol(c, service.CustomProtocolAnthropicMessages)
 
 	requestStart := time.Now()
 

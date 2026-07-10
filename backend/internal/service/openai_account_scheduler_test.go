@@ -679,7 +679,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RouterCustomResponsesSe
 func TestOpenAIGatewayService_SelectAccountWithScheduler_MessagesDispatchSelectsCustomResponsesMIMO(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
-	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolAnthropicMessages)
 	groupID := int64(10114)
 	accounts := []Account{
 		{
@@ -757,7 +757,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_MessagesDispatchSelects
 func TestOpenAIGatewayService_SelectAccountWithScheduler_RetriesFreshDBWhenSnapshotCustomProtocolStale(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
-	ctx := WithInboundProtocol(context.Background(), CustomProtocolOpenAIResponses)
+	ctx := WithInboundProtocol(context.Background(), CustomProtocolAnthropicMessages)
 	groupID := int64(10116)
 	staleSnapshot := &Account{
 		ID:          37042,
@@ -788,7 +788,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RetriesFreshDBWhenSnaps
 		cache:       &schedulerTestGatewayCache{},
 		cfg:         cfg,
 		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService(
-			"true",
+			"false",
 		),
 		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
 		schedulerSnapshot: NewSchedulerSnapshotService(
