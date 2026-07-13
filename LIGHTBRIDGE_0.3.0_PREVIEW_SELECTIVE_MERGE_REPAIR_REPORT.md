@@ -125,7 +125,14 @@
 
 ## 6. 发布产物与状态
 
-- Release configuration validator：待最终文件冻结后复核。
-- Codebase inventory：待最终文件冻结后重新生成并执行 `--check`。
-- Secret scan：待最终文件冻结后复核。
-- 精简 ZIP、SHA-256、Git commit、Tag、GitHub Actions Run 与 Preview Release URL：待发布步骤完成后补充。
+- 核心源码提交：`bc59a7e`（`release: prepare v0.3.0-preview`）。
+- 精简源码包：`LightBridge-0.3.0-preview-grok-build-token-context-selective-merged-full-2026-07-13.zip`。
+- ZIP 大小：约 `9.8 MiB`，共 `3102` 个目录/文件条目。
+- ZIP SHA-256：`b8dba3c1c654f84ea4143fbb86a917228623c02a406f9c77e87da4c24f1e5a77`。
+- ZIP 完整性：PASS；已排除 `.git`、node_modules、dist/build、数据目录、缓存、Mimocode/Playwright 本地痕迹、旧 ZIP、临时报告与 inventory。
+- Release configuration validator：PASS。
+- Codebase inventory：PASS，索引 `2856` 个文本文件。
+- Secret scan：PASS，扫描 `2864` 个文件。
+- Preview Tag：`v0.3.0-preview`。
+- Preview Release：`https://github.com/WilliamWang1721/LightBridge/releases/tag/v0.3.0-preview`。
+- GitHub Actions 的最终 Run URL 与发布结论在交付回复中列出。
