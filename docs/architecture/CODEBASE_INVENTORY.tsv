@@ -49,7 +49,7 @@ backend/go.mod	other-text	maintained	187	8908	42c7c04bae00fb3ea25d7e33fd0ab085a6
 backend/go.sum	other-text	lockfile	517	47484	2522cdddaf352758a3f09377a1129af3d9be0b53db8ea10135def4583ace8325
 backend/cmd/jwtgen/main.go	backend-go	maintained	57	1449	42a1503bcebda05881f8efa05d5f56a2405e2a904667dd87cb1ee77e90fc332e
 backend/cmd/module-migrate/main.go	backend-go	maintained	47	2079	fc048ad91f01d0c288222e5742a9cdef75b305d890ff7d844236eb0a57143ba1
-backend/cmd/server/VERSION	other-text	maintained	1	14	df46fcec1373bd6b1ac6e8ce5699d4e495149d824bd33796bd5e696c82956d2e
+backend/cmd/server/VERSION	other-text	maintained	1	6	d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0
 backend/cmd/server/cleanup.go	backend-go	maintained	258	6840	d3b6826d0a76cab0d573a6a2ae3091e44980c79378fb1865b1dc768187f4f2e5
 backend/cmd/server/cleanup_test.go	backend-go	maintained	47	1359	941fb150cc7fb912493e8f2d8b30d3a56b782379213310c6dd0c11740bce28bd
 backend/cmd/server/main.go	backend-go	maintained	205	5377	ac0796b43393359f52b48e68d20bba5309421ed87e6b8f0eeba133a44013d344
