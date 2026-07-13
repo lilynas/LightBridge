@@ -3,12 +3,15 @@ package admin
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/WilliamWang1721/LightBridge/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -55,6 +58,7 @@ func setupAccountDataRouter() (*gin.Engine, *stubAdminService) {
 
 	h := NewAccountHandler(
 		adminSvc,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -652,4 +656,220 @@ func buildAccountImportTestZip(t *testing.T, files map[string]string) []byte {
 	}
 	require.NoError(t, zw.Close())
 	return buf.Bytes()
+}
+
+func TestImportDataAcceptsCLIProxyAPIXAIJSON(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":           "xai",
+			"email":          "grok@example.com",
+			"sub":            "xai-subject-1",
+			"access_token":   "xai-access",
+			"refresh_token":  "xai-refresh",
+			"id_token":       "xai-id",
+			"token_type":     "Bearer",
+			"expires_in":     3600,
+			"expired":        "2026-07-12T12:00:00Z",
+			"last_refresh":   "2026-07-12T11:00:00Z",
+			"base_url":       "https://cli-chat-proxy.grok.com/v1",
+			"redirect_uri":   "http://localhost:1455/auth/callback",
+			"token_endpoint": "https://auth.x.ai/oauth/token",
+			"auth_kind":      "oauth",
+			"using_api":      false,
+		},
+		"skip_default_group_bind": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, "grok@example.com", created.Name)
+	require.Equal(t, service.PlatformGrok, created.Platform)
+	require.Equal(t, service.AccountTypeOAuth, created.Type)
+	require.Equal(t, 1, created.Concurrency)
+	require.Equal(t, "xai-access", created.Credentials["access_token"])
+	require.Equal(t, "xai-refresh", created.Credentials["refresh_token"])
+	require.Equal(t, "xai-id", created.Credentials["id_token"])
+	require.Equal(t, "xai-subject-1", created.Credentials["sub"])
+	require.Equal(t, "https://cli-chat-proxy.grok.com/v1", created.Credentials["base_url"])
+	require.Equal(t, "https://auth.x.ai/oauth/token", created.Credentials["token_endpoint"])
+	require.Equal(t, false, created.Credentials["using_api"])
+	require.NotNil(t, created.ExpiresAt)
+	require.Equal(t, time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC).Unix(), *created.ExpiresAt)
+	require.Equal(t, "cliproxyapi", created.Extra["import_source"])
+}
+
+func TestImportDataAcceptsCLIProxyAPIXAICompatibilityScalars(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":          "grok",
+			"email":         "scalar-grok@example.com",
+			"access_token":  "xai-access",
+			"refresh_token": "xai-refresh",
+			"last_refresh":  1783854000000,
+			"expires_in":    3600,
+			"using_api":     "true",
+		},
+		"skip_default_group_bind": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, true, created.Credentials["using_api"])
+	require.NotNil(t, created.ExpiresAt)
+	require.Equal(t, int64(1783857600), *created.ExpiresAt)
+}
+
+func TestImportDataAcceptsCLIProxyAPIAccountArray(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"data": []map[string]any{
+			{
+				"type":          "xai",
+				"email":         "grok-array@example.com",
+				"access_token":  "xai-access",
+				"refresh_token": "xai-refresh",
+			},
+			{
+				"type":          "codex",
+				"email":         "codex-array@example.com",
+				"account_id":    "account-array",
+				"access_token":  "codex-access",
+				"refresh_token": "codex-refresh",
+			},
+		},
+		"skip_default_group_bind": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 2)
+	require.Equal(t, service.PlatformGrok, adminSvc.createdAccounts[0].Platform)
+	require.Equal(t, service.PlatformOpenAI, adminSvc.createdAccounts[1].Platform)
+}
+
+func accountDataGrokJWT(payload string) string {
+	return "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".signature"
+}
+
+func TestCPAXAIImportMarksBuildJWTWithoutReferrerForReauthorization(t *testing.T) {
+	account := cpaXAIToDataAccount(cpaImportPayload{
+		Type:         "xai",
+		Email:        "legacy-build@example.com",
+		AccessToken:  accountDataGrokJWT(`{"sub":"legacy-user","exp":4102444800}`),
+		RefreshToken: "refresh-token",
+		BaseURL:      xai.DefaultCLIBaseURL,
+		UsingAPI:     false,
+	})
+
+	require.Equal(t, service.PlatformGrok, account.Platform)
+	require.Equal(t, string(xai.OAuthModeBuildProxy), account.Credentials[service.GrokCredentialOAuthMode])
+	require.Equal(t, string(xai.TokenCapabilityIncompatible), account.Credentials[service.GrokCredentialTokenCapability])
+	require.Equal(t, true, account.Credentials[service.GrokCredentialReauthRequired])
+	require.Equal(t, true, account.Extra["grok_reauth_required"])
+	require.Contains(t, account.Extra["grok_reauth_reason"], "referrer=grok-build")
+}
+
+func TestCPAXAIImportAcceptsBuildJWTWithReferrer(t *testing.T) {
+	account := cpaXAIToDataAccount(cpaImportPayload{
+		Type:         "xai",
+		Email:        "build@example.com",
+		AccessToken:  accountDataGrokJWT(`{"sub":"build-user","referrer":"grok-build","exp":4102444800}`),
+		RefreshToken: "refresh-token",
+		BaseURL:      xai.DefaultCLIBaseURL,
+		UsingAPI:     false,
+	})
+
+	require.Equal(t, string(xai.TokenCapabilityGrokBuild), account.Credentials[service.GrokCredentialTokenCapability])
+	require.Equal(t, xai.GrokBuildTokenReferrer, account.Credentials[service.GrokCredentialTokenReferrer])
+	require.NotContains(t, account.Credentials, service.GrokCredentialReauthRequired)
+	require.NotContains(t, account.Extra, "grok_reauth_required")
+}
+
+func TestCPAXAIOfficialAPIImportDoesNotRequireBuildReferrer(t *testing.T) {
+	account := cpaXAIToDataAccount(cpaImportPayload{
+		Type:        "xai",
+		Email:       "official@example.com",
+		AccessToken: accountDataGrokJWT(`{"sub":"official-user","exp":4102444800}`),
+		BaseURL:     xai.DefaultBaseURL,
+		UsingAPI:    true,
+	})
+
+	require.Equal(t, string(xai.OAuthModeOfficialAPI), account.Credentials[service.GrokCredentialOAuthMode])
+	require.Equal(t, string(xai.TokenCapabilityOfficialAPI), account.Credentials[service.GrokCredentialTokenCapability])
+	require.NotContains(t, account.Credentials, service.GrokCredentialReauthRequired)
+}
+
+func TestImportDataDisablesIncompatibleGrokBuildAccount(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	payload := map[string]any{
+		"data": map[string]any{
+			"type":          "xai",
+			"email":         "legacy-build@example.com",
+			"access_token":  accountDataGrokJWT(`{"sub":"legacy-user","exp":4102444800}`),
+			"refresh_token": "refresh-token",
+			"base_url":      xai.DefaultCLIBaseURL,
+			"using_api":     false,
+		},
+		"skip_default_group_bind": true,
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.schedulableUpdates, 1)
+	require.Equal(t, int64(300), adminSvc.schedulableUpdates[0].accountID)
+	require.False(t, adminSvc.schedulableUpdates[0].schedulable)
+}
+
+func TestImportDataKeepsCompatibleGrokBuildAccountSchedulable(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	payload := map[string]any{
+		"data": map[string]any{
+			"type":          "xai",
+			"email":         "build@example.com",
+			"access_token":  accountDataGrokJWT(`{"sub":"build-user","referrer":"grok-build","exp":4102444800}`),
+			"refresh_token": "refresh-token",
+			"base_url":      xai.DefaultCLIBaseURL,
+			"using_api":     false,
+		},
+		"skip_default_group_bind": true,
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, adminSvc.schedulableUpdates)
 }

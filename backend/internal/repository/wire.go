@@ -142,6 +142,7 @@ var ProviderSet = wire.NewSet(
 	NewHTTPUpstream,
 	NewOpenAIOAuthClient,
 	NewGrokOAuthClient,
+	NewGrokOAuthSessionStore,
 	NewGeminiOAuthClient,
 	NewGeminiCliCodeAssistClient,
 	NewGeminiDriveClient,

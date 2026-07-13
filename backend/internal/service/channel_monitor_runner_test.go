@@ -17,7 +17,8 @@ type stubMonitorSvc struct {
 	runCalled  chan int64 // 每次 RunCheck 触发时 push 一次（缓冲足够大避免阻塞）
 	runErr     error
 	listErr    error
-	runHoldFor time.Duration // RunCheck 内额外阻塞的时长，用来测试 Stop 等待行为
+	runHoldFor time.Duration   // RunCheck 内额外阻塞的时长，用来测试 Stop 等待行为
+	runRelease <-chan struct{} // 非 nil 时忽略 ctx，直到测试显式释放，用于验证 worker pool drain
 }
 
 func (s *stubMonitorSvc) ListEnabledMonitors(_ context.Context) ([]*ChannelMonitor, error) {
@@ -35,7 +36,9 @@ func (s *stubMonitorSvc) RunCheck(ctx context.Context, id int64) ([]*CheckResult
 		default:
 		}
 	}
-	if s.runHoldFor > 0 {
+	if s.runRelease != nil {
+		<-s.runRelease
+	} else if s.runHoldFor > 0 {
 		select {
 		case <-time.After(s.runHoldFor):
 		case <-ctx.Done():
@@ -217,9 +220,10 @@ func TestStop_DrainsAllGoroutines(t *testing.T) {
 
 // TestStop_WaitsForInFlightCheck 验证 Stop 会等待正在执行的 RunCheck 退出（pool.StopAndWait）。
 func TestStop_WaitsForInFlightCheck(t *testing.T) {
+	release := make(chan struct{})
 	svc := &stubMonitorSvc{
 		runCalled:  make(chan int64, 1),
-		runHoldFor: 200 * time.Millisecond,
+		runRelease: release,
 	}
 	r := newRunnerForTest(svc)
 	r.Start()
@@ -231,12 +235,24 @@ func TestStop_WaitsForInFlightCheck(t *testing.T) {
 		t.Fatal("first fire never happened")
 	}
 
-	start := time.Now()
-	stoppedWithin(t, r, 3*time.Second)
-	elapsed := time.Since(start)
-	// Stop 必须等待 in-flight check 跑完（runHoldFor=200ms），耗时下界约 100ms。
-	if elapsed < 100*time.Millisecond {
-		t.Fatalf("Stop returned too fast (%v); did not wait for in-flight check", elapsed)
+	stopped := make(chan struct{})
+	go func() {
+		r.Stop()
+		close(stopped)
+	}()
+
+	// RunCheck 故意忽略 ctx 并保持阻塞；StopAndWait 必须等待它被显式释放。
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while an in-flight worker was still blocked")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Stop did not return after the in-flight worker completed")
 	}
 }
 

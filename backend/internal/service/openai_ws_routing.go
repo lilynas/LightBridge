@@ -98,7 +98,7 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
 			return nil, nil
 		}
-		if s.isOpenAIAccountRuntimeBlocked(latest) {
+		if s.isAccountRuntimeBlocked(latest) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return nil, nil
 		}

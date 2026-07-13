@@ -920,6 +920,10 @@ export interface Account {
 
   // Rate limit & scheduling fields
   schedulable: boolean
+  grok_oauth_mode?: 'build_proxy' | 'official_api'
+  grok_token_capability?: 'unknown' | 'grok_build' | 'official_api' | 'incompatible'
+  grok_token_referrer?: string
+  grok_reauth_required?: boolean
   rate_limited_at: string | null
   rate_limit_reset_at: string | null
   overload_until: string | null

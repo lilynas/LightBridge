@@ -182,7 +182,11 @@ type Account struct {
 	CreatedAt          time.Time       `json:"created_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
 
-	Schedulable bool `json:"schedulable"`
+	Schedulable         bool   `json:"schedulable"`
+	GrokOAuthMode       string `json:"grok_oauth_mode,omitempty"`
+	GrokTokenCapability string `json:"grok_token_capability,omitempty"`
+	GrokTokenReferrer   string `json:"grok_token_referrer,omitempty"`
+	GrokReauthRequired  bool   `json:"grok_reauth_required,omitempty"`
 
 	RateLimitedAt    *time.Time `json:"rate_limited_at"`
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`

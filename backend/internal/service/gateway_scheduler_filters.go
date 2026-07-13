@@ -183,9 +183,8 @@ func (s *GatewayService) isAccountAllowedForRequest(ctx context.Context, account
 	if account == nil || !accountMatchesRequestProtocol(ctx, account) {
 		return false
 	}
-	if groupID != nil {
-		return true
-	}
+	// 分组只限定候选账号范围，不能绕过请求级平台约束。消息协议的 Router
+	// 跨平台能力、强制平台以及 mixed_scheduling 均由该统一判定处理。
 	return accountServesRequestPlatform(ctx, account, platform, useMixed)
 }
 

@@ -514,6 +514,16 @@ func (h *AccountHandler) importData(ctx context.Context, dataPayload DataPayload
 			SkipDefaultGroupBind: skipDefaultGroupBind,
 		}
 
+		needsGrokReauthorization := false
+		if item.Platform == service.PlatformGrok && item.Type == service.AccountTypeOAuth {
+			importedAccount := &service.Account{
+				Platform:    item.Platform,
+				Type:        item.Type,
+				Credentials: item.Credentials,
+			}
+			needsGrokReauthorization = !importedAccount.GrokBuildTokenCompatible()
+		}
+
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
 		if err != nil {
 			result.AccountFailed++
@@ -523,6 +533,18 @@ func (h *AccountHandler) importData(ctx context.Context, dataPayload DataPayload
 				Message: err.Error(),
 			})
 			continue
+		}
+		// A parsed Grok Build JWT that lacks referrer=grok-build is imported for
+		// recovery only, but must not enter the scheduler until the operator
+		// completes a fresh Grok Build OAuth authorization.
+		if needsGrokReauthorization {
+			if _, disableErr := h.adminService.SetAccountSchedulable(ctx, created.ID, false); disableErr != nil {
+				result.Errors = append(result.Errors, DataImportError{
+					Kind:    "account_warning",
+					Name:    created.Name,
+					Message: "Grok Build token requires re-authorization and could not be automatically removed from scheduling: " + disableErr.Error(),
+				})
+			}
 		}
 		// 收集 Antigravity OAuth 账号，稍后异步设置隐私
 		if created.IsAntigravity() && created.Type == service.AccountTypeOAuth {
@@ -764,7 +786,7 @@ func validateDataProxy(item DataProxy) error {
 }
 
 func validateDataAccount(item DataAccount) error {
-	if strings.TrimSpace(item.Name) == "" {
+	if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.Type) != service.AccountTypeOAuth {
 		return errors.New("account name is required")
 	}
 	if strings.TrimSpace(item.Platform) == "" {

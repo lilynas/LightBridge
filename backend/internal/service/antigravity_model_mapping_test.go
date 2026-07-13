@@ -131,36 +131,36 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "gemini-3-flash",
 		},
 
-		// 4. 未在默认映射中的模型返回空字符串（不支持）
+		// 4. 未在默认映射中的模型默认透传；显式限制由 restrict_to_model_list 控制
 		{
-			name:           "未知模型 - claude-unknown 返回空",
+			name:           "未知模型 - claude-unknown 默认透传",
 			requestedModel: "claude-unknown",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-unknown",
 		},
 		{
-			name:           "未知模型 - claude-3-5-sonnet-20241022 返回空（未在默认映射）",
+			name:           "未知模型 - claude-3-5-sonnet-20241022 默认透传",
 			requestedModel: "claude-3-5-sonnet-20241022",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-3-5-sonnet-20241022",
 		},
 		{
-			name:           "未知模型 - claude-3-opus-20240229 返回空",
+			name:           "未知模型 - claude-3-opus-20240229 默认透传",
 			requestedModel: "claude-3-opus-20240229",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-3-opus-20240229",
 		},
 		{
-			name:           "未知模型 - claude-opus-4 返回空",
+			name:           "未知模型 - claude-opus-4 默认透传",
 			requestedModel: "claude-opus-4",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "claude-opus-4",
 		},
 		{
-			name:           "未知模型 - gemini-future-model 返回空",
+			name:           "未知模型 - gemini-future-model 默认透传",
 			requestedModel: "gemini-future-model",
 			accountMapping: nil,
-			expected:       "",
+			expected:       "gemini-future-model",
 		},
 	}
 
@@ -194,10 +194,10 @@ func TestAntigravityGatewayService_GetMappedModel_EdgeCases(t *testing.T) {
 		requestedModel string
 		expected       string
 	}{
-		// 空字符串和非 claude/gemini 前缀返回空字符串
+		// 空字符串保持为空；映射函数本身默认透传，平台支持检查由调度层负责
 		{"空字符串", "", ""},
-		{"非claude/gemini前缀 - gpt", "gpt-4", ""},
-		{"非claude/gemini前缀 - llama", "llama-3", ""},
+		{"非claude/gemini前缀 - gpt", "gpt-4", "gpt-4"},
+		{"非claude/gemini前缀 - llama", "llama-3", "llama-3"},
 	}
 
 	for _, tt := range tests {
@@ -267,7 +267,7 @@ func TestMapAntigravityModel_WildcardTargetEqualsRequest(t *testing.T) {
 			name:           "wildcard no match",
 			modelMapping:   map[string]any{"claude-*": "claude-sonnet-4-5"},
 			requestedModel: "gpt-4o",
-			expected:       "",
+			expected:       "gpt-4o",
 		},
 		{
 			name:           "explicit passthrough same name",

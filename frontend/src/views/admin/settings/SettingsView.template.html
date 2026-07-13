@@ -941,7 +941,7 @@
                       </label>
                       <Select
                         :modelValue="rule.action"
-                        @update:modelValue="rule.action = $event as any"
+                        @update:modelValue="rule.action = $event"
                         :options="betaPolicyActionOptions"
                       />
                     </div>
@@ -955,7 +955,7 @@
                       </label>
                       <Select
                         :modelValue="rule.scope"
-                        @update:modelValue="rule.scope = $event as any"
+                        @update:modelValue="rule.scope = $event"
                         :options="betaPolicyScopeOptions"
                       />
                     </div>
@@ -1019,7 +1019,7 @@
                       class="mb-1.5 flex items-center gap-2"
                     >
                       <input
-                        v-model="rule.model_whitelist![index]"
+                        v-model="rule.model_whitelist[index]"
                         type="text"
                         class="input input-sm flex-1"
                         :placeholder="
@@ -1028,7 +1028,7 @@
                       />
                       <button
                         type="button"
-                        @click="rule.model_whitelist!.splice(index, 1)"
+                        @click="rule.model_whitelist?.splice(index, 1)"
                         class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                       >
                         <svg
@@ -1103,7 +1103,7 @@
                     </label>
                     <Select
                       :modelValue="rule.fallback_action || 'pass'"
-                      @update:modelValue="rule.fallback_action = $event as any"
+                      @update:modelValue="rule.fallback_action = $event"
                       :options="betaPolicyActionOptions"
                     />
                     <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -1235,12 +1235,7 @@
                     </label>
                     <Select
                       :modelValue="rule.service_tier"
-                      @update:modelValue="
-                        rule.service_tier = $event as
-                          | 'all'
-                          | 'priority'
-                          | 'flex'
-                      "
+                      @update:modelValue="rule.service_tier = $event"
                       :options="openaiFastPolicyTierOptions"
                     />
                   </div>
@@ -1254,9 +1249,7 @@
                     </label>
                     <Select
                       :modelValue="rule.action"
-                      @update:modelValue="
-                        rule.action = $event as 'pass' | 'filter' | 'block'
-                      "
+                      @update:modelValue="rule.action = $event"
                       :options="openaiFastPolicyActionOptions"
                     />
                   </div>
@@ -1270,13 +1263,7 @@
                     </label>
                     <Select
                       :modelValue="rule.scope"
-                      @update:modelValue="
-                        rule.scope = $event as
-                          | 'all'
-                          | 'oauth'
-                          | 'apikey'
-                          | 'bedrock'
-                      "
+                      @update:modelValue="rule.scope = $event"
                       :options="openaiFastPolicyScopeOptions"
                     />
                   </div>
@@ -1322,7 +1309,7 @@
                     class="mb-1.5 flex items-center gap-2"
                   >
                     <input
-                      v-model="rule.model_whitelist![patternIdx]"
+                      v-model="rule.model_whitelist[patternIdx]"
                       type="text"
                       class="input input-sm flex-1"
                       :placeholder="
@@ -1389,12 +1376,7 @@
                   </label>
                   <Select
                     :modelValue="rule.fallback_action || 'pass'"
-                    @update:modelValue="
-                      rule.fallback_action = $event as
-                        | 'pass'
-                        | 'filter'
-                        | 'block'
-                    "
+                    @update:modelValue="rule.fallback_action = $event"
                     :options="openaiFastPolicyActionOptions"
                   />
                   <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -3275,24 +3257,16 @@
                           <GroupBadge
                             v-if="option"
                             :name="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).label
+                              option.label
                             "
                             :platform="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).platform
+                              option.platform
                             "
                             :subscription-type="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).subscriptionType
+                              option.subscriptionType
                             "
                             :rate-multiplier="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).rate
+                              option.rate
                             "
                           />
                           <span v-else class="text-gray-400">
@@ -3302,29 +3276,19 @@
                         <template #option="{ option, selected }">
                           <GroupOptionItem
                             :name="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).label
+                              option.label
                             "
                             :platform="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).platform
+                              option.platform
                             "
                             :subscription-type="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).subscriptionType
+                              option.subscriptionType
                             "
                             :rate-multiplier="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).rate
+                              option.rate
                             "
                             :description="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).description
+                              option.description
                             "
                             :selected="selected"
                           />
@@ -3390,7 +3354,7 @@
                         </td>
                         <td class="pr-4 py-1">
                           <input
-                            v-model.number="form.default_platform_quotas[p]!.daily"
+                            v-model.number="form.default_platform_quotas[p].daily"
                             type="number"
                             step="0.01"
                             min="0"
@@ -3400,7 +3364,7 @@
                         </td>
                         <td class="pr-4 py-1">
                           <input
-                            v-model.number="form.default_platform_quotas[p]!.weekly"
+                            v-model.number="form.default_platform_quotas[p].weekly"
                             type="number"
                             step="0.01"
                             min="0"
@@ -3410,7 +3374,7 @@
                         </td>
                         <td class="py-1">
                           <input
-                            v-model.number="form.default_platform_quotas[p]!.monthly"
+                            v-model.number="form.default_platform_quotas[p].monthly"
                             type="number"
                             step="0.01"
                             min="0"
@@ -3605,24 +3569,16 @@
                               <GroupBadge
                                 v-if="option"
                                 :name="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).label
+                                  option.label
                                 "
                                 :platform="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).platform
+                                  option.platform
                                 "
                                 :subscription-type="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).subscriptionType
+                                  option.subscriptionType
                                 "
                                 :rate-multiplier="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).rate
+                                  option.rate
                                 "
                               />
                               <span v-else class="text-gray-400">
@@ -3634,29 +3590,19 @@
                             <template #option="{ option, selected }">
                               <GroupOptionItem
                                 :name="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).label
+                                  option.label
                                 "
                                 :platform="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).platform
+                                  option.platform
                                 "
                                 :subscription-type="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).subscriptionType
+                                  option.subscriptionType
                                 "
                                 :rate-multiplier="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).rate
+                                  option.rate
                                 "
                                 :description="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).description
+                                  option.description
                                 "
                                 :selected="selected"
                               />
@@ -3725,7 +3671,7 @@
                               </td>
                               <td class="pr-4 py-1">
                                 <input
-                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.daily"
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p].daily"
                                   type="number"
                                   step="0.01"
                                   min="0"
@@ -3735,7 +3681,7 @@
                               </td>
                               <td class="pr-4 py-1">
                                 <input
-                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.weekly"
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p].weekly"
                                   type="number"
                                   step="0.01"
                                   min="0"
@@ -3745,7 +3691,7 @@
                               </td>
                               <td class="py-1">
                                 <input
-                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.monthly"
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p].monthly"
                                   type="number"
                                   step="0.01"
                                   min="0"
@@ -4324,7 +4270,7 @@
                           class="input text-sm"
                           @input="
                             provider.subscribed_at = parseSubscribedAt(
-                              ($event.target as HTMLInputElement).value,
+                              $event.target.value,
                             )
                           "
                         />
@@ -5964,7 +5910,7 @@
                       @input="
                         form.payment_min_amount =
                           parseFloat(
-                            ($event.target as HTMLInputElement).value,
+                            $event.target.value,
                           ) || 0
                       "
                       type="number"
@@ -5983,7 +5929,7 @@
                       @input="
                         form.payment_max_amount =
                           parseFloat(
-                            ($event.target as HTMLInputElement).value,
+                            $event.target.value,
                           ) || 0
                       "
                       type="number"
@@ -6002,7 +5948,7 @@
                       @input="
                         form.payment_daily_limit =
                           parseFloat(
-                            ($event.target as HTMLInputElement).value,
+                            $event.target.value,
                           ) || 0
                       "
                       type="number"
@@ -6021,7 +5967,7 @@
                       @input="
                         form.payment_balance_recharge_multiplier =
                           parseFloat(
-                            ($event.target as HTMLInputElement).value,
+                            $event.target.value,
                           ) || 1
                       "
                       type="number"
@@ -6063,7 +6009,7 @@
                               0,
                               Math.round(
                                 parseFloat(
-                                  ($event.target as HTMLInputElement).value ||
+                                  $event.target.value ||
                                     '0',
                                 ) * 100,
                               ) / 100,

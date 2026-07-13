@@ -17,7 +17,12 @@ from typing import Iterable
 
 EXCLUDED_DIRS = {
     ".git", ".idea", ".vscode", ".pnpm-store", "node_modules", "dist",
-    "build", "coverage", "tmp", ".cache",
+    "build", "coverage", "tmp", ".tmp", ".cache", ".codex-go-cache",
+    ".codex-go-mod-cache", ".mimocode",
+}
+EXCLUDED_FILES = {
+    # Ad-hoc local test output is not part of the release source tree.
+    "TEST_REPORT.md",
 }
 BINARY_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2",
@@ -94,6 +99,8 @@ def iter_files(root: Path) -> Iterable[Path]:
         dirs[:] = sorted(d for d in dirs if d not in EXCLUDED_DIRS)
         base = Path(current)
         for name in sorted(files):
+            if name in EXCLUDED_FILES:
+                continue
             path = base / name
             if path.is_symlink():
                 continue

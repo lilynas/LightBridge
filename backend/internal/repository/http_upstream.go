@@ -62,6 +62,7 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	upstreamProtocolModeGrokH2           = "grok_h2"
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -751,6 +752,11 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 }
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
+	if profile == service.HTTPUpstreamProfileGrok {
+		// Grok Build advertises HTTP/2. Using net/http's native H2 transport
+		// prevents negotiated H2 frames from being parsed as HTTP/1.1.
+		return upstreamProtocolModeGrokH2
+	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 	}
@@ -1060,7 +1066,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
 	}
 	switch protocolMode {
-	case upstreamProtocolModeOpenAIH2:
+	case upstreamProtocolModeOpenAIH2, upstreamProtocolModeGrokH2:
 		transport.ForceAttemptHTTP2 = true
 	case upstreamProtocolModeOpenAIH1:
 		transport.ForceAttemptHTTP2 = false

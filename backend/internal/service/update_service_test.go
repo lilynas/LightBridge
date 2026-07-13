@@ -195,9 +195,18 @@ func TestUpdateServiceDetectsPreviewPatchUpdate(t *testing.T) {
 }
 
 func TestParseVersionStripsPrereleaseSuffix(t *testing.T) {
-	require.Equal(t, [3]int{0, 2, 4}, parseVersion("0.2.4-preview"))
-	require.Equal(t, [3]int{0, 2, 4}, parseVersion("v0.2.4-rc.1"))
-	require.Equal(t, [3]int{1, 2, 3}, parseVersion("1.2.3+build.5"))
+	tests := []struct {
+		version string
+		want    [3]int
+	}{
+		{version: "0.2.4-preview", want: [3]int{0, 2, 4}},
+		{version: "v0.2.4-rc.1", want: [3]int{0, 2, 4}},
+		{version: "1.2.3+build.5", want: [3]int{1, 2, 3}},
+	}
+	for _, tt := range tests {
+		parts, _ := parseSemanticVersion(tt.version)
+		require.Equal(t, tt.want, parts)
+	}
 }
 
 func TestCompareVersionsHandlesPrereleaseIdentifiers(t *testing.T) {

@@ -1,6 +1,6 @@
 module github.com/WilliamWang1721/LightBridge/examples/modules/lightbridge-provider-anthropic-oauth
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/klauspost/compress v1.18.2

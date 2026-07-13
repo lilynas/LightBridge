@@ -107,6 +107,33 @@ func (a *Account) GetGrokBaseURL() string {
 	return xai.EffectiveBaseURL(a.GetCredential("base_url"))
 }
 
+// GrokUsingAPI reports whether this account should use api.x.ai directly.
+// OAuth accounts default to the Grok Build CLI proxy so their subscription
+// entitlement is used. The explicit using_api credential preserves the
+// official API mode for operators that intentionally configured it.
+func (a *Account) GrokUsingAPI() bool {
+	if !a.IsGrok() {
+		return false
+	}
+	fallback := a.Type != AccountTypeOAuth
+	if a.Credentials == nil {
+		return fallback
+	}
+	if rawMode := strings.TrimSpace(a.GetCredential(GrokCredentialOAuthMode)); rawMode != "" {
+		if mode, err := xai.ParseOAuthMode(rawMode); err == nil {
+			return mode.UsingAPI()
+		}
+	}
+	return xai.CredentialBool(a.Credentials["using_api"], fallback)
+}
+
+func (a *Account) GetGrokChatBaseURL() (string, error) {
+	if !a.IsGrok() {
+		return "", nil
+	}
+	return xai.ResolveChatBaseURL(a.GetCredential("base_url"), a.GrokUsingAPI())
+}
+
 func (a *Account) GetGrokAccessToken() string {
 	if !a.IsGrok() || a.Type != AccountTypeOAuth {
 		return ""

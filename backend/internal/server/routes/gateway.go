@@ -46,9 +46,7 @@ func RegisterGatewayRoutes(
 	{
 		gateway.POST("/messages", func(c *gin.Context) {
 			switch getGroupPlatform(c) {
-			case service.PlatformGrok:
-				grokUnsupported(c, "/v1/messages")
-			case service.PlatformOpenAI:
+			case service.PlatformOpenAI, service.PlatformGrok:
 				h.OpenAIGateway.Messages(c)
 			default:
 				h.Gateway.Messages(c)
@@ -70,13 +68,7 @@ func RegisterGatewayRoutes(
 		gateway.GET("/usage", h.Gateway.Usage)
 		gateway.POST("/responses", openAICompatibleResponsesHandler(h))
 		gateway.POST("/responses/*subpath", openAICompatibleResponsesHandler(h))
-		gateway.GET("/responses", func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformGrok {
-				grokUnsupported(c, "/v1/responses websocket")
-				return
-			}
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
 		gateway.POST("/chat/completions", chatCompletionsHandler(h, "/v1/chat/completions"))
 		gateway.POST("/embeddings", openAIOnlyHandler(h.OpenAIGateway.Embeddings, "/v1/embeddings"))
 		gateway.POST("/images/generations", openAIOnlyHandler(h.OpenAIGateway.Images, "/v1/images/generations"))
@@ -103,25 +95,13 @@ func RegisterGatewayRoutes(
 	responsesHandler := openAICompatibleResponsesHandler(h)
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, privacyResp, responsesHandler)
 	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, privacyResp, responsesHandler)
-	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
-			grokUnsupported(c, "/responses websocket")
-			return
-		}
-		h.OpenAIGateway.ResponsesWebSocket(c)
-	})
+	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, privacyResp)
 	{
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", responsesHandler)
-		codexDirect.GET("/responses", func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformGrok {
-				grokUnsupported(c, "/backend-api/codex/responses websocket")
-				return
-			}
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		codexDirect.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, privacyResp, chatCompletionsHandler(h, "/chat/completions"))
@@ -196,9 +176,7 @@ func openAICompatibleResponsesHandler(h *handler.Handlers) gin.HandlerFunc {
 func chatCompletionsHandler(h *handler.Handlers, endpoint string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch getGroupPlatform(c) {
-		case service.PlatformGrok:
-			grokUnsupported(c, endpoint)
-		case service.PlatformOpenAI:
+		case service.PlatformOpenAI, service.PlatformGrok:
 			h.OpenAIGateway.ChatCompletions(c)
 		default:
 			h.Gateway.ChatCompletions(c)

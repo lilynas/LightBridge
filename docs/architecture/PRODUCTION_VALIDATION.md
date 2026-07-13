@@ -41,7 +41,7 @@ machine itself under the race detector.
 
 ## Required connected CI gates
 
-The project requires Go 1.26.4. The sandbox provides Go 1.23.2, has no Go module
+The project requires Go 1.26.5. The sandbox provides Go 1.23.2, has no Go module
 cache, no pnpm installation and no frontend `node_modules`. The following gates
 therefore remain mandatory before deployment and must run in GitHub Actions or
 an equivalent connected build environment:
@@ -49,7 +49,7 @@ an equivalent connected build environment:
 ```bash
 # Backend
 cd backend
-go version                         # must report go1.26.4
+go version                         # must report go1.26.5
 make test-unit
 make test-integration
 golangci-lint run --timeout=30m ./...
@@ -90,3 +90,36 @@ by database, Redis, network and filesystem latency. Batching, immutable snapshot
 single-flight refresh and concurrent independent probes reduce that cost without
 adding an FFI or sidecar release surface. Rust remains appropriate only after a
 CPU profile identifies a stable isolated compute kernel.
+
+## 2026-07-12 Grok review and peer-fusion candidate
+
+The current candidate additionally closes the confirmed Grok/OAuth/Router review
+findings and selectively incorporates the stronger parts of an independent
+comparison implementation. The fusion decision record is available at
+`docs/architecture/GROK_PEER_IMPLEMENTATION_FUSION_REVIEW.md`.
+
+Executed offline gates for this candidate:
+
+- repository-wide `gofmt` check for 1,802 Go files;
+- TypeScript parser check for 688 TS/JS/Vue script units;
+- JSON, workflow YAML and GoReleaser YAML parsing;
+- duplicate YAML mapping-key rejection;
+- `bash -n` for all 32 Release workflow shell blocks and checked-in shell files;
+- immutable GitHub Action SHA and minimal-permission release invariants;
+- codebase inventory regeneration and SHA-256 check;
+- high-confidence secret scan;
+- `git diff --check` and production hot-path scans proving that the protocol
+  bridge contains no `httptest.ResponseRecorder`, `ResponseRecorder` or
+  `gin.CreateTestContext` usage.
+
+A targeted Go test attempt was made in an isolated copy with the module Go
+version temporarily lowered only inside that copy. It was blocked before package
+compilation because the sandbox has no cached copies of the repository's Go
+modules and external module lookup is unavailable. The production tree remains
+pinned to Go 1.26.5 and was not altered by that attempt.
+
+This state is therefore a **Production Candidate**, not a Production Final.
+Promotion requires every P0 gate in
+`docs/testing/PRODUCTION_TEST_PLAN_0.2.80_GROK.md`, including real Grok Build CLI
+tool calls, cross-instance Redis OAuth, streaming first-byte checks, frontend
+vue-tsc/build, backend unit/integration/race tests and a test-tag Release run.

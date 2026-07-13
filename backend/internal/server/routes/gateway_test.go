@@ -140,10 +140,13 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesGrokAllowsOnlyResponsesHTTP(t *testing.T) {
+func TestGatewayRoutesGrokAllowsRouterProtocols(t *testing.T) {
 	router := newGatewayRoutesTestRouterForPlatform(service.PlatformGrok)
 
 	accepted := []string{
+		"/v1/messages",
+		"/v1/chat/completions",
+		"/chat/completions",
 		"/v1/responses",
 		"/v1/responses/compact",
 		"/responses",
@@ -163,23 +166,28 @@ func TestGatewayRoutesGrokAllowsOnlyResponsesHTTP(t *testing.T) {
 		})
 	}
 
+	for _, path := range []string{"/v1/responses", "/responses", "/backend-api/codex/responses"} {
+		t.Run("accept websocket "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.NotEqual(t, http.StatusNotFound, w.Code)
+			require.NotContains(t, w.Body.String(), "not supported for Grok groups")
+		})
+	}
+
 	unsupported := []struct {
 		method  string
 		path    string
 		message string
 	}{
-		{http.MethodPost, "/v1/messages", "not supported for Grok groups"},
-		{http.MethodPost, "/v1/chat/completions", "not supported for Grok groups"},
-		{http.MethodPost, "/chat/completions", "not supported for Grok groups"},
 		{http.MethodPost, "/v1/embeddings", "not supported for Grok groups"},
 		{http.MethodPost, "/embeddings", "not supported for Grok groups"},
 		{http.MethodPost, "/v1/images/generations", "not supported for Grok groups"},
 		{http.MethodPost, "/images/generations", "not supported for Grok groups"},
 		{http.MethodPost, "/v1/images/edits", "not supported for Grok groups"},
 		{http.MethodPost, "/images/edits", "not supported for Grok groups"},
-		{http.MethodGet, "/v1/responses", "not supported for Grok groups"},
-		{http.MethodGet, "/responses", "not supported for Grok groups"},
-		{http.MethodGet, "/backend-api/codex/responses", "not supported for Grok groups"},
 		{http.MethodPost, "/v1/messages/count_tokens", "Token counting is not supported for this platform"},
 	}
 	for _, tt := range unsupported {

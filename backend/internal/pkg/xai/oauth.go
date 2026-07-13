@@ -44,6 +44,7 @@ var (
 )
 
 type OAuthSession struct {
+	Mode          OAuthMode `json:"mode,omitempty"`
 	State         string    `json:"state"`
 	CodeVerifier  string    `json:"code_verifier"`
 	CodeChallenge string    `json:"code_challenge"`
@@ -83,6 +84,23 @@ func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
 	if !ok {
 		return nil, false
 	}
+	if time.Since(session.CreatedAt) > SessionTTL {
+		return nil, false
+	}
+	return session, true
+}
+
+// Consume atomically returns and removes a live OAuth session. It is used by
+// the local test fallback to preserve the same one-time semantics as the Redis
+// production store.
+func (s *SessionStore) Consume(sessionID string) (*OAuthSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[sessionID]
+	if !ok {
+		return nil, false
+	}
+	delete(s.sessions, sessionID)
 	if time.Since(session.CreatedAt) > SessionTTL {
 		return nil, false
 	}
@@ -357,6 +375,18 @@ func base64URLEncode(data []byte) string {
 }
 
 func BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce string) (string, error) {
+	return BuildAuthorizationURLForMode(OAuthModeBuildProxy, state, codeChallenge, redirectURI, nonce)
+}
+
+// BuildAuthorizationURLForMode binds the xAI OAuth authorization request to
+// the selected entitlement path. Grok Build currently requires the
+// referrer=grok-build authorization context so the issued access token carries
+// the matching referrer claim.
+func BuildAuthorizationURLForMode(mode OAuthMode, state, codeChallenge, redirectURI, nonce string) (string, error) {
+	parsedMode, err := ParseOAuthMode(string(mode))
+	if err != nil {
+		return "", err
+	}
 	redirectURI = EffectiveRedirectURI(redirectURI)
 	authorizeURL, err := ValidatedAuthorizeURL()
 	if err != nil {
@@ -373,7 +403,7 @@ func BuildAuthorizationURL(state, codeChallenge, redirectURI, nonce string) (str
 	params.Set("code_challenge", codeChallenge)
 	params.Set("code_challenge_method", "S256")
 	params.Set("plan", "generic")
-	params.Set("referrer", "lightbridge")
+	params.Set("referrer", parsedMode.AuthorizationReferrer())
 
 	return fmt.Sprintf("%s?%s", authorizeURL, params.Encode()), nil
 }

@@ -56,6 +56,25 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 
+
+// vue-tsc does not currently count identifiers referenced only from an external
+// <template src="..."> file as script usage when noUnusedLocals is enabled.
+// Keep the split template architecture while making the compile-time binding
+// explicit. These values remain the actual bindings consumed by the template.
+const externalTemplateBindings = {
+  BaseDialog,
+  ConfirmDialog,
+  Select,
+  Icon,
+  ProxySelector,
+  ProxyAdBanner,
+  GroupSelector,
+  ModelWhitelistSelector,
+  commonErrorCodes,
+  isValidWildcardPattern
+}
+void externalTemplateBindings
+
 interface Props {
   show: boolean
   account: Account | null
@@ -2029,4 +2048,64 @@ const handleMixedChannelConfirm = async () => {
 const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
+
+// External-template typecheck bridge: vue-tsc does not count identifiers used
+// only by <template src="...">. Keep the bindings in a lazy function so
+// no values are evaluated solely for typechecking.
+const useEditAccountExternalTemplateBindings = () => ({
+  ProxyPolicyPanel,
+  QuotaLimitCard,
+  formatDateTime,
+  VERTEX_LOCATION_OPTIONS,
+  authStore,
+  isGeminiProxyAccount,
+  antigravityPresetMappings,
+  bedrockPresets,
+  DEFAULT_POOL_MODE_RETRY_STATUS_CODES,
+  getModelMappingKey,
+  getOpenAICompactModelMappingKey,
+  getAntigravityModelMappingKey,
+  getTempUnschedRuleKey,
+  umqModeOptions,
+  quotaNotifyGlobalEnabled,
+  quotaNotifyState,
+  openAIWSModeOptions,
+  relayModeOptions,
+  relayModeHintKey,
+  customProtocolOptions,
+  openAIWSModeConcurrencyHintKey,
+  codexImageGenerationBridgeOptions,
+  codexImageGenerationBridgeBadgeLabel,
+  codexImageGenerationBridgeBadgeClass,
+  openAICompactModeOptions,
+  openAIResponsesModeOptions,
+  toggleOpenAIEndpointCapability,
+  isOpenAIModelRestrictionDisabled,
+  openAIResponsesStatusKey,
+  openAICompactStatusKey,
+  presetMappings,
+  tempUnschedPresets,
+  mixedChannelWarningMessageText,
+  statusOptions,
+  expiresAtInput,
+  addModelMapping,
+  removeModelMapping,
+  addPresetMapping,
+  addAntigravityModelMapping,
+  addOpenAICompactModelMapping,
+  removeOpenAICompactModelMapping,
+  removeAntigravityModelMapping,
+  addAntigravityPresetMapping,
+  syncAntigravityUpstreamModels,
+  toggleErrorCode,
+  addCustomErrorCode,
+  removeErrorCode,
+  addTempUnschedRule,
+  removeTempUnschedRule,
+  moveTempUnschedRule,
+  handleSubmit,
+  handleMixedChannelConfirm,
+  handleMixedChannelCancel,
+})
+void useEditAccountExternalTemplateBindings
 </script>

@@ -177,6 +177,100 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	response.Success(c, models)
 }
 
+// DiscoverUpstreamModelsRequest describes a transient Custom provider account.
+// Credentials are used only for this request and are never persisted.
+type DiscoverUpstreamModelsRequest struct {
+	Platform    string         `json:"platform" binding:"required"`
+	Type        string         `json:"type" binding:"required"`
+	Credentials map[string]any `json:"credentials" binding:"required"`
+	Extra       map[string]any `json:"extra"`
+	ProxyID     *int64         `json:"proxy_id"`
+}
+
+// DiscoverUpstreamModels fetches the live model list before a Custom account is
+// created. This lets the create form prefill supported_models without a
+// create-then-edit round trip.
+// POST /api/v1/admin/accounts/models/discover-upstream
+func (h *AccountHandler) DiscoverUpstreamModels(c *gin.Context) {
+	var req DiscoverUpstreamModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Platform) != service.PlatformCustom {
+		response.BadRequest(c, "Only Custom provider drafts support model discovery")
+		return
+	}
+	if strings.TrimSpace(req.Type) != service.AccountTypeAPIKey {
+		response.BadRequest(c, "Custom provider model discovery requires an API-key account")
+		return
+	}
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	credentials := cloneModelDiscoveryMap(req.Credentials)
+	extra := cloneModelDiscoveryMap(req.Extra)
+	protocol := strings.TrimSpace(firstModelDiscoveryString(extra, "protocol"))
+	if protocol == "" {
+		protocol = strings.TrimSpace(firstModelDiscoveryString(credentials, "protocol"))
+	}
+	switch protocol {
+	case service.CustomProtocolOpenAIResponses,
+		service.CustomProtocolOpenAIChatCompletions,
+		service.CustomProtocolOpenAIEmbeddings,
+		service.CustomProtocolAnthropicMessages,
+		service.CustomProtocolGemini:
+	default:
+		response.BadRequest(c, "Unsupported Custom provider protocol for model discovery")
+		return
+	}
+	credentials["protocol"] = protocol
+	extra["protocol"] = protocol
+
+	account := &service.Account{
+		Name:        "custom-model-discovery",
+		Platform:    service.PlatformCustom,
+		Type:        service.AccountTypeAPIKey,
+		Credentials: credentials,
+		Extra:       extra,
+		ProxyID:     req.ProxyID,
+		Concurrency: 1,
+	}
+	if req.ProxyID != nil && *req.ProxyID > 0 {
+		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if err != nil {
+			response.BadRequest(c, "Selected proxy was not found")
+			return
+		}
+		account.Proxy = proxy
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	if err != nil {
+		writeUpstreamModelSyncError(c, 0, err)
+		return
+	}
+	response.Success(c, gin.H{"models": models})
+}
+
+func cloneModelDiscoveryMap(input map[string]any) map[string]any {
+	output := make(map[string]any, len(input)+1)
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+func firstModelDiscoveryString(values map[string]any, key string) string {
+	if values == nil {
+		return ""
+	}
+	value, _ := values[key].(string)
+	return value
+}
+
 // SyncUpstreamModels handles syncing live supported models from an account's upstream.
 // POST /api/v1/admin/accounts/:id/models/sync-upstream
 func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
@@ -202,20 +296,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		if h.modelCatalogService != nil {
 			h.modelCatalogService.RecordSyncFailure(c.Request.Context(), account, service.ModelCatalogSourceUpstream, err)
 		}
-		var syncErr *service.UpstreamModelSyncError
-		if errors.As(err, &syncErr) {
-			switch syncErr.Kind {
-			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
-				response.BadRequest(c, syncErr.SafeMessage())
-			default:
-				slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
-				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
-			}
-			return
-		}
-
-		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
-		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		writeUpstreamModelSyncError(c, accountID, err)
 		return
 	}
 
@@ -236,6 +317,23 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"models": models, "sync_state": syncState})
+}
+
+func writeUpstreamModelSyncError(c *gin.Context, accountID int64, err error) {
+	var syncErr *service.UpstreamModelSyncError
+	if errors.As(err, &syncErr) {
+		switch syncErr.Kind {
+		case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+			response.BadRequest(c, syncErr.SafeMessage())
+		default:
+			slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
+			response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+		}
+		return
+	}
+
+	slog.Warn("sync_upstream_models_failed", "account_id", accountID)
+	response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 }
 
 func genericModelsFromIDs(modelIDs []string) []gin.H {

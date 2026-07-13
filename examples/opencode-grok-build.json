@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "xai-lightbridge": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "xAI Grok Build via LightBridge",
+      "options": {
+        "baseURL": "https://lightbridge.example.com/v1",
+        "apiKey": "REPLACE_WITH_LIGHTBRIDGE_TOKEN"
+      },
+      "models": {
+        "grok-4.5": {
+          "name": "grok-4.5",
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  }
+}

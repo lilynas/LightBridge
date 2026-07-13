@@ -90,6 +90,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 			}
+			if !s.isAccountAllowedForRequest(ctx, acc, groupID, platform, false) {
+				continue
+			}
 			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
 			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
 				_ = s.accountRepo.SetError(ctx, acc.ID,
@@ -199,6 +202,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isAccountAllowedForRequest(ctx, acc, groupID, platform, false) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -350,6 +356,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 			}
+			if !s.isAccountAllowedForRequest(ctx, acc, groupID, nativePlatform, true) {
+				continue
+			}
 			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
 			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
 				_ = s.accountRepo.SetError(ctx, acc.ID,
@@ -456,6 +465,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isAccountAllowedForRequest(ctx, acc, groupID, nativePlatform, true) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常

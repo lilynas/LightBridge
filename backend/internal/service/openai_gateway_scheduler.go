@@ -155,8 +155,18 @@ func shouldAutoPauseGrokAccountByQuota(account *Account) (bool, openAIQuotaAutoP
 	if grokQuotaSnapshotStaleForPause(snapshot, now) {
 		return false, openAIQuotaAutoPauseDecision{}
 	}
+	trustedBuildSnapshot := trustedGrokBuildQuotaSnapshot(snapshot)
 	if grokQuotaRetryAfterActive(snapshot, now) {
-		return true, openAIQuotaAutoPauseDecision{window: "retry_after", threshold: 1, utilization: 1}
+		if account.GrokUsingAPI() || trustedBuildSnapshot || snapshot.StatusCode == http.StatusTooManyRequests {
+			return true, openAIQuotaAutoPauseDecision{window: "retry_after", threshold: 1, utilization: 1}
+		}
+	}
+	// Grok Build entitlement is not represented reliably by official xAI API
+	// quota numbers. Only quota windows observed on an actual Build probe or
+	// gateway response are authoritative for Build scheduling. Imported, legacy,
+	// or source-less snapshots remain visible in the UI but cannot auto-pause.
+	if !account.GrokUsingAPI() && !trustedBuildSnapshot {
+		return false, openAIQuotaAutoPauseDecision{}
 	}
 	if paused, decision := shouldAutoPauseGrokQuotaWindow("requests", snapshot.Requests, now); paused {
 		return true, decision
@@ -165,6 +175,18 @@ func shouldAutoPauseGrokAccountByQuota(account *Account) (bool, openAIQuotaAutoP
 		return true, decision
 	}
 	return false, openAIQuotaAutoPauseDecision{}
+}
+
+func trustedGrokBuildQuotaSnapshot(snapshot *xai.QuotaSnapshot) bool {
+	if snapshot == nil || !snapshot.HasObservedHeaders() {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(snapshot.ObservationSource)) {
+	case "active_probe", "gateway_response":
+		return true
+	default:
+		return false
+	}
 }
 
 func grokQuotaRetryAfterActive(snapshot *xai.QuotaSnapshot, now time.Time) bool {
@@ -425,6 +447,26 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 // resolveOpenAIAccountUpstreamModelForRequest resolves the upstream model that
 // would be sent for a given request, honouring compact-only mappings when the
 // caller is on the /responses/compact path.
+func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if account == nil || requestedModel == "" {
+		return ""
+	}
+	upstreamModel := strings.TrimSpace(account.GetMappedModel(requestedModel))
+	if upstreamModel == "" {
+		return ""
+	}
+	if requireCompact {
+		compactModel := resolveOpenAICompactForwardModel(account, upstreamModel)
+		if compactModel != upstreamModel {
+			return compactModel
+		}
+	}
+	if account.IsGrok() {
+		return upstreamModel
+	}
+	return strings.TrimSpace(normalizeOpenAIModelForUpstream(account, upstreamModel))
+}
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, platform string) (*Account, error) {
 	platform = normalizeOpenAICompatiblePlatform(platform)
@@ -510,7 +552,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if !isOpenAIAccountEligibleForRequest(ctx, account, requestedModel, false, requiredCapability, platform) {
 		return nil
 	}
-	if s.isOpenAIAccountRuntimeBlocked(account) {
+	if s.isAccountRuntimeBlocked(account) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -712,7 +754,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact, requiredCapability, platform)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if s.isOpenAIAccountRuntimeBlocked(account) {
+					} else if s.isAccountRuntimeBlocked(account) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -756,7 +798,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if !isOpenAIAccountEligibleForRequest(ctx, acc, requestedModel, false, requiredCapability, platform) {
 			continue
 		}
-		if s.isOpenAIAccountRuntimeBlocked(acc) {
+		if s.isAccountRuntimeBlocked(acc) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -1033,13 +1075,13 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 		if !isOpenAIAccountEligibleForRequest(ctx, latest, requestedModel, requireCompact, requiredCapability, platform) {
 			return nil
 		}
-		if s.isOpenAIAccountRuntimeBlocked(latest) {
+		if s.isAccountRuntimeBlocked(latest) {
 			return nil
 		}
 		_ = s.schedulerSnapshot.UpdateAccountInCache(ctx, latest)
 		return latest
 	}
-	if s.isOpenAIAccountRuntimeBlocked(fresh) {
+	if s.isAccountRuntimeBlocked(fresh) {
 		return nil
 	}
 	return fresh
@@ -1063,7 +1105,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	if !isOpenAIAccountEligibleForRequest(ctx, latest, requestedModel, requireCompact, requiredCapability, platform) {
 		return nil
 	}
-	if s.isOpenAIAccountRuntimeBlocked(latest) {
+	if s.isAccountRuntimeBlocked(latest) {
 		return nil
 	}
 	return latest

@@ -69,8 +69,12 @@ function detectRecordInputFormat(input: Record<string, unknown>): InputFormat {
     return 'sub2api'
   }
 
-  // CPA
-  if (input.type === 'codex' && (typeof input.access_token === 'string' || typeof input.refresh_token === 'string' || typeof input.session_token === 'string')) {
+  // CPA (Codex/OpenAI and xAI Grok auth files)
+  const cpaType = typeof input.type === 'string' ? input.type.trim().toLowerCase() : ''
+  if (
+    ['codex', 'xai', 'grok'].includes(cpaType) &&
+    (typeof input.access_token === 'string' || typeof input.refresh_token === 'string' || typeof input.session_token === 'string')
+  ) {
     return 'cpa'
   }
 
@@ -196,6 +200,10 @@ function candidateFromRecord(
   if (meta) {
     records.push(meta)
   }
+  const extra = firstRecord([record], 'extra')
+  if (extra) {
+    records.push(extra)
+  }
   const user = firstRecord([record], 'user')
   if (user) {
     records.push(userAliases(user))
@@ -229,6 +237,8 @@ function userAliases(user: Record<string, unknown>): Record<string, unknown> {
 
 function normalizeCandidate(candidate: Candidate, index: number): NormalizedAccount | undefined {
   const { records } = candidate
+  const provider = detectAuthProvider(records)
+  const platform = provider === 'xai' ? 'grok' : 'openai'
   const accessToken = firstString(records, ['access_token', 'accessToken'])
   const refreshToken = firstString(records, ['refresh_token', 'refreshToken'])
   const sessionToken = firstString(records, ['session_token', 'sessionToken'])
@@ -246,7 +256,7 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
   const idAuthClaims = openAIAuthClaims(idClaims)
   const warnings: string[] = []
 
-  const preferClaimIdentity = candidate.inputFormat === 'session' || candidate.inputFormat === 'codex'
+  const preferClaimIdentity = provider === 'openai' && (candidate.inputFormat === 'session' || candidate.inputFormat === 'codex')
 
   // Account ID
   const claimedAccountId =
@@ -256,10 +266,11 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
     claimString(idClaims, 'chatgpt_account_id')
   const recordAccountId = firstString(records, ['account_id', 'accountId'])
   const accountId = preferClaimIdentity ? claimedAccountId ?? recordAccountId : recordAccountId ?? claimedAccountId
-  const chatgptAccountId =
-    (preferClaimIdentity
-      ? claimedAccountId ?? firstString(records, ['chatgpt_account_id', 'chatgptAccountId'])
-      : firstString(records, ['chatgpt_account_id', 'chatgptAccountId']) ?? claimedAccountId) ?? accountId
+  const chatgptAccountId = provider === 'openai'
+    ? ((preferClaimIdentity
+        ? claimedAccountId ?? firstString(records, ['chatgpt_account_id', 'chatgptAccountId'])
+        : firstString(records, ['chatgpt_account_id', 'chatgptAccountId']) ?? claimedAccountId) ?? accountId)
+    : undefined
 
   // User ID
   const claimedChatgptUserId =
@@ -272,12 +283,20 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
     claimString(accessClaims, 'sub') ??
     claimString(idClaims, 'sub')
   const recordChatgptUserId = firstString(records, ['chatgpt_user_id', 'chatgptUserId'])
-  const chatgptUserId = preferClaimIdentity ? claimedChatgptUserId ?? recordChatgptUserId : recordChatgptUserId ?? claimedChatgptUserId
+  const chatgptUserId = provider === 'openai'
+    ? (preferClaimIdentity ? claimedChatgptUserId ?? recordChatgptUserId : recordChatgptUserId ?? claimedChatgptUserId)
+    : undefined
+
+  const subject =
+    firstString(records, ['sub', 'subject']) ??
+    firstClaimString(accessFirstClaimRecords, ['sub'])
 
   // Issuer
   const claimedIssuer = firstClaimString(accessFirstClaimRecords, ['iss'])
   const recordIssuer = firstString(records, ['issuer', 'iss'])
-  const issuer = preferClaimIdentity ? claimedIssuer ?? recordIssuer : recordIssuer ?? claimedIssuer
+  const issuer =
+    (preferClaimIdentity ? claimedIssuer ?? recordIssuer : recordIssuer ?? claimedIssuer) ??
+    (provider === 'xai' ? 'https://auth.x.ai' : undefined)
 
   // Email
   const claimedEmail =
@@ -308,7 +327,11 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
     claimString(idClaims, 'chatgpt_plan_type') ??
     claimString(idClaims, 'plan_type')
   const recordPlanType = firstString(records, ['plan_type', 'planType', 'chatgpt_plan_type', 'chatgptPlanType'])
-  const planType = preferClaimIdentity ? claimedPlanType ?? recordPlanType : recordPlanType ?? claimedPlanType
+  const planType = provider === 'openai'
+    ? (preferClaimIdentity ? claimedPlanType ?? recordPlanType : recordPlanType ?? claimedPlanType)
+    : undefined
+  const subscriptionTier = firstString(records, ['subscription_tier', 'subscriptionTier'])
+  const entitlementStatus = firstString(records, ['entitlement_status', 'entitlementStatus'])
 
   // Workspace ID
   const claimedWorkspaceId =
@@ -332,21 +355,32 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
   const audience = firstClaimStringArray(accessFirstClaimRecords, 'aud')
 
   // Client ID
-  const clientId = firstClaimString(accessFirstClaimRecords, ['client_id'])
+  const clientId = firstString(records, ['client_id', 'clientId']) ?? firstClaimString(accessFirstClaimRecords, ['client_id'])
 
   // Scopes
-  const scopes = firstClaimStringArray(accessFirstClaimRecords, 'scp')
+  const recordScope = firstString(records, ['scope'])
+  const scopes = recordScope ? recordScope.split(/\s+/).filter(Boolean) : firstClaimStringArray(accessFirstClaimRecords, 'scp')
 
   // Not before
   const claimedNotBeforeNumber = firstClaimNumber(accessFirstClaimRecords, 'nbf')
   const notBefore = normalizeTimeValue(claimedNotBeforeNumber)
 
-  // ID token synthetic handling
-  let idTokenSynthetic = firstBoolean(records, ['id_token_synthetic', 'idTokenSynthetic']) ?? false
+  const tokenType = firstString(records, ['token_type', 'tokenType'])
+  const expiresIn = firstFiniteNumber(records, ['expires_in', 'expiresIn'])
+  const baseUrl = firstString(records, ['base_url', 'baseUrl'])
+  const redirectUri = firstString(records, ['redirect_uri', 'redirectUri'])
+  const tokenEndpoint = firstString(records, ['token_endpoint', 'tokenEndpoint'])
+  const authKind = firstString(records, ['auth_kind', 'authKind'])
+  const usingApi = firstBooleanLike(records, ['using_api', 'usingApi'])
+  const disabled = firstBooleanLike(records, ['disabled'])
+
+  // ID token synthetic handling is OpenAI-specific. xAI id_token is optional and
+  // must never be replaced with an OpenAI-shaped synthetic JWT.
+  let idTokenSynthetic = provider === 'openai' && (firstBoolean(records, ['id_token_synthetic', 'idTokenSynthetic']) ?? false)
   if (idToken && idTokenSynthetic) {
     idToken = applySyntheticIdTokenSignature(idToken)
   }
-  if (!idToken) {
+  if (!idToken && provider === 'openai') {
     const syntheticClaims = buildSyntheticClaims({
       claims: accessClaims ?? idClaims,
       email,
@@ -376,17 +410,20 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
   }
 
   return {
+    provider,
+    platform,
     accessToken,
     refreshToken,
     idToken,
     idTokenSynthetic,
     sessionToken,
-    accountId,
+    accountId: provider === 'openai' ? accountId : undefined,
+    subject,
     chatgptAccountId,
     chatgptUserId,
     chatgptAccountUserId: buildChatGptAccountUserId(chatgptUserId, chatgptAccountId),
     workspaceId,
-    userId: firstClaimString(accessFirstClaimRecords, ['sub']),
+    userId: provider === 'xai' ? subject : firstClaimString(accessFirstClaimRecords, ['sub']),
     issuer,
     audience,
     clientId,
@@ -395,12 +432,66 @@ function normalizeCandidate(candidate: Candidate, index: number): NormalizedAcco
     email,
     name,
     planType,
+    subscriptionTier,
+    entitlementStatus,
+    tokenType,
+    expiresIn,
     lastRefresh,
     expiresAt,
+    baseUrl,
+    redirectUri,
+    tokenEndpoint,
+    authKind,
+    usingApi,
+    disabled,
     sourceName: candidate.sourceName,
     sourcePath: candidate.sourcePath || `${candidate.sourceName}#${index + 1}`,
     warnings
   }
+}
+
+function detectAuthProvider(records: Record<string, unknown>[]): 'openai' | 'xai' {
+  const provider = firstString(records, ['provider', 'platform', 'type'])?.toLowerCase()
+  return provider === 'xai' || provider === 'grok' ? 'xai' : 'openai'
+}
+
+function firstFiniteNumber(records: Record<string, unknown>[], keys: string[]): number | undefined {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+      }
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value)
+        if (Number.isFinite(parsed)) {
+          return parsed
+        }
+      }
+    }
+  }
+  return undefined
+}
+
+function firstBooleanLike(records: Record<string, unknown>[], keys: string[]): boolean | undefined {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === 'boolean') {
+        return value
+      }
+      if (typeof value === 'number') {
+        if (value === 1) return true
+        if (value === 0) return false
+      }
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase()
+        if (normalized === 'true' || normalized === '1') return true
+        if (normalized === 'false' || normalized === '0') return false
+      }
+    }
+  }
+  return undefined
 }
 
 function buildChatGptAccountUserId(userId: string | undefined, accountId: string | undefined): string | undefined {

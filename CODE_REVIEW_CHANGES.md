@@ -1,6 +1,6 @@
 # LightBridge 0.2.80 分阶段稳定化与结构整理记录
 
-日期：2026-07-11
+日期：2026-07-12
 
 本目录由用户提供的 `LightBridge-0.2.80` 原始项目直接修改得到。开发过程先建立完整文件清单和声明索引，再把纯结构重排与业务行为修复分成独立提交，避免“为了整齐而重写”造成隐藏回归。
 
@@ -14,11 +14,11 @@
 
 当前清单约包含：
 
-- 2,812 个文本文件；
-- 约 698,289 行手写维护内容；
-- 约 222,616 行生成代码；
-- 1,782 个 Go 文件；
-- 687 个 TypeScript、JavaScript 或 Vue script 单元。
+- 2,838 个文本文件；
+- 约 706,069 行手写维护内容；
+- 约 222,620 行生成代码；
+- 1,802 个 Go 文件；
+- 688 个 TypeScript、JavaScript 或 Vue script 单元。
 
 清单可通过以下命令重新生成和核对：
 
@@ -78,7 +78,7 @@ python3 tools/codebase_inventory.py --check
 ### 7. CI 与工程清理
 
 - 删除 5 个只服务于旧 PR、拥有写权限并向固定分支推送修改的临时 workflow。
-- 统一开发文档、`go.mod`、CI 和 Dockerfile 的 Go 版本为 1.26.4。
+- 统一开发文档、`go.mod`、CI 和 Dockerfile 的 Go 版本为 1.26.5。
 
 ## 第二轮：框架边界整理
 
@@ -163,8 +163,8 @@ changed = 0
 
 当前离线环境内已完成：
 
-- Go AST：1,782 个 Go 文件，0 个解析错误；
-- 前端解析：687 个 TypeScript、JavaScript、Vue script 单元，0 个解析错误；
+- Go 格式与语法：1,802 个 Go 文件全部通过 `gofmt` 解析，0 个未格式化文件；
+- 前端解析：688 个 TypeScript、JavaScript、Vue script 单元，0 个语法错误；
 - Go 文件拆分声明等价检查：2,561 个声明，0 差异；
 - `SettingsForm` 初始化结构等价检查通过；
 - 新增前端 model/composable 独立 strict TypeScript 检查通过；
@@ -174,7 +174,7 @@ changed = 0
 
 ## 当前环境无法执行的验证
 
-当前沙盒只有 Go 1.23.2，而项目要求 Go 1.26.4；环境没有外网、Go module cache、pnpm 或 `node_modules`。因此不能诚实宣称在本地完成：
+当前沙盒只有 Go 1.23.2，而项目要求 Go 1.26.5；环境没有外网、Go module cache、pnpm 或 `node_modules`。因此不能诚实宣称在本地完成：
 
 - `go test -tags=unit ./...`
 - PostgreSQL/Redis 集成测试
@@ -184,16 +184,15 @@ changed = 0
 - `pnpm test`
 - `pnpm build`
 
-对应测试代码已经加入。完整门禁必须在原 GitHub CI 或具备 Go 1.26.4、PostgreSQL、Redis 和 pnpm 依赖的环境运行。
+对应测试代码已经加入。完整门禁必须在原 GitHub CI 或具备 Go 1.26.5、PostgreSQL、Redis 和 pnpm 依赖的环境运行。
 
 ## 后续仍建议分阶段处理
 
 1. 将内存计费任务升级为 PostgreSQL outbox 或 Redis Stream，覆盖进程突然崩溃而来不及同步 fallback 的场景。
 2. 为 `usage_pricing_failures` 增加自动重算、重试、人工忽略和管理员对账界面。
 3. 把 Refresh Token 从 localStorage 迁移到 HttpOnly/Secure/SameSite Cookie，并完整实现 rotation 和 reuse detection；这需要前后端认证集成测试保护。
-4. 把仍使用完整响应缓冲的跨协议流式转换改为内部事件流，降低首 token 延迟和内存峰值。
-5. 继续整理 OAuth pending flow、Account Test Service 和剩余大型 Vue 页面，但应继续遵守“先声明等价，再改变行为”。
-6. 远端 DNS 代理场景需要代理服务自身执行目标 IP allow/deny，或使用能够返回并固定解析结果的受控协议。
+4. 继续整理 OAuth pending flow、Account Test Service 和剩余大型 Vue 页面，但应继续遵守“先声明等价，再改变行为”。
+5. 远端 DNS 代理场景需要代理服务自身执行目标 IP allow/deny，或使用能够返回并固定解析结果的受控协议。
 
 ## 第三轮：渐进式功能注册与生产封板
 
@@ -262,3 +261,30 @@ changed = 0
 - Grok 4.5 保留官方支持的 reasoning effort 与 encrypted reasoning，`xhigh` 降级为 `high`，移除桥接器自动添加但 xAI 未声明支持的 `text.verbosity` 和 summary selector。
 
 详细协议边界见 `docs/architecture/ROUTER_PROTOCOL_COMPATIBILITY.md`。
+
+
+## 第五轮：Grok Code Review 缺陷修复与对照实现融合
+
+### 22. OAuth、Token 与多实例安全
+
+- Grok OAuth Token URL 在依赖注入阶段通过 HTTPS、xAI 域名白名单和私网地址校验；非法配置直接阻止启动，不再只显示 Runtime Sanity 警告。
+- 裸授权码和完整回调 URL 均必须验证 OAuth state；proxy 与 redirect URI 在创建 session 时冻结。
+- 生产 Grok OAuth session 从进程内 map 迁移到 Redis，并使用 Lua 原子 `GET + DEL` 保证一次性消费；本地测试 fallback 同样使用原子 Consume。
+- Refresh lock 竞争时进行有界等待并重新读取缓存/数据库；仍无新 Token 时明确失败，不返回或缓存过期 Token。
+
+### 23. Grok 调度、协议与真流式
+
+- 运行时调度封禁从 OpenAI 专用扩展为 OpenAI/Grok 共用 fast path；Grok 401、403、429 和 5xx 后的下一次调度立即跳过故障账号。
+- `reqStream` 与上游 Content-Type 统一收敛为 `actualStream`，避免 SSE 被交给非流式 JSON 解析器。
+- 跨协议转换移除生产 `httptest.ResponseRecorder` 和 `gin.CreateTestContext`；新的 `ProtocolResponseBridge` 实现完整 `gin.ResponseWriter`，基于原 Context Copy 逐 SSE 事件转换、写出并 Flush，同时保留 Engine、Params、Keys、客户端地址和取消语义。
+- 官方 xAI API 与 Grok Build Proxy 的请求补丁完全分离，Build workaround 不再影响官方 API 合法字段。
+- 删除手动 `Connection: Keep-Alive` hop-by-hop header。
+
+### 24. 对照实现取长补短
+
+- 吸收 OAuth/setup-token 更完整的自动命名来源、CPA xAI/Grok 字段覆盖、Replay 资源硬边界、外置 Vue template 的严格 TypeScript binding、Corepack 与精确 pnpm 版本、GitHub Actions 最小权限和不可变 Commit SHA。
+- 保留并加强当前版本更适合生产网关的 Redis reasoning replay、多实例 OAuth、真流式转换、安全 URL 校验与刷新锁竞争处理。
+- 明确拒绝对照版本中的单进程 replay、生产 ResponseRecorder 和整包覆盖式合并。
+- 详细决策见 `docs/architecture/GROK_PEER_IMPLEMENTATION_FUSION_REVIEW.md`。
+
+本轮状态仍为 **Production Candidate**。Go 1.26.5 全量测试、前端 typecheck/build、PostgreSQL/Redis 集成、真实 Grok Build CLI 和 Release workflow 必须按生产测试计划在本地 Agent 或 GitHub Actions 中全部通过后，才能提升为 Production Ready。

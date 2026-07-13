@@ -5,15 +5,15 @@ import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const groupsViewSource = readFileSync(
-  resolve(currentDir, "../GroupsView.vue"),
+const groupsViewTemplate = readFileSync(
+  resolve(currentDir, "../groups/GroupsView.template.html"),
   "utf8",
 );
 
 describe("groups models list layout", () => {
   it("keeps the toolbar outside of the scrolling list content", () => {
-    expect(groupsViewSource).toContain("overflow-hidden rounded-lg border");
-    expect(groupsViewSource).toContain("max-h-64 space-y-2 overflow-y-auto p-2");
-    expect(groupsViewSource).not.toContain("sticky top-0");
+    expect(groupsViewTemplate).toContain("overflow-hidden rounded-lg border");
+    expect(groupsViewTemplate).toContain("max-h-64 space-y-2 overflow-y-auto p-2");
+    expect(groupsViewTemplate).not.toContain("sticky top-0");
   });
 });

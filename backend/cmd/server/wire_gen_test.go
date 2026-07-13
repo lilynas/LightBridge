@@ -46,22 +46,14 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	idempotencyCleanupSvc := service.NewIdempotencyCleanupService(nil, cfg)
 	schedulerSnapshotSvc := service.NewSchedulerSnapshotService(nil, nil, nil, nil, cfg)
-	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
-
 	cleanup := provideCleanup(
 		nil, // entClient
 		nil, // redis
-		&service.OpsMetricsCollector{},
-		&service.OpsAggregationService{},
-		&service.OpsAlertEvaluatorService{},
-		&service.OpsCleanupService{},
-		&service.OpsScheduledReportService{},
-		opsSystemLogSinkSvc,
+		nil, // featureRuntime
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
 		subscriptionExpirySvc,
-		&service.UsageCleanupService{},
 		idempotencyCleanupSvc,
 		pricingSvc,
 		emailQueueSvc,
@@ -73,13 +65,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
 		nil, // openAIGateway
-		nil, // scheduledTestRunner
-		nil, // backupSvc
-		nil, // paymentOrderExpiry
-		nil, // channelMonitorRunner
-		nil, // contentModerationService
 		nil, // quotaFlusher
-		nil, // lightBridgeConnectSync
 		nil, // aistudioProxyManager
 	)
 

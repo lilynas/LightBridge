@@ -25,6 +25,10 @@ type stubAdminService struct {
 	updatedProxyIDs      []int64
 	updatedProxies       []*service.UpdateProxyInput
 	testedProxyIDs       []int64
+	schedulableUpdates   []struct {
+		accountID   int64
+		schedulable bool
+	}
 	getUserErr           error
 	createAccountErr     error
 	updateAccountErr     error
@@ -405,6 +409,10 @@ func (s *stubAdminService) SetAccountError(ctx context.Context, id int64, errorM
 }
 
 func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*service.Account, error) {
+	s.schedulableUpdates = append(s.schedulableUpdates, struct {
+		accountID   int64
+		schedulable bool
+	}{accountID: id, schedulable: schedulable})
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive, Schedulable: schedulable}
 	return &account, nil
 }

@@ -3,6 +3,7 @@ package xai
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +62,22 @@ func TestParseAuthorizationInput(t *testing.T) {
 	}
 }
 
-func TestBuildAuthorizationURLIncludesLightBridgeParameters(t *testing.T) {
+func TestSessionStoreConsumeIsAtomicAndOneTime(t *testing.T) {
+	store := NewSessionStore()
+	t.Cleanup(store.Stop)
+	session := &OAuthSession{State: "state", CreatedAt: time.Now()}
+	store.Set("session-id", session)
+
+	got, ok := store.Consume("session-id")
+	require.True(t, ok)
+	require.Same(t, session, got)
+
+	got, ok = store.Consume("session-id")
+	require.False(t, ok)
+	require.Nil(t, got)
+}
+
+func TestBuildAuthorizationURLIncludesGrokBuildParameters(t *testing.T) {
 	t.Setenv(EnvAuthorizeURL, "https://auth.example.test/oauth2/authorize")
 	t.Setenv(EnvClientID, "client-id")
 	t.Setenv(EnvScope, "openid profile offline_access api:access")
@@ -85,7 +101,18 @@ func TestBuildAuthorizationURLIncludesLightBridgeParameters(t *testing.T) {
 	require.Equal(t, "challenge", values.Get("code_challenge"))
 	require.Equal(t, "S256", values.Get("code_challenge_method"))
 	require.Equal(t, "generic", values.Get("plan"))
-	require.Equal(t, "lightbridge", values.Get("referrer"))
+	require.Equal(t, GrokBuildTokenReferrer, values.Get("referrer"))
+}
+
+func TestBuildAuthorizationURLForOfficialAPIMode(t *testing.T) {
+	t.Setenv(EnvAuthorizeURL, "https://auth.example.test/oauth2/authorize")
+	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
+
+	authURL, err := BuildAuthorizationURLForMode(OAuthModeOfficialAPI, "state", "challenge", "http://127.0.0.1:56121/callback", "nonce")
+	require.NoError(t, err)
+	parsed, err := url.Parse(authURL)
+	require.NoError(t, err)
+	require.Equal(t, "lightbridge", parsed.Query().Get("referrer"))
 }
 
 func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {

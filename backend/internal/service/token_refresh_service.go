@@ -450,6 +450,7 @@ func isNonRetryableRefreshError(err error) bool {
 		"access_denied",             // 访问被拒绝
 		"missing_project_id",        // 缺少 project_id
 		"no refresh token available",
+		"grok_build_token_context_missing", // Grok Build OAuth token must be re-authorized
 	}
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

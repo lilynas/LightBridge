@@ -164,6 +164,15 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, errors.New("create account input is required")
+	}
+	resolvedName, err := resolveCreateAccountName(input.Name, input.Platform, input.Type, input.Credentials, input.Extra)
+	if err != nil {
+		return nil, err
+	}
+	input.Name = resolvedName
+
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组

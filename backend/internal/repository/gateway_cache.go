@@ -3,13 +3,17 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/WilliamWang1721/LightBridge/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
-const stickySessionPrefix = "sticky_session:"
+const (
+	stickySessionPrefix       = "sticky_session:"
+	grokReasoningReplayPrefix = "grok_reasoning_replay:v1:"
+)
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -50,4 +54,39 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func buildGrokReasoningReplayKey(key string) string {
+	key = strings.TrimSpace(key)
+	key = strings.TrimPrefix(key, grokReasoningReplayPrefix)
+	return grokReasoningReplayPrefix + key
+}
+
+func (c *gatewayCache) GetGrokReasoningReplay(ctx context.Context, key string) ([]byte, error) {
+	value, err := c.rdb.Get(ctx, buildGrokReasoningReplayKey(key)).Bytes()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	return value, err
+}
+
+func (c *gatewayCache) SetGrokReasoningReplay(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return c.rdb.Set(ctx, buildGrokReasoningReplayKey(key), value, ttl).Err()
+}
+
+func (c *gatewayCache) DeleteGrokReasoningReplay(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	redisKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		redisKeys = append(redisKeys, buildGrokReasoningReplayKey(key))
+	}
+	if len(redisKeys) == 0 {
+		return nil
+	}
+	return c.rdb.Del(ctx, redisKeys...).Err()
 }

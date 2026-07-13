@@ -13,9 +13,12 @@ import (
 func TestGatewayService_isModelSupportedByAccount_AntigravityModelMapping(t *testing.T) {
 	svc := &GatewayService{}
 
-	// 使用 model_mapping 作为白名单（通配符匹配）
+	// 显式开启模型列表限制后，model_mapping 作为白名单参与通配符匹配。
 	account := &Account{
 		Platform: PlatformAntigravity,
+		Extra: map[string]any{
+			AccountExtraKeyRestrictToModelList: true,
+		},
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
 				"claude-*":   "claude-sonnet-4-5",
@@ -50,7 +53,10 @@ func TestGatewayService_isModelSupportedByAccount_AntigravityNoMapping(t *testin
 	// 未配置 model_mapping 时，使用默认映射（domain.DefaultAntigravityModelMapping）
 	// 只有默认映射中的模型才被支持
 	account := &Account{
-		Platform:    PlatformAntigravity,
+		Platform: PlatformAntigravity,
+		Extra: map[string]any{
+			AccountExtraKeyRestrictToModelList: true,
+		},
 		Credentials: map[string]any{},
 	}
 
@@ -162,6 +168,9 @@ func TestGatewayService_isModelSupportedByAccountWithContext_ThinkingMode(t *tes
 		t.Run(tt.name, func(t *testing.T) {
 			account := &Account{
 				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					AccountExtraKeyRestrictToModelList: true,
+				},
 				Credentials: map[string]any{
 					"model_mapping": tt.modelMapping,
 				},
@@ -185,6 +194,9 @@ func TestGatewayService_isModelSupportedByAccount_CustomMappingNotInDefault(t *t
 	// 自定义映射中包含不在默认映射中的模型
 	account := &Account{
 		Platform: PlatformAntigravity,
+		Extra: map[string]any{
+			AccountExtraKeyRestrictToModelList: true,
+		},
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
 				"my-custom-model":   "actual-upstream-model",
@@ -217,6 +229,9 @@ func TestGatewayService_isModelSupportedByAccountWithContext_CustomMappingThinki
 	// 自定义映射同时配置基础模型和 thinking 变体
 	account := &Account{
 		Platform: PlatformAntigravity,
+		Extra: map[string]any{
+			AccountExtraKeyRestrictToModelList: true,
+		},
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
 				"claude-sonnet-4-5":          "claude-sonnet-4-5",

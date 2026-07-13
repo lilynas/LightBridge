@@ -246,12 +246,12 @@
           <template #cell-capacity="{ row }">
             <GroupCapacityBadge
               v-if="capacityMap.get(row.id)"
-              :concurrency-used="capacityMap.get(row.id)!.concurrencyUsed"
-              :concurrency-max="capacityMap.get(row.id)!.concurrencyMax"
-              :sessions-used="capacityMap.get(row.id)!.sessionsUsed"
-              :sessions-max="capacityMap.get(row.id)!.sessionsMax"
-              :rpm-used="capacityMap.get(row.id)!.rpmUsed"
-              :rpm-max="capacityMap.get(row.id)!.rpmMax"
+              :concurrency-used="capacityMap.get(row.id)?.concurrencyUsed ?? 0"
+              :concurrency-max="capacityMap.get(row.id)?.concurrencyMax ?? 0"
+              :sessions-used="capacityMap.get(row.id)?.sessionsUsed ?? 0"
+              :sessions-max="capacityMap.get(row.id)?.sessionsMax ?? 0"
+              :rpm-used="capacityMap.get(row.id)?.rpmUsed ?? 0"
+              :rpm-max="capacityMap.get(row.id)?.rpmMax ?? 0"
             />
             <span v-else class="text-xs text-gray-400">—</span>
           </template>
@@ -449,14 +449,14 @@
             class="input"
             @change="
               (e) => {
-                const val = Number((e.target as HTMLSelectElement).value);
+                const val = Number(e.target.value);
                 if (
                   val &&
                   !createForm.copy_accounts_from_group_ids.includes(val)
                 ) {
                   createForm.copy_accounts_from_group_ids.push(val);
                 }
-                (e.target as HTMLSelectElement).value = '';
+                e.target.value = '';
               }
             "
           >
@@ -1743,14 +1743,14 @@
             class="input"
             @change="
               (e) => {
-                const val = Number((e.target as HTMLSelectElement).value);
+                const val = Number(e.target.value);
                 if (
                   val &&
                   !editForm.copy_accounts_from_group_ids.includes(val)
                 ) {
                   editForm.copy_accounts_from_group_ids.push(val);
                 }
-                (e.target as HTMLSelectElement).value = '';
+                e.target.value = '';
               }
             "
           >

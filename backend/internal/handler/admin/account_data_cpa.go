@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/WilliamWang1721/LightBridge/internal/service"
 )
 
@@ -24,8 +26,8 @@ type cpaImportPayload struct {
 	RefreshToken       string           `json:"refresh_token,omitempty"`
 	SessionToken       string           `json:"session_token,omitempty"`
 	SessionTokenCamel  string           `json:"sessionToken,omitempty"`
-	Expired            string           `json:"expired,omitempty"`
-	Expires            string           `json:"expires,omitempty"`
+	Expired            any              `json:"expired,omitempty"`
+	Expires            any              `json:"expires,omitempty"`
 	Disabled           *bool            `json:"disabled,omitempty"`
 	IDTokenSynthetic   *bool            `json:"id_token_synthetic,omitempty"`
 	LoadFactor         any              `json:"load_factor,omitempty"`
@@ -41,6 +43,16 @@ type cpaImportPayload struct {
 	RefreshTokenSingle string           `json:"refreshToken,omitempty"`
 	IDTokenSingle      string           `json:"idToken,omitempty"`
 	OAuthType          string           `json:"oauth_type,omitempty"`
+	BaseURL            string           `json:"base_url,omitempty"`
+	RedirectURI        string           `json:"redirect_uri,omitempty"`
+	TokenEndpoint      string           `json:"token_endpoint,omitempty"`
+	TokenType          string           `json:"token_type,omitempty"`
+	AuthKind           string           `json:"auth_kind,omitempty"`
+	Subject            string           `json:"sub,omitempty"`
+	LastRefresh        any              `json:"last_refresh,omitempty"`
+	ExpiresIn          any              `json:"expires_in,omitempty"`
+	UsingAPI           any              `json:"using_api,omitempty"`
+	Tier               string           `json:"tier,omitempty"`
 	AccountSingle      string           `json:"-"`
 }
 
@@ -102,6 +114,36 @@ func looksLikeLightBridgeData(payload DataPayload) bool {
 }
 
 func convertCPAImportPayload(raw json.RawMessage) (DataPayload, bool, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "[") {
+		var entries []json.RawMessage
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			return DataPayload{}, false, fmt.Errorf("invalid CPA account array: %w", err)
+		}
+		if len(entries) == 0 {
+			return DataPayload{}, false, nil
+		}
+		combined := DataPayload{
+			Type:       dataType,
+			Version:    dataVersion,
+			ExportedAt: time.Now().UTC().Format(time.RFC3339),
+			Proxies:    []DataProxy{},
+			Accounts:   []DataAccount{},
+		}
+		for index, entry := range entries {
+			converted, ok, err := convertCPAImportPayload(entry)
+			if err != nil {
+				return DataPayload{}, false, fmt.Errorf("invalid CPA account at index %d: %w", index, err)
+			}
+			if !ok {
+				return DataPayload{}, false, fmt.Errorf("unsupported CPA account at index %d", index)
+			}
+			combined.Proxies = append(combined.Proxies, converted.Proxies...)
+			combined.Accounts = append(combined.Accounts, converted.Accounts...)
+		}
+		return combined, true, nil
+	}
+
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return DataPayload{}, false, fmt.Errorf("invalid data JSON: %w", err)
@@ -128,7 +170,11 @@ func convertCPAImportPayload(raw json.RawMessage) (DataPayload, bool, error) {
 
 	account := cpaToDataAccount(src)
 	if strings.TrimSpace(account.Name) == "" {
-		account.Name = "openai-account"
+		if account.Platform == service.PlatformGrok {
+			account.Name = "grok-oauth-account"
+		} else {
+			account.Name = "openai-account"
+		}
 	}
 	return DataPayload{
 		Type:       dataType,
@@ -144,6 +190,8 @@ func looksLikeCPAImportPayload(probe map[string]json.RawMessage) bool {
 		switch strings.ToLower(strings.TrimSpace(cpaStringFromRawJSON(rawType))) {
 		case "codex":
 			return hasAnyCPAAuthField(probe, "access_token", "accessToken", "id_token", "idToken", "refresh_token", "refreshToken", "session_token", "sessionToken")
+		case "xai", "grok":
+			return hasAnyCPAAuthField(probe, "access_token", "accessToken", "id_token", "idToken", "refresh_token", "refreshToken")
 		}
 	}
 	if _, ok := probe["account_id"]; ok {
@@ -185,7 +233,11 @@ func normalizeSub2APIStylePayload(src cpaImportPayload) DataPayload {
 	for i := range src.Accounts {
 		account := src.Accounts[i]
 		if account.Concurrency == 0 {
-			account.Concurrency = 10
+			if account.Platform == service.PlatformGrok && account.Type == service.AccountTypeOAuth {
+				account.Concurrency = 1
+			} else {
+				account.Concurrency = 10
+			}
 		}
 		if account.Priority == 0 {
 			account.Priority = 1
@@ -204,6 +256,9 @@ func normalizeSub2APIStylePayload(src cpaImportPayload) DataPayload {
 }
 
 func cpaToDataAccount(src cpaImportPayload) DataAccount {
+	if cpaProviderType(src.Type) == "xai" {
+		return cpaXAIToDataAccount(src)
+	}
 	claims := decodeCPAIDToken(src.IDToken)
 	accountID := cpaFirstNonEmpty(
 		src.AccountID,
@@ -225,7 +280,7 @@ func cpaToDataAccount(src cpaImportPayload) DataAccount {
 	refreshToken := cpaFirstNonEmpty(src.RefreshToken, src.RefreshTokenSingle)
 	idToken := cpaFirstNonEmpty(src.IDToken, src.IDTokenSingle)
 	if idToken == "" {
-		idToken = buildCPASyntheticIDToken(accountID, planType, email, cpaFirstNonEmpty(src.User.ID, claims.Auth.UserID, claims.Auth.ChatGPTUserID), cpaFirstNonEmpty(src.Expired, src.Expires))
+		idToken = buildCPASyntheticIDToken(accountID, planType, email, cpaFirstNonEmpty(src.User.ID, claims.Auth.UserID, claims.Auth.ChatGPTUserID), cpaFirstNonEmpty(stringFromCPAAny(src.Expired), stringFromCPAAny(src.Expires)))
 	}
 
 	credentials := map[string]any{
@@ -270,6 +325,133 @@ func cpaToDataAccount(src cpaImportPayload) DataAccount {
 	}
 }
 
+func cpaXAIToDataAccount(src cpaImportPayload) DataAccount {
+	accessToken := cpaFirstNonEmpty(src.AccessToken, src.AccessTokenCamel)
+	refreshToken := cpaFirstNonEmpty(src.RefreshToken, src.RefreshTokenSingle)
+	idToken := cpaFirstNonEmpty(src.IDToken, src.IDTokenSingle)
+	subject := cpaFirstNonEmpty(src.Subject, src.AccountID, src.AccountSingle)
+	email := cpaFirstNonEmpty(src.Email, src.User.Email)
+
+	credentials := map[string]any{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"id_token":      idToken,
+		"email":         email,
+		"sub":           subject,
+	}
+	copyCPAStringCredential(credentials, "token_type", src.TokenType)
+	expiredValue := cpaFirstNonEmpty(stringFromCPAAny(src.Expired), stringFromCPAAny(src.Expires))
+	lastRefreshValue := stringFromCPAAny(src.LastRefresh)
+	copyCPAStringCredential(credentials, "expired", expiredValue)
+	copyCPAStringCredential(credentials, "last_refresh", lastRefreshValue)
+	copyCPAStringCredential(credentials, "base_url", src.BaseURL)
+	copyCPAStringCredential(credentials, "redirect_uri", src.RedirectURI)
+	copyCPAStringCredential(credentials, "token_endpoint", src.TokenEndpoint)
+	copyCPAStringCredential(credentials, "auth_kind", cpaFirstNonEmpty(src.AuthKind, "oauth"))
+	copyCPAStringCredential(credentials, "tier", src.Tier)
+	if expiresIn := intOrDefault(src.ExpiresIn, 0); expiresIn > 0 {
+		credentials["expires_in"] = expiresIn
+	}
+	usingAPI := boolOrDefault(src.UsingAPI, false)
+	if src.UsingAPI == nil {
+		baseURL := strings.TrimSpace(src.BaseURL)
+		if baseURL != "" && !xai.IsCLIChatProxyBaseURL(baseURL) {
+			usingAPI = strings.Contains(strings.ToLower(baseURL), "api.x.ai")
+		}
+	}
+	credentials["using_api"] = usingAPI
+	mode := xai.OAuthModeBuildProxy
+	if usingAPI {
+		mode = xai.OAuthModeOfficialAPI
+	}
+	validation := xai.ValidateAccessTokenForMode(accessToken, mode)
+	credentials[service.GrokCredentialOAuthMode] = string(mode)
+	credentials[service.GrokCredentialTokenCapability] = string(validation.Capability)
+	credentials[service.GrokCredentialTokenContextChecked] = time.Now().UTC().Format(time.RFC3339)
+	if validation.Inspection.Referrer != "" {
+		credentials[service.GrokCredentialTokenReferrer] = validation.Inspection.Referrer
+	}
+	if !validation.Compatible {
+		credentials[service.GrokCredentialReauthRequired] = true
+	}
+
+	var expiresAt *int64
+	if parsed := parseCPAUnixSeconds(src.Expired); parsed > 0 {
+		expiresAt = &parsed
+	} else if parsed := parseCPAUnixSeconds(src.Expires); parsed > 0 {
+		expiresAt = &parsed
+	} else if refreshedAt := parseCPAUnixSeconds(src.LastRefresh); refreshedAt > 0 {
+		if expiresIn := intOrDefault(src.ExpiresIn, 0); expiresIn > 0 {
+			derived := refreshedAt + int64(expiresIn)
+			expiresAt = &derived
+		}
+	}
+
+	extra := map[string]any{"import_source": "cliproxyapi"}
+	for key, value := range src.Extra {
+		extra[key] = value
+	}
+	if !validation.Compatible {
+		extra["grok_reauth_required"] = true
+		extra["grok_reauth_reason"] = validation.Reason
+	}
+
+	return DataAccount{
+		Name:               cpaFirstNonEmpty(email, subject, "grok-oauth-account"),
+		Platform:           service.PlatformGrok,
+		Type:               service.AccountTypeOAuth,
+		Credentials:        credentials,
+		Extra:              extra,
+		Concurrency:        intOrDefault(src.Concurrency, 1),
+		Priority:           intOrDefault(src.Priority, 1),
+		RateMultiplier:     floatOrDefaultPtr(src.RateMultiplier, 1),
+		ExpiresAt:          expiresAt,
+		AutoPauseOnExpired: boolOrDefaultPtr(src.AutoPauseOnExpired, true),
+	}
+}
+
+func copyCPAStringCredential(credentials map[string]any, key, value string) {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		credentials[key] = trimmed
+	}
+}
+
+func cpaProviderType(value any) string {
+	text := strings.ToLower(strings.TrimSpace(stringFromCPAAny(value)))
+	switch text {
+	case "xai", "grok":
+		return "xai"
+	case "codex", "openai", "chatgpt":
+		return "codex"
+	default:
+		return text
+	}
+}
+
+func stringFromCPAAny(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return typed.String()
+	case float64:
+		if typed == float64(int64(typed)) {
+			return fmt.Sprintf("%d", int64(typed))
+		}
+		return fmt.Sprintf("%g", typed)
+	case float32:
+		return fmt.Sprintf("%g", typed)
+	case int:
+		return fmt.Sprintf("%d", typed)
+	case int64:
+		return fmt.Sprintf("%d", typed)
+	case int32:
+		return fmt.Sprintf("%d", typed)
+	default:
+		return ""
+	}
+}
+
 func decodeCPAIDToken(token string) cpaIDTokenClaims {
 	var claims cpaIDTokenClaims
 	parts := strings.Split(token, ".")
@@ -310,11 +492,19 @@ func buildCPASyntheticIDToken(accountID, planType, email, userID, expired string
 	return base64.RawURLEncoding.EncodeToString(headerBytes) + "." + base64.RawURLEncoding.EncodeToString(payloadBytes) + "."
 }
 
-func parseCPAUnixSeconds(value string) int64 {
-	if strings.TrimSpace(value) == "" {
+func parseCPAUnixSeconds(value any) int64 {
+	text := strings.TrimSpace(stringFromCPAAny(value))
+	if text == "" {
 		return 0
 	}
-	parsed, err := time.Parse(time.RFC3339, value)
+	if number, err := json.Number(text).Int64(); err == nil {
+		// JavaScript timestamps and some CPA forks use milliseconds.
+		if number > 1_000_000_000_000 {
+			number /= 1000
+		}
+		return number
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, text)
 	if err == nil {
 		return parsed.Unix()
 	}
@@ -378,11 +568,35 @@ func floatOrDefaultPtr(value any, fallback float64) *float64 {
 }
 
 func boolOrDefaultPtr(value any, fallback bool) *bool {
-	result := fallback
-	if v, ok := value.(bool); ok {
-		result = v
-	}
+	result := boolOrDefault(value, fallback)
 	return &result
+}
+
+func boolOrDefault(value any, fallback bool) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		if parsed, err := strconv.ParseBool(strings.TrimSpace(typed)); err == nil {
+			return parsed
+		}
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64); err == nil {
+			return parsed != 0
+		}
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return parsed != 0
+		}
+	case float64:
+		return typed != 0
+	case float32:
+		return typed != 0
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	}
+	return fallback
 }
 
 func isJSONObject(raw json.RawMessage) bool {

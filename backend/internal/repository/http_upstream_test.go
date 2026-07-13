@@ -101,6 +101,18 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileDefaultsToHTTP2AndNoHeaderTimeout()
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
 }
 
+func (s *HTTPUpstreamSuite) TestGrokProfileForcesNativeHTTP2() {
+	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 45}
+	svc := s.newService()
+	entry, err := svc.getClientEntry("", 77, 1, service.HTTPUpstreamProfileGrok, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.True(s.T(), transport.ForceAttemptHTTP2, "Grok Build profile must use net/http native HTTP/2")
+	require.Equal(s.T(), 45*time.Second, transport.ResponseHeaderTimeout)
+	require.Equal(s.T(), upstreamProtocolModeGrokH2, entry.protocolMode)
+}
+
 func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout:       600,

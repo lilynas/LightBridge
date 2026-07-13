@@ -68,6 +68,8 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	startTime := time.Now()
+	isGrokAccount := account != nil && account.IsGrok()
+	grokBuildCompat := isGrokAccount && !account.GrokUsingAPI()
 
 	// 1. Parse Chat Completions request
 	var chatReq apicompat.ChatCompletionsRequest
@@ -84,7 +86,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	compatPromptCacheInjected := false
-	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+	if promptCacheKey == "" && account.Type == AccountTypeOAuth && (shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) || grokBuildCompat) {
 		promptCacheKey = deriveCompatPromptCacheKey(&chatReq, upstreamModel)
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
@@ -167,7 +169,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
 
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth && !isGrokAccount {
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
@@ -184,6 +186,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
+		}
+	}
+
+	if isGrokAccount && strings.TrimSpace(promptCacheKey) != "" && strings.TrimSpace(gjson.GetBytes(responsesBody, "prompt_cache_key").String()) == "" {
+		responsesBody, err = sjson.SetBytes(responsesBody, "prompt_cache_key", strings.TrimSpace(promptCacheKey))
+		if err != nil {
+			return nil, fmt.Errorf("set Grok prompt cache key: %w", err)
 		}
 	}
 
@@ -205,19 +214,8 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
 
-	// 6. Build upstream request
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, promptCacheKey, false)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
-	}
-
-	if promptCacheKey != "" {
-		upstreamReq.Header.Set("session_id", generateSessionUUID(promptCacheKey))
-	}
-
-	// 7. Send request
+	// 6. Build and send upstream request. Grok OAuth accounts must never pass
+	// through ChatGPT Codex's internal request builder.
 	proxyURL := ""
 	if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
 		proxyURL, err = s.resolveAccountProxyURL(ctx, account, account.Platform, apiKeyGroupID(getAPIKeyFromContext(c)))
@@ -225,7 +223,29 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			return nil, err
 		}
 	}
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	var (
+		resp            *http.Response
+		grokCompatState *grokCompatUpstreamRequest
+	)
+	if isGrokAccount {
+		grokCompatState, err = s.prepareGrokCompatUpstreamRequest(ctx, c, account, responsesBody, upstreamModel, promptCacheKey, true)
+		if err == nil {
+			resp, err = s.doGrokCompatUpstreamRequest(upstreamCtx, c, account, token, proxyURL, upstreamModel, grokCompatState)
+		}
+		releaseUpstreamCtx()
+	} else {
+		upstreamReq, buildErr := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, promptCacheKey, false)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, fmt.Errorf("build upstream request: %w", buildErr)
+		}
+		if promptCacheKey != "" {
+			upstreamReq.Header.Set("session_id", generateSessionUUID(promptCacheKey))
+		}
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	}
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
@@ -250,6 +270,26 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if isGrokAccount {
+			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			if s.shouldFailoverUpstreamError(resp.StatusCode) {
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.EffectivePlatform(),
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+					Kind:               "failover",
+					Message:            upstreamMsg,
+				})
+				return nil, &UpstreamFailoverError{
+					StatusCode:             resp.StatusCode,
+					ResponseBody:           respBody,
+					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				}
+			}
+			return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+		}
 		if account.Type == AccountTypeAPIKey &&
 			openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportUnknown &&
 			!isResponsesEndpointSupportedByStatus(resp.StatusCode) {
@@ -289,6 +329,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 	}
 
+	if isGrokAccount {
+		if err := s.normalizeGrokCompatUpstreamResponse(ctx, resp, grokCompatState); err != nil {
+			return nil, err
+		}
+	}
+
 	// 9. Handle normal response
 	var result *OpenAIForwardResult
 	var handleErr error
@@ -311,7 +357,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
-	if handleErr == nil && account.Type == AccountTypeOAuth {
+	if handleErr == nil && account.Type == AccountTypeOAuth && !isGrokAccount {
 		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 		}

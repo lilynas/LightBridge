@@ -9,7 +9,7 @@ import (
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
 	openAIOAuth429FallbackCooldown        = 5 * time.Second
-	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
+	accountRuntimeBlockFallbackCooldown   = 2 * time.Minute
 	openAIOAuth429StormWindow             = 10 * time.Second
 	openAIOAuth429StormThreshold          = 20
 	openAIOAuth429StormMaxAccountSwitches = 1
@@ -29,6 +29,13 @@ func isOpenAIOAuthAccount(account *Account) bool {
 
 func isOpenAIAccount(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI
+}
+
+func isRuntimeBlockSupportedAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	return account.Platform == PlatformOpenAI || account.Platform == PlatformGrok
 }
 
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) bool {
@@ -73,19 +80,19 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 }
 
 func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until time.Time, reason string) {
-	if s == nil || !isOpenAIAccount(account) {
+	if s == nil || !isRuntimeBlockSupportedAccount(account) {
 		return
 	}
 	now := time.Now()
 	blockUntil := until
 	if blockUntil.IsZero() || !blockUntil.After(now) {
-		blockUntil = now.Add(openAIStopSchedulingBridgeCooldown)
+		blockUntil = now.Add(accountRuntimeBlockFallbackCooldown)
 	}
 
 	for {
-		current, loaded := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
+		current, loaded := s.accountRuntimeBlockUntil.Load(account.ID)
 		if !loaded {
-			actual, stored := s.openaiAccountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
+			actual, stored := s.accountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
 			if !stored {
 				return
 			}
@@ -94,7 +101,7 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 
 		currentUntil, ok := current.(time.Time)
 		if !ok || currentUntil.IsZero() {
-			if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+			if s.accountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
 				return
 			}
 			continue
@@ -102,7 +109,7 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 		if currentUntil.After(blockUntil) {
 			return
 		}
-		if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+		if s.accountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
 			return
 		}
 	}
@@ -112,26 +119,26 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	if s == nil || accountID <= 0 {
 		return
 	}
-	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.accountRuntimeBlockUntil.Delete(accountID)
 }
 
-func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
-	if s == nil || !isOpenAIAccount(account) {
+func (s *OpenAIGatewayService) isAccountRuntimeBlocked(account *Account) bool {
+	if s == nil || !isRuntimeBlockSupportedAccount(account) {
 		return false
 	}
-	value, ok := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	value, ok := s.accountRuntimeBlockUntil.Load(account.ID)
 	if !ok {
 		return false
 	}
 	cooldownUntil, ok := value.(time.Time)
 	if !ok || cooldownUntil.IsZero() {
-		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.accountRuntimeBlockUntil.Delete(account.ID)
 		return false
 	}
 	if time.Now().Before(cooldownUntil) {
 		return true
 	}
-	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+	s.accountRuntimeBlockUntil.Delete(account.ID)
 	return false
 }
 

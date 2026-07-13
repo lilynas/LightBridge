@@ -116,6 +116,13 @@
 
     <!-- Grok OAuth accounts: quota headers + local usage -->
     <template v-else-if="account.platform === 'grok' && account.type === 'oauth'">
+      <div
+        v-if="account.grok_reauth_required"
+        class="mb-1 max-w-[240px] rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+        :title="t('admin.accounts.usageWindow.grokBuildReauthDetail')"
+      >
+        {{ t('admin.accounts.usageWindow.grokBuildReauthRequired') }}
+      </div>
       <div v-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
           <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>

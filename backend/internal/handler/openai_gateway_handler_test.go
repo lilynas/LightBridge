@@ -1598,3 +1598,10 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 func testStringPtr(v string) *string {
 	return &v
 }
+
+func TestAllowOpenAIResponsesHTTPContinuationOnlyForGrok(t *testing.T) {
+	require.True(t, allowOpenAIResponsesHTTPContinuation(service.PlatformGrok))
+	require.True(t, allowOpenAIResponsesHTTPContinuation(" GROK "))
+	require.False(t, allowOpenAIResponsesHTTPContinuation(service.PlatformOpenAI))
+	require.False(t, allowOpenAIResponsesHTTPContinuation(""))
+}

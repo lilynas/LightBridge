@@ -208,6 +208,16 @@ const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const restrictToModelList = ref(false)
+const customModelDiscoveryLoading = ref(false)
+const customModelDiscoveryError = ref('')
+const customModelDiscoveryLastCount = ref<number | null>(null)
+const customModelDiscoveryLastFingerprint = ref('')
+const customModelDiscoveryUserEdited = ref(false)
+let customModelDiscoveryTimer: ReturnType<typeof setTimeout> | undefined
+let customModelDiscoveryRevision = 0
+let customModelManualEditRevision = 0
+let applyingCustomDiscoveredModels = false
+
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -674,6 +684,10 @@ const isOAuthFlow = computed(() => {
   return accountCategory.value === 'oauth-based'
 })
 
+// OAuth 登录完成后由服务端优先使用已验证的账户邮箱作为名称。
+// setup-token/API Key/上游渠道仍要求用户显式填写，避免产生含糊名称。
+const isOAuthAccountNameOptional = computed(() => isOAuthFlow.value && form.type === 'oauth')
+
 // AIStudio 反代流程：Gemini 平台 + API Key + proxy 模式。
 // 这是一个独立的两步流程（基础信息 → AI Studio 反代授权），需要保留顶部步骤指示器。
 const isAistudioProxyFlow = computed(() =>
@@ -735,6 +749,158 @@ const canExchangeCode = computed(() => {
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
+const customModelDiscoveryFingerprint = computed(() => {
+  if (form.platform !== 'custom') return ''
+  return JSON.stringify([
+    form.customProtocol.trim(),
+    form.customBaseUrl.trim(),
+    form.customApiKey.trim(),
+    form.proxy_id ?? null
+  ])
+})
+
+const canDiscoverCustomModels = computed(() =>
+  form.platform === 'custom' &&
+  !!form.customProtocol.trim() &&
+  !!form.customBaseUrl.trim() &&
+  !!form.customApiKey.trim()
+)
+
+const extractCustomModelDiscoveryError = (error: unknown): string => {
+  const response = (error as { response?: { data?: { message?: string; detail?: string } } })?.response
+  return response?.data?.message || response?.data?.detail || t('admin.accounts.customModelDiscoveryFailed')
+}
+
+const setCustomAllowedModelsFromSystem = (models: string[]) => {
+  applyingCustomDiscoveredModels = true
+  try {
+    allowedModels.value = [...models]
+  } finally {
+    applyingCustomDiscoveredModels = false
+  }
+}
+
+const runCustomModelDiscovery = async (
+  expectedFingerprint: string,
+  expectedRevision: number,
+  expectedManualEditRevision: number
+): Promise<void> => {
+  if (!canDiscoverCustomModels.value || expectedFingerprint !== customModelDiscoveryFingerprint.value) {
+    return
+  }
+  if (customModelDiscoveryUserEdited.value) {
+    return
+  }
+
+  customModelDiscoveryLoading.value = true
+  customModelDiscoveryError.value = ''
+  try {
+    const result = await adminAPI.accounts.discoverUpstreamModels({
+      platform: 'custom',
+      type: 'apikey',
+      credentials: {
+        protocol: form.customProtocol.trim(),
+        base_url: form.customBaseUrl.trim(),
+        api_key: form.customApiKey.trim()
+      },
+      extra: {
+        protocol: form.customProtocol.trim()
+      },
+      proxy_id: form.proxy_id
+    })
+
+    const isCurrent =
+      expectedRevision === customModelDiscoveryRevision &&
+      expectedFingerprint === customModelDiscoveryFingerprint.value &&
+      expectedManualEditRevision === customModelManualEditRevision &&
+      !customModelDiscoveryUserEdited.value
+    if (!isCurrent) return
+
+    const models = Array.from(new Set((result.models || []).map((model) => model.trim()).filter(Boolean))).sort()
+    setCustomAllowedModelsFromSystem(models)
+    customModelDiscoveryLastFingerprint.value = expectedFingerprint
+    customModelDiscoveryLastCount.value = models.length
+  } catch (error: unknown) {
+    if (
+      expectedRevision === customModelDiscoveryRevision &&
+      expectedFingerprint === customModelDiscoveryFingerprint.value
+    ) {
+      customModelDiscoveryError.value = extractCustomModelDiscoveryError(error)
+      customModelDiscoveryLastCount.value = null
+    }
+  } finally {
+    if (
+      expectedRevision === customModelDiscoveryRevision &&
+      expectedFingerprint === customModelDiscoveryFingerprint.value
+    ) {
+      customModelDiscoveryLoading.value = false
+    }
+  }
+}
+
+const scheduleCustomModelDiscovery = () => {
+  customModelDiscoveryRevision += 1
+  const revision = customModelDiscoveryRevision
+  const fingerprint = customModelDiscoveryFingerprint.value
+  const manualEditRevision = customModelManualEditRevision
+
+  if (customModelDiscoveryTimer) {
+    clearTimeout(customModelDiscoveryTimer)
+    customModelDiscoveryTimer = undefined
+  }
+  customModelDiscoveryLoading.value = false
+  customModelDiscoveryError.value = ''
+  customModelDiscoveryLastCount.value = null
+  customModelDiscoveryLastFingerprint.value = ''
+  customModelDiscoveryUserEdited.value = false
+
+  if (!canDiscoverCustomModels.value) return
+  customModelDiscoveryTimer = setTimeout(() => {
+    customModelDiscoveryTimer = undefined
+    void runCustomModelDiscovery(fingerprint, revision, manualEditRevision)
+  }, 650)
+}
+
+const ensureCustomModelsDiscovered = async (): Promise<void> => {
+  if (!canDiscoverCustomModels.value || customModelDiscoveryUserEdited.value) return
+  const fingerprint = customModelDiscoveryFingerprint.value
+  if (customModelDiscoveryLastFingerprint.value === fingerprint) return
+
+  if (customModelDiscoveryTimer) {
+    clearTimeout(customModelDiscoveryTimer)
+    customModelDiscoveryTimer = undefined
+  }
+  customModelDiscoveryRevision += 1
+  await runCustomModelDiscovery(
+    fingerprint,
+    customModelDiscoveryRevision,
+    customModelManualEditRevision
+  )
+}
+
+watch(
+  allowedModels,
+  () => {
+    if (form.platform !== 'custom' || applyingCustomDiscoveredModels) return
+    customModelManualEditRevision += 1
+    customModelDiscoveryUserEdited.value = true
+  },
+  { deep: true, flush: 'sync' }
+)
+
+watch(
+  [
+    () => props.show,
+    () => form.platform,
+    () => form.customProtocol,
+    () => form.customBaseUrl,
+    () => form.customApiKey,
+    () => form.proxy_id
+  ],
+  scheduleCustomModelDiscovery,
+  { immediate: true }
+)
+
 // Watchers
 watch(
   () => props.show,
@@ -744,8 +910,14 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
-      // Modal opened - fill related models
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Modal opened - fill related models. Custom uses the system setter so
+      // the initial empty/default list is not mistaken for a manual edit that
+      // would suppress the first automatic upstream discovery request.
+      if (form.platform === 'custom') {
+        setCustomAllowedModelsFromSystem(getModelsByPlatform(form.platform))
+      } else {
+        allowedModels.value = [...getModelsByPlatform(form.platform)]
+      }
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
@@ -814,8 +986,13 @@ watch(
           : newPlatform === 'grok'
             ? 'https://api.x.ai'
             : 'https://api.anthropic.com'
-    // Clear model-related settings
-    allowedModels.value = []
+    // Clear model-related settings. Custom discovery owns this initial reset so
+    // it is not mistaken for a user edit while a model request is in flight.
+    if (newPlatform === 'custom') {
+      setCustomAllowedModelsFromSystem([])
+    } else {
+      allowedModels.value = []
+    }
     modelMappings.value = []
     restrictToModelList.value = false
     // Antigravity: 默认使用映射模式并填充默认映射
@@ -946,7 +1123,12 @@ watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...getModelsByPlatform(form.platform)]
+      const relatedModels = [...getModelsByPlatform(form.platform)]
+      if (form.platform === 'custom') {
+        setCustomAllowedModelsFromSystem(relatedModels)
+      } else {
+        allowedModels.value = relatedModels
+      }
     }
   }
 )
@@ -1305,6 +1487,17 @@ const resetForm = () => {
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
   restrictToModelList.value = false
+  if (customModelDiscoveryTimer) {
+    clearTimeout(customModelDiscoveryTimer)
+    customModelDiscoveryTimer = undefined
+  }
+  customModelDiscoveryRevision += 1
+  customModelManualEditRevision = 0
+  customModelDiscoveryLoading.value = false
+  customModelDiscoveryError.value = ''
+  customModelDiscoveryLastCount.value = null
+  customModelDiscoveryLastFingerprint.value = ''
+  customModelDiscoveryUserEdited.value = false
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -1576,6 +1769,10 @@ const handleSubmit = async () => {
       return
     }
 
+    // Do one immediate, non-blocking discovery attempt when the debounced
+    // request has not completed yet. Failure never prevents account creation.
+    await ensureCustomModelsDiscovered()
+
     const credentials: Record<string, unknown> = {
       base_url: form.customBaseUrl.trim(),
       api_key: form.customApiKey.trim()
@@ -1593,7 +1790,7 @@ const handleSubmit = async () => {
 
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
-    if (!form.name.trim()) {
+    if (!isOAuthAccountNameOptional.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     }
@@ -2177,7 +2374,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         }
 
         // Generate account name; fallback to email if name is empty (ent schema requires NotEmpty)
-        const baseName = form.name || tokenInfo.email || 'OpenAI OAuth Account'
+        const baseName = form.name.trim() || tokenInfo.email || 'OpenAI OAuth Account'
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
@@ -2231,6 +2428,12 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
   }
 }
 
+const buildOAuthBatchAccountName = (index: number, total: number): string => {
+  const baseName = form.name.trim()
+  if (!baseName) return ''
+  return total > 1 ? `${baseName} #${index + 1}` : baseName
+}
+
 // 手动输入 RT（Codex CLI client_id，默认）
 const handleOpenAIValidateRT = (rt: string) => handleOpenAIBatchRT(rt)
 
@@ -2274,9 +2477,9 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         }
 
         const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-        
+
         // Generate account name with index for batch
-        const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
+        const accountName = buildOAuthBatchAccountName(i, refreshTokens.length)
 
         // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
         const createPayload = withAntigravityConfirmFlag({
@@ -2366,7 +2569,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           credentials.model_mapping = modelMapping
         }
         const extra = buildModelListExtra(grokOAuth.buildExtraInfo(tokenInfo))
-        const baseName = form.name || tokenInfo.email || tokenInfo.name || 'Grok OAuth Account'
+        const baseName = form.name.trim() || tokenInfo.email || tokenInfo.name || 'Grok OAuth Account'
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         await adminAPI.accounts.create({
@@ -2721,7 +2924,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra.custom_base_url = customBaseUrl.value.trim()
         }
 
-        const accountName = keys.length > 1 ? `${form.name} #${i + 1}` : form.name
+        const accountName = buildOAuthBatchAccountName(i, keys.length)
 
         const credentials: Record<string, unknown> = { ...tokenInfo }
         applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
@@ -2779,4 +2982,98 @@ const handleCookieAuth = async (sessionKey: string) => {
     oauth.loading.value = false
   }
 }
+
+// External-template typecheck bridge: vue-tsc does not count identifiers used
+// only by <template src="...">. Keep the bindings in a lazy function so
+// no values are evaluated solely for typechecking.
+const useCreateAccountExternalTemplateBindings = () => ({
+  commonErrorCodes,
+  isValidWildcardPattern,
+  BaseDialog,
+  ConfirmDialog,
+  Select,
+  Icon,
+  ProxySelector,
+  ProxyAdBanner,
+  GroupSelector,
+  ModelWhitelistSelector,
+  QuotaLimitCard,
+  VERTEX_LOCATION_OPTIONS,
+  OAuthAuthorizationFlow,
+  LightBridgeConnectConfig,
+  authStore,
+  oauthStepTitle,
+  apiKeyHint,
+  currentAuthUrl,
+  currentSessionId,
+  currentOAuthLoading,
+  currentOAuthError,
+  DEFAULT_POOL_MODE_RETRY_STATUS_CODES,
+  quotaNotifyGlobalEnabled,
+  quotaNotifyState,
+  antigravityPresetMappings,
+  bedrockPresets,
+  vertexServiceAccountFileInput,
+  getModelMappingKey,
+  getOpenAICompactModelMappingKey,
+  getAntigravityModelMappingKey,
+  getTempUnschedRuleKey,
+  openAICompactModeOptions,
+  openAIResponsesModeOptions,
+  openAIEndpointCapabilityOptions,
+  toggleOpenAIEndpointCapability,
+  showAdvancedOAuth,
+  showGeminiHelpDialog,
+  showAdvancedMenu,
+  showOptionalSections,
+  umqModeOptions,
+  selectAistudioProxy,
+  installProxyRuntime,
+  openAIWSModeOptions,
+  relayModeOptions,
+  relayModeHintKey,
+  openAIWSModeConcurrencyHintKey,
+  mixedChannelWarningMessageText,
+  geminiQuotaDocs,
+  geminiHelpLinks,
+  presetMappings,
+  tempUnschedPresets,
+  presetsByProtocol,
+  applyPreset,
+  showStepIndicator,
+  shouldShowLightBridgeConnect,
+  handleLightBridgeConnectVerified,
+  isManualInputMethod,
+  expiresAtInput,
+  canExchangeCode,
+  handleSelectGeminiOAuthType,
+  addModelMapping,
+  addOpenAICompactModelMapping,
+  removeOpenAICompactModelMapping,
+  removeModelMapping,
+  addPresetMapping,
+  addAntigravityModelMapping,
+  removeAntigravityModelMapping,
+  addAntigravityPresetMapping,
+  toggleErrorCode,
+  addCustomErrorCode,
+  removeErrorCode,
+  addTempUnschedRule,
+  removeTempUnschedRule,
+  moveTempUnschedRule,
+  handleMixedChannelConfirm,
+  handleMixedChannelCancel,
+  handleVertexServiceAccountFile,
+  handleVertexServiceAccountDrop,
+  handleSubmit,
+  goBackToBasicInfo,
+  handleGenerateUrl,
+  handleValidateRefreshToken,
+  handleValidateSessionToken,
+  handleOpenAIImportCodexSession,
+  handleOpenAIValidateMobileRT,
+  handleExchangeCode,
+  handleCookieAuth,
+})
+void useCreateAccountExternalTemplateBindings
 </script>

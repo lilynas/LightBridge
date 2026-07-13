@@ -375,6 +375,7 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("NOT_OAUTH", "cannot apply oauth credentials to non-OAuth account"))
 		return
 	}
+	recoverGrokAfterOAuth := existing.Platform == service.PlatformGrok && shouldRecoverGrokAccountAfterOAuth(existing)
 
 	updatedAccount, err := h.adminService.UpdateAccount(ctx, accountID, &service.UpdateAccountInput{
 		Type:        req.Type,
@@ -422,13 +423,17 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		}
 	}
 
-	if cleared, clearErr := h.adminService.ClearAccountError(ctx, accountID); clearErr != nil {
-		slog.Warn("apply_oauth_credentials.clear_error_failed",
-			"account_id", accountID,
-			"err", clearErr,
-		)
-	} else if cleared != nil {
-		updatedAccount = cleared
+	// Grok re-authorization is only cleared after a real Build availability
+	// probe succeeds. Other platforms retain the historical immediate clear.
+	if updatedAccount.Platform != service.PlatformGrok {
+		if cleared, clearErr := h.adminService.ClearAccountError(ctx, accountID); clearErr != nil {
+			slog.Warn("apply_oauth_credentials.clear_error_failed",
+				"account_id", accountID,
+				"err", clearErr,
+			)
+		} else if cleared != nil {
+			updatedAccount = cleared
+		}
 	}
 
 	if h.tokenCacheInvalidator != nil && updatedAccount.IsOAuth() {
@@ -438,6 +443,16 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 				"err", invalidateErr,
 			)
 		}
+	}
+
+	if updatedAccount.Platform == service.PlatformGrok {
+		updatedAccount = verifyGrokAccountAvailabilityWithServices(
+			ctx,
+			h.adminService,
+			h.grokQuotaService,
+			updatedAccount,
+			recoverGrokAfterOAuth,
+		)
 	}
 
 	h.scheduleOAuthModelSync(updatedAccount)

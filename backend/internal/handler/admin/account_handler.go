@@ -23,6 +23,7 @@ type AccountHandler struct {
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	modelCatalogService     *service.ModelCatalogService
+	grokQuotaService        *service.GrokQuotaService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -39,6 +40,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	grokQuotaService *service.GrokQuotaService,
 	modelCatalogServices ...*service.ModelCatalogService,
 ) *AccountHandler {
 	var modelCatalogService *service.ModelCatalogService
@@ -59,12 +61,13 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 		modelCatalogService:     modelCatalogService,
+		grokQuotaService:        grokQuotaService,
 	}
 }
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	Name                    string         `json:"name" binding:"required"`
+	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
 	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`

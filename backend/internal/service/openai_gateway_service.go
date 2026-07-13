@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -334,14 +335,16 @@ type OpenAIGatewayService struct {
 	openaiWSStateStoreOnce        sync.Once
 	openaiSchedulerOnce           sync.Once
 	openaiWSPassthroughDialerOnce sync.Once
+	grokReplayOnce                sync.Once
 	openaiWSPool                  *openAIWSConnPool
 	openaiWSStateStore            OpenAIWSStateStore
 	openaiScheduler               OpenAIAccountScheduler
 	openaiWSPassthroughDialer     openAIWSClientDialer
+	grokReplayStore               *grokReasoningReplayStore
 	openaiAccountStats            *openAIAccountRuntimeStats
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
-	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
+	accountRuntimeBlockUntil            sync.Map // key: int64(accountID), value: time.Time
 	openaiOAuth429WindowStartUnixNano   atomic.Int64
 	openaiOAuth429WindowCount           atomic.Int64
 	openaiWSRetryMetrics                openAIWSRetryMetrics
@@ -474,15 +477,38 @@ func (s *OpenAIGatewayService) codexImageGenerationBridgeMode(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	return false
+	if s == nil || s.channelService == nil || groupID == nil || strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	model := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
+	if model == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, *groupID, model)
 }
 
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string, requireCompact bool) bool {
-	return false
+	if s == nil || s.channelService == nil || account == nil || strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
+	if upstreamModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
 }
 
 func (s *OpenAIGatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	return false
+	if s == nil || s.channelService == nil || groupID == nil {
+		return false
+	}
+	channel, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil || channel == nil || !channel.RestrictModels {
+		return false
+	}
+	channel.normalizeBillingModelSource()
+	return channel.BillingModelSource == BillingModelSourceUpstream
 }
 
 // ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。

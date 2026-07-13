@@ -22,8 +22,8 @@ func TestOpenAI429FastPath_MarksOAuthAccountCoolingDown(t *testing.T) {
 
 	require.False(t, shouldDisable)
 	require.False(t, apiKeyShouldDisable)
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.False(t, svc.isOpenAIAccountRuntimeBlocked(apiKeyAccount))
+	require.True(t, svc.isAccountRuntimeBlocked(account))
+	require.False(t, svc.isAccountRuntimeBlocked(apiKeyAccount))
 }
 
 func TestOpenAIRuntimeBlock_AppliesToOpenAIAPIKeyWhenRateLimitServiceStopsScheduling(t *testing.T) {
@@ -32,7 +32,7 @@ func TestOpenAIRuntimeBlock_AppliesToOpenAIAPIKeyWhenRateLimitServiceStopsSchedu
 
 	svc.BlockAccountScheduling(account, time.Time{}, "custom_error_code")
 
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.isAccountRuntimeBlocked(account))
 }
 
 func TestOpenAIRuntimeBlock_DoesNotApplyToOtherPlatforms(t *testing.T) {
@@ -41,7 +41,7 @@ func TestOpenAIRuntimeBlock_DoesNotApplyToOtherPlatforms(t *testing.T) {
 
 	svc.BlockAccountScheduling(account, time.Time{}, "custom_error_code")
 
-	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.isAccountRuntimeBlocked(account))
 }
 
 func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T) {
@@ -54,7 +54,7 @@ func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T)
 	shouldDisable := rateLimitService.HandleUpstreamError(context.Background(), account, http.StatusForbidden, http.Header{}, []byte("forbidden"))
 
 	require.True(t, shouldDisable)
-	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, gateway.isAccountRuntimeBlocked(account))
 }
 
 func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
@@ -74,7 +74,7 @@ func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
 	)
 
 	require.True(t, shouldDisable)
-	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.isAccountRuntimeBlocked(account))
 	require.Zero(t, repo.tempCalls)
 	require.Len(t, repo.modelRateLimitCalls, 1)
 }
@@ -87,7 +87,7 @@ func TestOpenAIRuntimeBlock_DoesNotShortenExistingBlock(t *testing.T) {
 	svc.BlockAccountScheduling(account, longUntil, "oauth_401")
 	svc.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 
-	value, ok := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	value, ok := svc.accountRuntimeBlockUntil.Load(account.ID)
 	require.True(t, ok)
 	actualUntil, ok := value.(time.Time)
 	require.True(t, ok)
@@ -99,10 +99,10 @@ func TestOpenAIRuntimeBlock_ClearAccountSchedulingBlock(t *testing.T) {
 	account := &Account{ID: 47, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 
 	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "429")
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.isAccountRuntimeBlocked(account))
 
 	svc.ClearAccountSchedulingBlock(account.ID)
-	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.isAccountRuntimeBlocked(account))
 }
 
 func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
@@ -120,4 +120,13 @@ func TestShouldStopOpenAIOAuth429Failover_OnlyDuringStorm(t *testing.T) {
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 1))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusInternalServerError, 1))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0))
+}
+
+func TestRuntimeBlock_AppliesToGrokAccount(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 48, Platform: PlatformGrok, Type: AccountTypeOAuth}
+
+	svc.tempUnscheduleGrok(context.Background(), account, time.Minute, "grok rate limited")
+
+	require.True(t, svc.isAccountRuntimeBlocked(account))
 }

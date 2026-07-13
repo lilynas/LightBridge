@@ -242,6 +242,13 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		GroupIDs:                a.GroupIDs,
 	}
 
+	if a.IsGrok() {
+		out.GrokOAuthMode = string(a.GrokOAuthMode())
+		out.GrokTokenCapability = string(a.GrokTokenCapability())
+		out.GrokTokenReferrer = a.GrokTokenReferrer()
+		out.GrokReauthRequired = a.GrokReauthRequired()
+	}
+
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
 	if a.IsAnthropicOAuthOrSetupToken() {
 		if limit := a.GetWindowCostLimit(); limit > 0 {

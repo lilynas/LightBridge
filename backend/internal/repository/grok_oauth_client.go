@@ -18,8 +18,12 @@ type grokOAuthClient struct {
 	tokenURL string
 }
 
-func NewGrokOAuthClient() service.GrokOAuthClient {
-	return &grokOAuthClient{tokenURL: xai.EffectiveTokenURL()}
+func NewGrokOAuthClient() (service.GrokOAuthClient, error) {
+	tokenURL, err := xai.ValidatedTokenURL()
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusInternalServerError, "GROK_OAUTH_INVALID_TOKEN_URL", "invalid xAI OAuth token URL: %v", err)
+	}
+	return &grokOAuthClient{tokenURL: tokenURL}, nil
 }
 
 func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error) {

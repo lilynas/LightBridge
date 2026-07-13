@@ -164,8 +164,9 @@ func TestAccountIsModelSupported(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name: "exact match not supported",
+			name: "exact match not supported when model list restriction enabled",
 			credentials: map[string]any{
+				"restrict_to_model_list": true,
 				"model_mapping": map[string]any{
 					"claude-sonnet-4-5": "target-model",
 				},
@@ -197,8 +198,9 @@ func TestAccountIsModelSupported(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name: "wildcard match not supported",
+			name: "wildcard match not supported when model list restriction enabled",
 			credentials: map[string]any{
+				"restrict_to_model_list": true,
 				"model_mapping": map[string]any{
 					"claude-*": "claude-sonnet-4-5",
 				},

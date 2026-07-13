@@ -366,6 +366,14 @@ func (h *AccountHandler) Create(c *gin.Context) {
 				account = refreshed
 			}
 		}
+		// The primary frontend Grok OAuth flow persists the exchanged credentials
+		// through this generic account endpoint. Probe the actual Build service
+		// before returning so an entitlement/token-context failure cannot enter
+		// the scheduler as an apparently healthy account.
+		if account.Platform == service.PlatformGrok && account.IsOAuth() {
+			account = verifyGrokAccountAvailabilityWithServices(ctx, h.adminService, h.grokQuotaService, account, false)
+			createdAccount = account
+		}
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 	})
 	if err != nil {
@@ -492,6 +500,11 @@ func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) 
 // and never blocks the account workflow.
 func (h *AccountHandler) scheduleOAuthModelSync(account *service.Account) {
 	if account == nil || !account.IsOAuth() || h.accountTestService == nil || h.modelCatalogService == nil {
+		return
+	}
+	// Do not immediately retry upstream model discovery for a Grok account
+	// that the authoritative Build probe has just removed from scheduling.
+	if account.Platform == service.PlatformGrok && !account.IsSchedulable() {
 		return
 	}
 	accountID := account.ID

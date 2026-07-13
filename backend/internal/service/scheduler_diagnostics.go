@@ -250,6 +250,9 @@ func (s *GatewayService) schedulerSelectionDiagnostic(ctx context.Context, group
 	if !account.Schedulable {
 		return reject("account_state", "schedulable_disabled", "manual scheduling switch is off")
 	}
+	if account.IsGrok() && account.GrokReauthRequired() {
+		return reject("account_state", "grok_build_reauth_required", "access token was not issued for the grok-build OAuth context")
+	}
 	now := time.Now()
 	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
 		return reject("account_state", "expired", account.ExpiresAt.Format(time.RFC3339))

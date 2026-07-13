@@ -22,10 +22,11 @@ func newEmbedTokenAuthService() *AuthService {
 func TestGeneratePaymentEmbedTokenCreatesScopedAudienceBoundToken(t *testing.T) {
 	svc := newEmbedTokenAuthService()
 	user := &User{
-		ID:           42,
-		Email:        "buyer@example.com",
-		Role:         RoleUser,
-		TokenVersion: 3,
+		ID:                   42,
+		Email:                "buyer@example.com",
+		Role:                 RoleUser,
+		TokenVersion:         3,
+		TokenVersionResolved: true,
 	}
 
 	token, audience, expiresIn, err := svc.GeneratePaymentEmbedToken(user, "HTTPS://Pay.Example.com/")

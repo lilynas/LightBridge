@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -32,6 +34,7 @@ func NewGrokOAuthHandler(
 type GrokGenerateAuthURLRequest struct {
 	ProxyID     *int64 `json:"proxy_id"`
 	RedirectURI string `json:"redirect_uri"`
+	OAuthMode   string `json:"oauth_mode"`
 }
 
 func (h *GrokOAuthHandler) GenerateAuthURL(c *gin.Context) {
@@ -39,7 +42,7 @@ func (h *GrokOAuthHandler) GenerateAuthURL(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		req = GrokGenerateAuthURLRequest{}
 	}
-	result, err := h.grokOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, req.RedirectURI)
+	result, err := h.grokOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, req.RedirectURI, req.OAuthMode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -80,6 +83,7 @@ type GrokRefreshTokenRequest struct {
 	RT           string `json:"rt"`
 	ClientID     string `json:"client_id"`
 	ProxyID      *int64 `json:"proxy_id"`
+	OAuthMode    string `json:"oauth_mode"`
 }
 
 func (h *GrokOAuthHandler) RefreshToken(c *gin.Context) {
@@ -104,7 +108,12 @@ func (h *GrokOAuthHandler) RefreshToken(c *gin.Context) {
 			proxyURL = proxy.URL()
 		}
 	}
-	tokenInfo, err := h.grokOAuthService.RefreshToken(c.Request.Context(), refreshToken, proxyURL, req.ClientID)
+	mode, err := xai.ParseOAuthMode(req.OAuthMode)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	tokenInfo, err := h.grokOAuthService.RefreshToken(c.Request.Context(), refreshToken, proxyURL, req.ClientID, mode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -141,6 +150,7 @@ func (h *GrokOAuthHandler) RefreshAccountToken(c *gin.Context) {
 	if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
 		newCredentials["base_url"] = baseURL
 	}
+	recoverAfterProbe := shouldRecoverGrokAccountAfterOAuth(account)
 	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Credentials: newCredentials,
 	})
@@ -148,6 +158,7 @@ func (h *GrokOAuthHandler) RefreshAccountToken(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	updatedAccount = h.verifyGrokAccountAvailability(c.Request.Context(), updatedAccount, recoverAfterProbe)
 	response.Success(c, dto.AccountFromService(updatedAccount))
 }
 
@@ -202,7 +213,97 @@ func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	account = h.verifyGrokAccountAvailability(c.Request.Context(), account, false)
 	response.Success(c, dto.AccountFromService(account))
+}
+
+func shouldRecoverGrokAccountAfterOAuth(account *service.Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.GrokReauthRequired() {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(account.ErrorMessage), service.GrokProbeAuthorizationErrorPrefix)
+}
+
+func (h *GrokOAuthHandler) verifyGrokAccountAvailability(ctx context.Context, account *service.Account, recoverAfterSuccess bool) *service.Account {
+	if h == nil {
+		return account
+	}
+	return verifyGrokAccountAvailabilityWithServices(ctx, h.adminService, h.quotaService, account, recoverAfterSuccess)
+}
+
+func verifyGrokAccountAvailabilityWithServices(
+	ctx context.Context,
+	adminService service.AdminService,
+	quotaService *service.GrokQuotaService,
+	account *service.Account,
+	recoverAfterSuccess bool,
+) *service.Account {
+	if quotaService == nil || adminService == nil || account == nil {
+		return account
+	}
+
+	result, err := quotaService.ProbeUsage(ctx, account.ID)
+	if err == nil {
+		// 429 proves that the token reached the Build service, but it does not
+		// prove that a previously disabled account is ready to resume. Normal
+		// gateway cooldown handling will make it eligible again later.
+		if result != nil && result.StatusCode == 429 {
+			return reloadGrokAccountWithService(ctx, adminService, account)
+		}
+		if recoverAfterSuccess {
+			recovered, clearErr := adminService.ClearAccountError(ctx, account.ID)
+			if clearErr != nil {
+				slog.Warn("grok_availability_clear_error_failed", "account_id", account.ID, "error", clearErr)
+			} else {
+				if recovered != nil {
+					account = recovered
+				}
+				resumed, resumeErr := adminService.SetAccountSchedulable(ctx, account.ID, true)
+				if resumeErr != nil {
+					slog.Warn("grok_availability_resume_failed", "account_id", account.ID, "error", resumeErr)
+				} else if resumed != nil {
+					account = resumed
+				}
+			}
+		}
+		return reloadGrokAccountWithService(ctx, adminService, account)
+	}
+
+	if !service.IsGrokProbeAuthorizationFailure(err) {
+		// Network and 5xx failures are upstream health signals, not proof that
+		// the OAuth account is invalid. Do not permanently disable the account.
+		slog.Warn("grok_availability_probe_transient_failure", "account_id", account.ID, "error", err)
+		return reloadGrokAccountWithService(ctx, adminService, account)
+	}
+
+	errorMessage := service.GrokProbeAuthorizationErrorMessage(err)
+	if setErr := adminService.SetAccountError(ctx, account.ID, errorMessage); setErr != nil {
+		slog.Error("grok_availability_disable_failed", "account_id", account.ID, "error", setErr)
+		return account
+	}
+	slog.Warn("grok_account_disabled_after_availability_probe", "account_id", account.ID)
+	return reloadGrokAccountWithService(ctx, adminService, account)
+}
+
+func (h *GrokOAuthHandler) reloadGrokAccount(ctx context.Context, fallback *service.Account) *service.Account {
+	if h == nil {
+		return fallback
+	}
+	return reloadGrokAccountWithService(ctx, h.adminService, fallback)
+}
+
+func reloadGrokAccountWithService(ctx context.Context, adminService service.AdminService, fallback *service.Account) *service.Account {
+	if adminService == nil || fallback == nil {
+		return fallback
+	}
+	account, err := adminService.GetAccount(ctx, fallback.ID)
+	if err != nil || account == nil {
+		return fallback
+	}
+	return account
 }
 
 func (h *GrokOAuthHandler) QueryQuota(c *gin.Context) {

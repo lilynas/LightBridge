@@ -506,6 +506,33 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   return data
 }
 
+export interface DiscoverUpstreamModelsRequest {
+  platform: 'custom'
+  type: 'apikey'
+  credentials: Record<string, unknown>
+  extra?: Record<string, unknown>
+  proxy_id?: number | null
+}
+
+export interface DiscoverUpstreamModelsResult {
+  models: string[]
+}
+
+/**
+ * Discover supported models for a Custom provider draft before it is persisted.
+ * The backend uses the existing upstream model-list implementation and never
+ * stores the supplied credentials.
+ */
+export async function discoverUpstreamModels(
+  request: DiscoverUpstreamModelsRequest
+): Promise<DiscoverUpstreamModelsResult> {
+  const { data } = await apiClient.post<DiscoverUpstreamModelsResult>(
+    '/admin/accounts/models/discover-upstream',
+    request
+  )
+  return data
+}
+
 export interface SyncUpstreamModelsResult {
   models: string[]
   sync_state?: {
@@ -784,6 +811,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  discoverUpstreamModels,
   syncUpstreamModels,
   generateAuthUrl,
   exchangeCode,

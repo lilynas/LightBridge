@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WilliamWang1721/LightBridge/internal/config"
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -54,7 +55,7 @@ func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(account *Account, payloa
 	return threshold > 0 && int64(payloadBytes) >= threshold
 }
 
-func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
+func prepareOpenAIWSHTTPBridgeBody(payload []byte, preservePreviousResponseID bool) ([]byte, error) {
 	var body map[string]any
 	if err := json.Unmarshal(payload, &body); err != nil {
 		return nil, err
@@ -64,7 +65,9 @@ func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	}
 	delete(body, "type")
 	delete(body, "generate")
-	delete(body, "previous_response_id")
+	if !preservePreviousResponseID {
+		delete(body, "previous_response_id")
+	}
 	body["stream"] = true
 	return json.Marshal(body)
 }
@@ -101,8 +104,21 @@ func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
 	if raw == "" || !strings.HasPrefix(raw, "{") {
 		return
 	}
-	if !isCodexToolCallContextItemType(item.Get("type").String()) {
-		return
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "reasoning":
+		encrypted := item.Get("encrypted_content")
+		if encrypted.Type != gjson.String || !xai.IsValidGrokEncryptedContent(encrypted.String()) {
+			return
+		}
+	case "function_call", "custom_tool_call":
+		if strings.TrimSpace(item.Get("call_id").String()) == "" {
+			return
+		}
+	default:
+		if !isCodexToolCallContextItemType(itemType) {
+			return
+		}
 	}
 	key := strings.TrimSpace(item.Get("id").String())
 	if key == "" {
@@ -171,35 +187,34 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		return nil, errors.New("client websocket writer is nil")
 	}
 
-	body, err := prepareOpenAIWSHTTPBridgeBody(payload)
+	body, err := prepareOpenAIWSHTTPBridgeBody(payload, account.Platform == PlatformGrok)
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	var upstreamReq *http.Request
+	defer releaseUpstreamCtx()
+	grokReplayScope := grokReasoningReplayScope{}
+	grokReplayInjected := false
+	grokUpstreamModel := ""
 	if account.Platform == PlatformGrok {
-		upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+		grokUpstreamModel = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if originalModel != "" {
 			if mappedModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel)); mappedModel != "" {
-				upstreamModel = mappedModel
+				grokUpstreamModel = mappedModel
 			}
 		}
-		if upstreamModel == "" {
-			upstreamModel = "grok-4.3"
+		if grokUpstreamModel == "" {
+			grokUpstreamModel = "grok-4.3"
 		}
-		body, err = patchGrokResponsesBody(body, upstreamModel)
+		body, err = patchGrokResponsesBody(body, grokUpstreamModel, account.GrokUsingAPI())
 		if err != nil {
-			releaseUpstreamCtx()
 			return nil, err
 		}
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
-	} else {
-		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	}
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
+	baseBody := append([]byte(nil), body...)
+	if account.Platform == PlatformGrok && !account.GrokUsingAPI() {
+		body, grokReplayScope, grokReplayInjected = s.prepareGrokReasoningReplayRequest(ctx, c, body, grokUpstreamModel)
 	}
 
 	proxyURL := ""
@@ -212,22 +227,59 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	}
 
 	turnStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
-		return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
-	}
-	defer func() { _ = resp.Body.Close() }()
+	var resp *http.Response
+	for attempt := 0; attempt < 2; attempt++ {
+		var upstreamReq *http.Request
+		if account.Platform == PlatformGrok {
+			upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
+		} else {
+			upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		}
+		if err != nil {
+			return nil, err
+		}
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if err != nil {
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
+			return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
+		}
+		if resp.StatusCode < 400 {
+			break
+		}
 
-	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
+		_ = resp.Body.Close()
+		if account.Platform == PlatformGrok && attempt == 0 && grokReplayInjected && isGrokInvalidReplayError(resp.StatusCode, respBody) {
+			s.clearGrokReasoningReplay(ctx, grokReplayScope)
+			body = append([]byte(nil), baseBody...)
+			body, grokReplayScope, _ = s.prepareGrokReasoningReplayRequest(ctx, c, body, grokUpstreamModel)
+			grokReplayInjected = false
+			continue
+		}
+		if account.Platform == PlatformGrok {
+			s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		}
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 		if upstreamMsg == "" {
 			upstreamMsg = http.StatusText(resp.StatusCode)
 		}
 		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg))
 		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
+	}
+	if resp == nil {
+		return nil, errors.New("upstream http bridge returned no response")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if account.Platform == PlatformGrok {
+		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+		resp.Body = xai.NormalizeResponsesSSEStreamWithObserver(resp.Body, func(event []byte) {
+			if strings.TrimSpace(gjson.GetBytes(event, "type").String()) == "response.completed" {
+				s.cacheGrokReasoningReplay(ctx, grokReplayScope, event)
+			}
+		})
 	}
 
 	responseID := ""

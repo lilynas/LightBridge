@@ -261,7 +261,6 @@ func anthropicResponseToGemini(resp *apicompat.AnthropicResponse, model string) 
 func writeCapturedAnthropicStreamAsGemini(c *gin.Context, data []byte, model string) error {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Status(http.StatusOK)
 

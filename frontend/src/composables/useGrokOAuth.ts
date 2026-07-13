@@ -39,7 +39,7 @@ export function useGrokOAuth() {
     error.value = ''
 
     try {
-      const payload: GrokAuthUrlRequest = {}
+      const payload: GrokAuthUrlRequest = { oauth_mode: 'build_proxy' }
       if (proxyId) payload.proxy_id = proxyId
       const trimmedRedirectURI = redirectUri?.trim()
       if (trimmedRedirectURI) payload.redirect_uri = trimmedRedirectURI
@@ -110,7 +110,10 @@ export function useGrokOAuth() {
     error.value = ''
 
     try {
-      const payload: GrokRefreshTokenRequest = { refresh_token: token }
+      const payload: GrokRefreshTokenRequest = {
+        refresh_token: token,
+        oauth_mode: 'build_proxy'
+      }
       if (proxyId) payload.proxy_id = proxyId
       const trimmedClientID = clientId?.trim()
       if (trimmedClientID) payload.client_id = trimmedClientID
@@ -135,7 +138,12 @@ export function useGrokOAuth() {
     if (tokenInfo.id_token) credentials.id_token = tokenInfo.id_token
     if (tokenInfo.client_id) credentials.client_id = tokenInfo.client_id
     if (tokenInfo.email) credentials.email = tokenInfo.email
-    if (tokenInfo.base_url) credentials.base_url = tokenInfo.base_url
+    credentials.base_url = tokenInfo.base_url || 'https://api.x.ai/v1'
+    credentials.auth_kind = tokenInfo.auth_kind || 'oauth'
+    credentials.using_api = tokenInfo.using_api === true
+    credentials.oauth_mode = tokenInfo.oauth_mode || (tokenInfo.using_api ? 'official_api' : 'build_proxy')
+    if (tokenInfo.token_capability) credentials.token_capability = tokenInfo.token_capability
+    if (tokenInfo.token_referrer) credentials.token_referrer = tokenInfo.token_referrer
     if (tokenInfo.subscription_tier) credentials.subscription_tier = tokenInfo.subscription_tier
     if (tokenInfo.entitlement_status) credentials.entitlement_status = tokenInfo.entitlement_status
     if (typeof tokenInfo.expires_at === 'number' && Number.isFinite(tokenInfo.expires_at)) {
@@ -153,6 +161,8 @@ export function useGrokOAuth() {
     if (tokenInfo.name) extra.name = tokenInfo.name
     if (tokenInfo.subscription_tier) extra.subscription_tier = tokenInfo.subscription_tier
     if (tokenInfo.entitlement_status) extra.entitlement_status = tokenInfo.entitlement_status
+    if (tokenInfo.oauth_mode) extra.grok_oauth_mode = tokenInfo.oauth_mode
+    if (tokenInfo.token_capability) extra.grok_token_capability = tokenInfo.token_capability
     return Object.keys(extra).length > 0 ? extra : undefined
   }
 

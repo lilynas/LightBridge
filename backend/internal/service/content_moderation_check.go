@@ -27,6 +27,11 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"protocol", input.Protocol)
 		return allow, nil
 	}
+	// Checks may run before the feature-runtime callback has started the
+	// background workers (notably during startup and in focused tests). Once
+	// the effective feature decision is enabled, ensure queued audit records
+	// always have consumers instead of remaining buffered indefinitely.
+	s.Start()
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
 		slog.Warn("content_moderation.skip_config_load_failed",

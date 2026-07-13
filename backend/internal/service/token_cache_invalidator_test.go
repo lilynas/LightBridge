@@ -127,6 +127,23 @@ func TestCompositeTokenCacheInvalidator_OpenAI(t *testing.T) {
 	require.Equal(t, []string{"openai:account:500"}, cache.deletedKeys)
 }
 
+func TestCompositeTokenCacheInvalidator_Grok(t *testing.T) {
+	cache := &geminiTokenCacheStub{}
+	invalidator := NewCompositeTokenCacheInvalidator(cache)
+	account := &Account{
+		ID:       550,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "grok-token",
+		},
+	}
+
+	err := invalidator.InvalidateToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"grok:account:550"}, cache.deletedKeys)
+}
+
 func TestCompositeTokenCacheInvalidator_Claude(t *testing.T) {
 	cache := &geminiTokenCacheStub{}
 	invalidator := NewCompositeTokenCacheInvalidator(cache)
@@ -290,6 +307,7 @@ func TestCompositeTokenCacheInvalidator_AllPlatformsIntegration(t *testing.T) {
 		{ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuth, Credentials: map[string]any{"project_id": "ag-proj"}},
 		{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
 		{ID: 4, Platform: PlatformAnthropic, Type: AccountTypeOAuth},
+		{ID: 5, Platform: PlatformGrok, Type: AccountTypeOAuth},
 	}
 
 	// 新行为：Gemini 和 Antigravity 会同时删除基于 project_id 和 account_id 的键
@@ -300,6 +318,7 @@ func TestCompositeTokenCacheInvalidator_AllPlatformsIntegration(t *testing.T) {
 		"ag:account:2",
 		"openai:account:3",
 		"claude:account:4",
+		"grok:account:5",
 	}
 
 	for _, acc := range accounts {

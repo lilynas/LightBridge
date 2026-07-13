@@ -242,7 +242,12 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, "No Grok access token available")
 	}
 
-	apiURL, err := xai.BuildResponsesURL(account.GetGrokBaseURL())
+	usingAPI := account.GrokUsingAPI()
+	resolvedBaseURL, err := account.GetGrokChatBaseURL()
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
+	}
+	apiURL, err := xai.BuildChatResponsesURL(account.GetCredential("base_url"), usingAPI)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
 	}
@@ -281,24 +286,25 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create request")
 	}
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("User-Agent", "lightbridge-grok/1.0")
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileGrok))
+	xai.ApplyChatHeaders(req, authToken, true, usingAPI, resolvedBaseURL, "")
 
 	proxyURL, err := s.resolveAccountTestProxyURL(c, ctx, account)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to resolve proxy: %s", err.Error()))
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	// Grok Build negotiates HTTP/2. Use the native net/http transport rather
+	// than the HTTP/1-oriented uTLS fingerprint path, which can expose raw H2
+	// frames as a malformed HTTP/1 response.
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if s.accountRepo != nil {
-		if snapshot := xai.ParseQuotaHeaders(resp.Header, resp.StatusCode); snapshot != nil {
+		if snapshot := xai.ObserveQuotaHeaders(resp.Header, resp.StatusCode, "active_probe"); snapshot != nil {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				grokQuotaSnapshotExtraKey: snapshot,
 			})

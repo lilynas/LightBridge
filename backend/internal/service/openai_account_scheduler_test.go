@@ -788,7 +788,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RetriesFreshDBWhenSnaps
 		cache:       &schedulerTestGatewayCache{},
 		cfg:         cfg,
 		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService(
-			"false",
+			"true",
 		),
 		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
 		schedulerSnapshot: NewSchedulerSnapshotService(
@@ -1329,6 +1329,7 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokQuotaSnaps
 		Schedulable: true,
 		Concurrency: 1,
 		Priority:    0,
+		Credentials: map[string]any{"access_token": "opaque-grok-build-token"},
 		Extra: map[string]any{
 			grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
 				Requests: &xai.QuotaWindow{
@@ -1336,11 +1337,13 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokQuotaSnaps
 					Remaining: &zero,
 					ResetUnix: schedulerTestInt64Ptr(time.Now().Add(time.Hour).Unix()),
 				},
-				UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+				HeadersObserved:   true,
+				ObservationSource: "gateway_response",
+				UpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 	}
-	secondary := Account{ID: 35612, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35612, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Credentials: map[string]any{"access_token": "opaque-grok-build-token"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
@@ -1361,6 +1364,7 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokStaleQuota
 		Schedulable: true,
 		Concurrency: 1,
 		Priority:    0,
+		Credentials: map[string]any{"access_token": "opaque-grok-build-token"},
 		Extra: map[string]any{
 			grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
 				Requests: &xai.QuotaWindow{
@@ -1368,11 +1372,13 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokStaleQuota
 					Remaining: &zero,
 					ResetUnix: schedulerTestInt64Ptr(time.Now().Add(time.Hour).Unix()),
 				},
-				UpdatedAt: time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),
+				HeadersObserved:   true,
+				ObservationSource: "gateway_response",
+				UpdatedAt:         time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),
 			},
 		},
 	}
-	secondary := Account{ID: 35622, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	secondary := Account{ID: 35622, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Credentials: map[string]any{"access_token": "opaque-grok-build-token"}}
 	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 	account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
@@ -1403,14 +1409,16 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_GrokRetryAfter
 				Schedulable: true,
 				Concurrency: 1,
 				Priority:    0,
+				Credentials: map[string]any{"access_token": "opaque-grok-build-token"},
 				Extra: map[string]any{
 					grokQuotaSnapshotExtraKey: xai.QuotaSnapshot{
 						RetryAfterSeconds: &retryAfter,
+						ObservationSource: "gateway_response",
 						UpdatedAt:         tt.updatedAt.UTC().Format(time.RFC3339),
 					},
 				},
 			}
-			secondary := Account{ID: 35632, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+			secondary := Account{ID: 35632, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Credentials: map[string]any{"access_token": "opaque-grok-build-token"}}
 			svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
 
 			account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
@@ -2469,4 +2477,31 @@ func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *
 
 func int64PtrForTest(v int64) *int64 {
 	return &v
+}
+
+type grokRuntimeBlockSchedulerRepo struct {
+	schedulerTestOpenAIAccountRepo
+}
+
+func (grokRuntimeBlockSchedulerRepo) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	return nil
+}
+
+func TestOpenAIGatewayService_GrokRuntimeBlockSkipsAccountOnNextSelection(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{ID: 35641, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Credentials: map[string]any{"access_token": "opaque-grok-build-token"}}
+	secondary := Account{ID: 35642, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5, Credentials: map[string]any{"access_token": "opaque-grok-build-token"}}
+	repo := grokRuntimeBlockSchedulerRepo{schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}}
+	svc := &OpenAIGatewayService{accountRepo: repo, cfg: &config.Config{}}
+
+	account, err := svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, primary.ID, account.ID)
+
+	svc.tempUnscheduleGrok(ctx, &primary, time.Minute, "grok rate limited")
+	account, err = svc.selectAccountForModelWithExclusions(ctx, nil, "", "grok", nil, false, 0, OpenAIEndpointCapabilityChatCompletions, PlatformGrok)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, secondary.ID, account.ID)
 }

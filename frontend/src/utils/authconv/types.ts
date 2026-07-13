@@ -15,13 +15,18 @@ export type OutputTextMode = 'json' | 'jsonl'
 
 export type InputFormat = 'session' | 'sub2api' | 'cpa' | 'codexmanager' | 'codex2api' | 'codex' | 'unknown'
 
+export type AuthProvider = 'openai' | 'xai'
+
 export type NormalizedAccount = {
+  provider?: AuthProvider
+  platform?: 'openai' | 'grok'
   accessToken?: string
   refreshToken?: string
   idToken?: string
   idTokenSynthetic?: boolean
   sessionToken?: string
   accountId?: string
+  subject?: string
   chatgptAccountId?: string
   chatgptUserId?: string
   chatgptAccountUserId?: string
@@ -35,8 +40,18 @@ export type NormalizedAccount = {
   email?: string
   name?: string
   planType?: string
+  subscriptionTier?: string
+  entitlementStatus?: string
+  tokenType?: string
+  expiresIn?: number
   lastRefresh?: string
   expiresAt?: string
+  baseUrl?: string
+  redirectUri?: string
+  tokenEndpoint?: string
+  authKind?: string
+  usingApi?: boolean
+  disabled?: boolean
   sourceName: string
   sourcePath: string
   warnings: string[]
@@ -54,7 +69,7 @@ export type RenderOptions = {
   allowSyntheticIdToken?: boolean
 }
 
-export type CpaRenderedAccount = {
+export type CpaCodexRenderedAccount = {
   type: 'codex'
   email: string
   account_id: string
@@ -68,6 +83,29 @@ export type CpaRenderedAccount = {
   session_token?: string
   id_token_synthetic?: true
 }
+
+export type CpaXaiRenderedAccount = {
+  type: 'xai'
+  access_token: string
+  refresh_token: string
+  auth_kind: 'oauth'
+  disabled: false
+  id_token?: string
+  token_type?: string
+  expires_in?: number
+  expired?: string
+  last_refresh?: string
+  email?: string
+  sub?: string
+  base_url?: string
+  redirect_uri?: string
+  token_endpoint?: string
+  using_api?: boolean
+  subscription_tier?: string
+  entitlement_status?: string
+}
+
+export type CpaRenderedAccount = CpaCodexRenderedAccount | CpaXaiRenderedAccount
 
 export type Codex2ApiRenderedAccount = {
   name?: string
@@ -90,9 +128,21 @@ export type Sub2ApiRenderedCredentials = {
   id_token?: string
   expires_at?: string
   email?: string
+  account_id?: string
+  sub?: string
   chatgpt_account_id?: string
   chatgpt_user_id?: string
   plan_type?: string
+  token_type?: string
+  expires_in?: number
+  last_refresh?: string
+  base_url?: string
+  redirect_uri?: string
+  token_endpoint?: string
+  auth_kind?: string
+  using_api?: boolean
+  subscription_tier?: string
+  entitlement_status?: string
 }
 
 export type Sub2ApiRenderedExtra = {
@@ -102,12 +152,12 @@ export type Sub2ApiRenderedExtra = {
 
 export type Sub2ApiRenderedAccount = {
   name: string
-  platform: 'openai'
+  platform: 'openai' | 'grok'
   type: 'oauth'
   credentials: Sub2ApiRenderedCredentials
   extra: Sub2ApiRenderedExtra
   priority: 50
-  concurrency: 3
+  concurrency: number
   auto_pause_on_expired: true
 }
 

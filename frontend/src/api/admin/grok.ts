@@ -6,15 +6,20 @@
 import { apiClient } from '../client'
 import type { Account, GrokQuotaWindow } from '@/types'
 
+export type GrokOAuthMode = 'build_proxy' | 'official_api'
+export type GrokTokenCapability = 'unknown' | 'grok_build' | 'official_api' | 'incompatible'
+
 export interface GrokAuthUrlResponse {
   auth_url: string
   session_id: string
   state: string
+  oauth_mode: GrokOAuthMode
 }
 
 export interface GrokAuthUrlRequest {
   proxy_id?: number
   redirect_uri?: string
+  oauth_mode?: GrokOAuthMode
 }
 
 export interface GrokExchangeCodeRequest {
@@ -37,8 +42,13 @@ export interface GrokTokenInfo {
   email?: string
   name?: string
   base_url?: string
+  auth_kind?: string
+  using_api?: boolean
   subscription_tier?: string
   entitlement_status?: string
+  oauth_mode?: GrokOAuthMode
+  token_capability?: GrokTokenCapability
+  token_referrer?: string
   [key: string]: unknown
 }
 
@@ -47,6 +57,7 @@ export interface GrokRefreshTokenRequest {
   rt?: string
   client_id?: string
   proxy_id?: number
+  oauth_mode?: GrokOAuthMode
 }
 
 export interface GrokRuntimeSanity {

@@ -131,6 +131,9 @@ func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false
 	}
+	if a.IsGrok() && !a.GrokBuildTokenCompatible() {
+		return false
+	}
 	now := time.Now()
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
@@ -231,7 +234,7 @@ func (a *Account) SupportsListedModel(requestedModel string) bool {
 	}
 	models := a.SupportedModelIDs()
 	if len(models) == 0 {
-		return true
+		return false
 	}
 	normalized := normalizeRequestedModelForLookup(a.Platform, model)
 	for _, candidate := range models {

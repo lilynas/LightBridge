@@ -32,17 +32,19 @@ func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*
 func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
 
 type syncUpstreamHTTPUpstream struct {
-	resp *http.Response
-	err  error
+	resp    *http.Response
+	err     error
+	lastReq *http.Request
 }
 
 func (u *syncUpstreamHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	u.lastReq = req
 	if u.err != nil {
 		return nil, u.err
 	}
@@ -68,8 +70,28 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 		nil,
 		nil,
 	)
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/:id/models/sync-upstream", handler.SyncUpstreamModels)
+	return router
+}
+
+func setupDiscoverUpstreamModelsRouter(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	accountTestSvc := service.NewAccountTestService(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		upstream,
+		&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		nil,
+		nil,
+		nil,
+	)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil, nil)
+	router.POST("/api/v1/admin/accounts/models/discover-upstream", handler.DiscoverUpstreamModels)
 	return router
 }
 
@@ -192,6 +214,89 @@ func TestAccountHandlerSyncUpstreamModels_UpstreamErrorDoesNotExposeBody(t *test
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/45/models/sync-upstream", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "Upstream model list request failed with HTTP 502")
+	require.NotContains(t, rec.Body.String(), "SECRET_TOKEN")
+}
+
+func TestAccountHandlerDiscoverUpstreamModels_CustomOpenAI(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"model-b"},{"id":"model-a"},{"id":"model-a"}]}`)),
+	}}
+	router := setupDiscoverUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	body := `{
+		"platform":"custom",
+		"type":"apikey",
+		"credentials":{
+			"protocol":"openai_responses",
+			"base_url":"https://custom.example.com/v1",
+			"api_key":"secret-key"
+		},
+		"extra":{"protocol":"openai_responses"}
+	}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/models/discover-upstream", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var resp struct {
+		Data struct {
+			Models []string `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, []string{"model-a", "model-b"}, resp.Data.Models)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://custom.example.com/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer secret-key", upstream.lastReq.Header.Get("Authorization"))
+}
+
+func TestAccountHandlerDiscoverUpstreamModels_RejectsUnsupportedProtocol(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{}
+	router := setupDiscoverUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	body := `{
+		"platform":"custom",
+		"type":"apikey",
+		"credentials":{"base_url":"https://custom.example.com","api_key":"secret-key"},
+		"extra":{"protocol":"unsupported"}
+	}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/models/discover-upstream", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Unsupported Custom provider protocol")
+	require.Nil(t, upstream.lastReq)
+}
+
+func TestAccountHandlerDiscoverUpstreamModels_UpstreamErrorDoesNotExposeBody(t *testing.T) {
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":"SECRET_TOKEN should not be exposed"}`)),
+	}}
+	router := setupDiscoverUpstreamModelsRouter(newStubAdminService(), upstream)
+
+	body := `{
+		"platform":"custom",
+		"type":"apikey",
+		"credentials":{
+			"protocol":"openai_chat_completions",
+			"base_url":"https://custom.example.com/v1",
+			"api_key":"secret-key"
+		}
+	}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/models/discover-upstream", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadGateway, rec.Code)

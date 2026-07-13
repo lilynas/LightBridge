@@ -1015,23 +1015,72 @@ func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 // 供调度阶段预检查（requested / channel_mapped）。
 // upstream 需逐账号检查，此处返回 false。
 func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	return false
+	if s == nil || s.channelService == nil || groupID == nil || strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	model := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
+	if model == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, *groupID, model)
 }
 
 // billingModelForRestriction 根据计费基准确定限制检查使用的模型。
 // upstream 返回空（需逐账号检查）。
+func billingModelForRestriction(source, requestedModel, channelMappedModel string) string {
+	switch strings.TrimSpace(source) {
+	case BillingModelSourceRequested:
+		return strings.TrimSpace(requestedModel)
+	case BillingModelSourceUpstream:
+		return ""
+	case "", BillingModelSourceChannelMapped:
+		if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+			return mapped
+		}
+		return strings.TrimSpace(requestedModel)
+	default:
+		return strings.TrimSpace(requestedModel)
+	}
+}
 
 // isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
 // 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
 func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
-	return false
+	if s == nil || s.channelService == nil || account == nil || strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	upstreamModel := resolveAccountUpstreamModel(account, requestedModel)
+	if upstreamModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
 }
 
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
+func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if account == nil || requestedModel == "" {
+		return ""
+	}
+	mappedModel, matched := account.ResolveMappedModel(requestedModel)
+	if account.IsAntigravity() && !matched {
+		return ""
+	}
+	return strings.TrimSpace(mappedModel)
+}
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
 func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	return false
+	if s == nil || s.channelService == nil || groupID == nil {
+		return false
+	}
+	channel, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil || channel == nil || !channel.RestrictModels {
+		return false
+	}
+	channel.normalizeBillingModelSource()
+	return channel.BillingModelSource == BillingModelSourceUpstream
 }
 
 // isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。

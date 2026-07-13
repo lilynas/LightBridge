@@ -1,12 +1,9 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/logger"
 	"github.com/WilliamWang1721/LightBridge/internal/service"
@@ -258,14 +255,18 @@ func (h *GatewayHandler) forwardGeminiNativeViaProtocolRouter(
 		if err != nil {
 			return protocolForwardResult{}, err
 		}
-		capture, rec := cloneGinContextForProtocolCapture(c, routeCtx, "/v1/messages", claudeBody)
-		result, err := h.gatewayService.Forward(routeCtx, capture, account, parsedReq)
-		if err != nil {
-			_ = service.WriteCapturedAnthropicAsGemini(c, rec.Code, rec.Header(), rec.Body.Bytes(), stream, modelName)
-			return protocolForwardResult{Gateway: result}, err
+		bridge := service.NewProtocolResponseBridge(c, service.AnthropicBridgeTargetGemini, stream, modelName)
+		capture, bridgeErr := service.NewProtocolBridgeContext(c, routeCtx, "/v1/messages", claudeBody, bridge)
+		if bridgeErr != nil {
+			return protocolForwardResult{}, bridgeErr
 		}
-		if writeErr := service.WriteCapturedAnthropicAsGemini(c, rec.Code, rec.Header(), rec.Body.Bytes(), stream, modelName); writeErr != nil {
-			return protocolForwardResult{Gateway: result}, writeErr
+		result, forwardErr := h.gatewayService.Forward(routeCtx, capture, account, parsedReq)
+		finalizeErr := bridge.Finalize()
+		if forwardErr != nil {
+			return protocolForwardResult{Gateway: result}, forwardErr
+		}
+		if finalizeErr != nil {
+			return protocolForwardResult{Gateway: result}, finalizeErr
 		}
 		return protocolForwardResult{Gateway: result}, nil
 
@@ -278,14 +279,18 @@ func (h *GatewayHandler) forwardGeminiNativeViaProtocolRouter(
 		if err != nil {
 			return protocolForwardResult{}, err
 		}
-		capture, rec := cloneGinContextForProtocolCapture(c, routeCtx, "/v1/messages", claudeBody)
-		result, err := h.openAIGatewayService.ForwardAsAnthropic(routeCtx, capture, account, claudeBody, "", modelName)
-		if err != nil {
-			_ = service.WriteCapturedAnthropicAsGemini(c, rec.Code, rec.Header(), rec.Body.Bytes(), stream, modelName)
-			return protocolForwardResult{OpenAI: result}, err
+		bridge := service.NewProtocolResponseBridge(c, service.AnthropicBridgeTargetGemini, stream, modelName)
+		capture, bridgeErr := service.NewProtocolBridgeContext(c, routeCtx, "/v1/messages", claudeBody, bridge)
+		if bridgeErr != nil {
+			return protocolForwardResult{}, bridgeErr
 		}
-		if writeErr := service.WriteCapturedAnthropicAsGemini(c, rec.Code, rec.Header(), rec.Body.Bytes(), stream, modelName); writeErr != nil {
-			return protocolForwardResult{OpenAI: result}, writeErr
+		result, forwardErr := h.openAIGatewayService.ForwardAsAnthropic(routeCtx, capture, account, claudeBody, "", modelName)
+		finalizeErr := bridge.Finalize()
+		if forwardErr != nil {
+			return protocolForwardResult{OpenAI: result}, forwardErr
+		}
+		if finalizeErr != nil {
+			return protocolForwardResult{OpenAI: result}, finalizeErr
 		}
 		return protocolForwardResult{OpenAI: result}, nil
 	}
@@ -324,24 +329,4 @@ func (h *GatewayHandler) forwardFullPassthrough(
 		RequestModel:  requestModel,
 		RequestStream: requestStream,
 	})
-}
-
-func cloneGinContextForProtocolCapture(parent *gin.Context, ctx context.Context, path string, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
-	rec := httptest.NewRecorder()
-	capture, _ := gin.CreateTestContext(rec)
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body)).WithContext(ctx)
-	if parent != nil {
-		if parent.Request != nil {
-			req.Header = parent.Request.Header.Clone()
-		}
-		if len(parent.Keys) > 0 {
-			capture.Keys = make(map[string]any, len(parent.Keys))
-			for k, v := range parent.Keys {
-				capture.Keys[k] = v
-			}
-		}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	capture.Request = req
-	return capture, rec
 }

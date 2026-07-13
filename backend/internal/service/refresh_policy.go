@@ -61,6 +61,17 @@ func AntigravityProviderRefreshPolicy() ProviderRefreshPolicy {
 	}
 }
 
+// GrokProviderRefreshPolicy keeps Grok Build token handling independent from
+// Antigravity even though both currently fail closed on refresh errors. This
+// avoids coupling future xAI OAuth behavior to an unrelated provider.
+func GrokProviderRefreshPolicy() ProviderRefreshPolicy {
+	return ProviderRefreshPolicy{
+		OnRefreshError: ProviderRefreshErrorReturn,
+		OnLockHeld:     ProviderLockHeldUseExistingToken,
+		FailureTTL:     0,
+	}
+}
+
 // BackgroundSkipAction 定义后台刷新服务在“未实际刷新”场景的计数方式。
 type BackgroundSkipAction int
 

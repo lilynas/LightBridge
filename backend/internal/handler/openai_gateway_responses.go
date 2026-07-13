@@ -18,6 +18,10 @@ import (
 	"go.uber.org/zap"
 )
 
+func allowOpenAIResponsesHTTPContinuation(platform string) bool {
+	return strings.EqualFold(strings.TrimSpace(platform), service.PlatformGrok)
+}
+
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
@@ -123,11 +127,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
 			return
 		}
-		reqLog.Warn("openai.request_validation_failed",
-			zap.String("reason", "previous_response_id_requires_wsv2"),
-		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
-		return
+		// OpenAI/Codex HTTP continuation remains intentionally disabled because
+		// its upstream state is connection-bound. Grok Build is handled
+		// differently: LightBridge replays the encrypted reasoning + tool-call
+		// chain itself, so downstream Grok CLI clients may safely submit
+		// previous_response_id over the ordinary Responses HTTP endpoint.
+		if !allowOpenAIResponsesHTTPContinuation(requestPlatform) {
+			reqLog.Warn("openai.request_validation_failed",
+				zap.String("reason", "previous_response_id_requires_wsv2"),
+			)
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
+			return
+		}
 	}
 
 	setOpsRequestContext(c, reqModel, reqStream)

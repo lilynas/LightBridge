@@ -446,7 +446,9 @@ func TestResolveEnabledAssetRestrictsVersionAndSymlinkEscapes(t *testing.T) {
 
 	asset, err := svc.ResolveEnabledAsset(context.Background(), moduleID, version, "remoteEntry.js")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(installPath, "remoteEntry.js"), asset)
+	expectedAsset, err := filepath.EvalSymlinks(filepath.Join(installPath, "remoteEntry.js"))
+	require.NoError(t, err)
+	require.Equal(t, expectedAsset, asset)
 
 	_, err = svc.ResolveEnabledAsset(context.Background(), moduleID, "0.9.0", "remoteEntry.js")
 	require.Error(t, err)

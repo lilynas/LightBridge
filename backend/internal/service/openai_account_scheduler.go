@@ -906,7 +906,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				stats.Unschedulable++
 				continue
 			}
-			if s.service.isOpenAIAccountRuntimeBlocked(account) {
+			if s.service.isAccountRuntimeBlocked(account) {
 				stats.RuntimeBlocked++
 				continue
 			}
@@ -1069,7 +1069,7 @@ func (s *defaultOpenAIAccountScheduler) openAIAccountRequestIncompatibleReason(c
 	if account == nil {
 		return "unschedulable"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
+	if s != nil && s.service != nil && s.service.isAccountRuntimeBlocked(account) {
 		return "runtime_blocked"
 	}
 	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
@@ -1224,7 +1224,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if account == nil {
 		return false
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
+	if s != nil && s.service != nil && s.service.isAccountRuntimeBlocked(account) {
 		return false
 	}
 	// Quota auto-pause must be evaluated during the initial filter too. Without it the

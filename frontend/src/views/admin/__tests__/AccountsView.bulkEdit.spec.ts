@@ -155,6 +155,9 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-show')).toBe('true')
     expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-target-mode')).toBe('filtered')
+
+    wrapper.unmount()
+    await flushPromises()
   })
 
   it('renders the created_at column by default', async () => {
@@ -223,5 +226,8 @@ describe('admin AccountsView bulk edit scope', () => {
       label: 'admin.accounts.columns.createdAt',
       sortable: true
     })
+
+    wrapper.unmount()
+    await flushPromises()
   })
 })
