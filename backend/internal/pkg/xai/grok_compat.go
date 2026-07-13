@@ -459,7 +459,7 @@ func IsValidGrokEncryptedContent(raw string) bool {
 		return false
 	}
 	for _, r := range raw {
-		if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '+' || r == '/') {
+		if !isRawGrokEncryptedContentCharacter(r) {
 			return false
 		}
 	}
@@ -468,6 +468,13 @@ func IsValidGrokEncryptedContent(raw string) bool {
 		return false
 	}
 	return byteEntropyRatio(decoded) >= MinGrokEncryptedContentEntropy
+}
+
+func isRawGrokEncryptedContentCharacter(r rune) bool {
+	return (r >= 'A' && r <= 'Z') ||
+		(r >= 'a' && r <= 'z') ||
+		(r >= '0' && r <= '9') ||
+		r == '+' || r == '/'
 }
 
 func byteEntropyRatio(buf []byte) float64 {

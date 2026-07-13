@@ -364,11 +364,6 @@ func ResponsesAnthropicEventToSSE(evt AnthropicStreamEvent) (string, error) {
 
 // --- internal handlers ---
 
-func resToAnthHandleCreated(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	captureResponsesAnthropicStreamMetadata(evt, state)
-	return ensureAnthropicMessageStart(state)
-}
-
 func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if evt.Item == nil {
 		return nil

@@ -46,6 +46,26 @@ func TestGroupRepoSuite(t *testing.T) {
 	suite.Run(t, new(GroupRepoSuite))
 }
 
+func (s *GroupRepoSuite) bindCustomAccountToGroup(groupID int64, name, protocol string) {
+	var accountID int64
+	extra := `{"protocol":"` + protocol + `","relay_mode":"passthrough"}`
+	s.Require().NoError(scanSingleRow(
+		s.ctx,
+		s.tx,
+		"INSERT INTO accounts (name, platform, type, extra) VALUES ($1, $2, $3, $4::jsonb) RETURNING id",
+		[]any{name, service.PlatformCustom, service.AccountTypeAPIKey, extra},
+		&accountID,
+	))
+	_, err := s.tx.ExecContext(
+		s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		accountID,
+		groupID,
+		1,
+	)
+	s.Require().NoError(err)
+}
+
 // --- Create / GetByID / Update / Delete ---
 
 func (s *GroupRepoSuite) TestCreate() {
@@ -199,30 +219,40 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 	)
 	s.Require().NoError(err, "ListWithFilters base")
 
-	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+	openAIGroup := &service.Group{
 		Name:             "g1",
 		Platform:         service.PlatformAnthropic,
 		RateMultiplier:   1.0,
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
-	}))
-	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, openAIGroup))
+
+	anthropicGroup := &service.Group{
 		Name:             "g2",
 		Platform:         service.PlatformOpenAI,
 		RateMultiplier:   1.0,
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
-	}))
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, anthropicGroup))
+	s.bindCustomAccountToGroup(openAIGroup.ID, "g1-openai", service.CustomProtocolOpenAIResponses)
+	s.bindCustomAccountToGroup(anthropicGroup.ID, "g2-anthropic", service.CustomProtocolAnthropicMessages)
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.PlatformOpenAI, "", "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(groups, len(baseGroups)+1)
-	// Verify all groups are OpenAI platform
+	// Filtering follows a bound account's upstream protocol, not the legacy group label.
+	foundOpenAIGroup := false
 	for _, g := range groups {
-		s.Require().Equal(service.PlatformOpenAI, g.Platform)
+		if g.Name == openAIGroup.Name {
+			foundOpenAIGroup = true
+		}
+		s.Require().NotEqual(anthropicGroup.Name, g.Name)
 	}
+	s.Require().True(foundOpenAIGroup)
 }
 
 func (s *GroupRepoSuite) TestListWithFilters_Status() {
@@ -534,44 +564,55 @@ func (s *GroupRepoSuite) TestListActive() {
 }
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {
-	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+	baseGroups, err := s.repo.ListActiveByPlatform(s.ctx, service.PlatformAnthropic)
+	s.Require().NoError(err, "ListActiveByPlatform base")
+
+	openAIGroup := &service.Group{
 		Name:             "g1",
 		Platform:         service.PlatformAnthropic,
 		RateMultiplier:   1.0,
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
-	}))
-	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, openAIGroup))
+
+	anthropicGroup := &service.Group{
 		Name:             "g2",
 		Platform:         service.PlatformOpenAI,
 		RateMultiplier:   1.0,
 		IsExclusive:      false,
 		Status:           service.StatusActive,
 		SubscriptionType: service.SubscriptionTypeStandard,
-	}))
-	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, anthropicGroup))
+
+	disabledAnthropicGroup := &service.Group{
 		Name:             "g3",
 		Platform:         service.PlatformAnthropic,
 		RateMultiplier:   1.0,
 		IsExclusive:      false,
 		Status:           service.StatusDisabled,
 		SubscriptionType: service.SubscriptionTypeStandard,
-	}))
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, disabledAnthropicGroup))
+	s.bindCustomAccountToGroup(openAIGroup.ID, "g1-openai", service.CustomProtocolOpenAIResponses)
+	s.bindCustomAccountToGroup(anthropicGroup.ID, "g2-anthropic", service.CustomProtocolAnthropicMessages)
+	s.bindCustomAccountToGroup(disabledAnthropicGroup.ID, "g3-anthropic", service.CustomProtocolAnthropicMessages)
 
 	groups, err := s.repo.ListActiveByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err, "ListActiveByPlatform")
-	// 1 default anthropic group + 1 test active anthropic group = 2 total
-	s.Require().Len(groups, 2)
-	// Verify our test group is in the results
-	var found bool
+	s.Require().Len(groups, len(baseGroups)+1)
+
+	var foundAnthropicGroup bool
 	for _, g := range groups {
-		if g.Name == "g1" {
-			found = true
-			break
+		if g.Name == anthropicGroup.Name {
+			foundAnthropicGroup = true
 		}
+		s.Require().NotEqual(openAIGroup.Name, g.Name)
+		s.Require().NotEqual(disabledAnthropicGroup.Name, g.Name)
 	}
-	s.Require().True(found, "g1 group should be in results")
+	s.Require().True(foundAnthropicGroup, "active group with an Anthropic upstream account should be in results")
 }
 
 // --- ExistsByName ---

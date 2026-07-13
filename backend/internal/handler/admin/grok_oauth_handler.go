@@ -288,13 +288,6 @@ func verifyGrokAccountAvailabilityWithServices(
 	return reloadGrokAccountWithService(ctx, adminService, account)
 }
 
-func (h *GrokOAuthHandler) reloadGrokAccount(ctx context.Context, fallback *service.Account) *service.Account {
-	if h == nil {
-		return fallback
-	}
-	return reloadGrokAccountWithService(ctx, h.adminService, fallback)
-}
-
 func reloadGrokAccountWithService(ctx context.Context, adminService service.AdminService, fallback *service.Account) *service.Account {
 	if adminService == nil || fallback == nil {
 		return fallback

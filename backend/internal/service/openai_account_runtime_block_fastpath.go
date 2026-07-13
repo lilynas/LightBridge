@@ -27,10 +27,6 @@ func isOpenAIOAuthAccount(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 }
 
-func isOpenAIAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI
-}
-
 func isRuntimeBlockSupportedAccount(account *Account) bool {
 	if account == nil {
 		return false
