@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 import sys
@@ -95,6 +96,40 @@ def is_probably_text(path: Path, data: bytes) -> bool:
 
 
 def iter_files(root: Path) -> Iterable[Path]:
+    """Yield committed release-source files when Git metadata is available.
+
+    Walking the working tree directly makes the checked-in inventory depend on
+    ignored or otherwise untracked local files. GitHub Actions always validates
+    a clean checkout, so an inventory generated from such files can never pass
+    in the release workflow. Archives do not contain .git metadata; retain the
+    filesystem walk as a fallback for those callers.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        yield from iter_worktree_files(root)
+        return
+
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        rel = Path(os.fsdecode(raw_path))
+        if rel.name in EXCLUDED_FILES:
+            continue
+        if any(part in EXCLUDED_DIRS for part in rel.parts[:-1]):
+            continue
+        path = root / rel
+        if not path.is_file() or path.is_symlink():
+            continue
+        yield path
+
+
+def iter_worktree_files(root: Path) -> Iterable[Path]:
     for current, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in EXCLUDED_DIRS)
         base = Path(current)
@@ -127,6 +162,7 @@ def collect(root: Path, output: Path) -> list[Entry]:
                 sha256=hashlib.sha256(data).hexdigest(),
             )
         )
+    entries.sort(key=lambda entry: entry.path)
     return entries
 
 
