@@ -507,6 +507,7 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
 }
 
 export interface DiscoverUpstreamModelsRequest {
+  account_id?: number
   platform: 'custom'
   type: 'apikey'
   credentials: Record<string, unknown>

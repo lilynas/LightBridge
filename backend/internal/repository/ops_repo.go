@@ -43,6 +43,8 @@ INSERT INTO ops_error_logs (
   is_count_tokens,
   error_message,
   error_body,
+  provider_error_code,
+  provider_error_type,
   error_source,
   error_owner,
   upstream_status_code,
@@ -56,7 +58,7 @@ INSERT INTO ops_error_logs (
   time_to_first_token_ms,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -153,6 +155,8 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		input.IsCountTokens,
 		opsNullString(input.ErrorMessage),
 		opsNullString(input.ErrorBody),
+		opsNullString(input.ProviderErrorCode),
+		opsNullString(input.ProviderErrorType),
 		opsNullString(input.ErrorSource),
 		opsNullString(input.ErrorOwner),
 		opsNullInt(input.UpstreamStatusCode),
@@ -218,6 +222,8 @@ SELECT
   COALESCE(e.client_request_id, ''),
   COALESCE(e.request_id, ''),
   COALESCE(e.error_message, ''),
+  COALESCE(e.provider_error_code, ''),
+  COALESCE(e.provider_error_type, ''),
   e.user_id,
   COALESCE(u.email, ''),
   e.api_key_id,
@@ -284,6 +290,8 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.ClientRequestID,
 			&item.RequestID,
 			&item.Message,
+			&item.ProviderErrorCode,
+			&item.ProviderErrorType,
 			&userID,
 			&userEmail,
 			&apiKeyID,
@@ -382,6 +390,8 @@ SELECT
   COALESCE(e.client_request_id, ''),
   COALESCE(e.request_id, ''),
   COALESCE(e.error_message, ''),
+  COALESCE(e.provider_error_code, ''),
+  COALESCE(e.provider_error_type, ''),
   COALESCE(e.error_body, ''),
   e.upstream_status_code,
   COALESCE(e.upstream_error_message, ''),
@@ -450,6 +460,8 @@ LIMIT 1`
 		&out.ClientRequestID,
 		&out.RequestID,
 		&out.Message,
+		&out.ProviderErrorCode,
+		&out.ProviderErrorType,
 		&out.ErrorBody,
 		&upstreamStatusCode,
 		&out.UpstreamErrorMessage,

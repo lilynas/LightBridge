@@ -99,6 +99,10 @@ type OpsInsertErrorLogInput struct {
 
 	ErrorMessage string
 	ErrorBody    string
+	// ProviderErrorCode/ProviderErrorType preserve the original error fields
+	// before standardized Ops classification.
+	ProviderErrorCode string
+	ProviderErrorType string
 
 	ErrorSource string
 	ErrorOwner  string

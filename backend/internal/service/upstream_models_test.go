@@ -27,6 +27,8 @@ func TestBuildV1ModelsURL(t *testing.T) {
 	require.Equal(t, "https://api.anthropic.com/v1/models", buildV1ModelsURL("https://api.anthropic.com/v1"))
 	require.Equal(t, "https://api.anthropic.com/v1/models", buildV1ModelsURL("https://api.anthropic.com/v1/models"))
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", buildV1ModelsURL("https://gateway.example.com/antigravity/"))
+	require.Equal(t, "https://gateway.example.com/api/v1/models", buildV1ModelsURL("https://gateway.example.com/api/v1/messages"))
+	require.Equal(t, "https://gateway.example.com/api/v1/models", buildV1ModelsURL("https://gateway.example.com/api/v1"))
 }
 
 func TestBuildGeminiModelsURL(t *testing.T) {
@@ -35,6 +37,7 @@ func TestBuildGeminiModelsURL(t *testing.T) {
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com"))
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com/v1beta"))
 	require.Equal(t, "https://generativelanguage.googleapis.com/v1beta/models", buildGeminiModelsURL("https://generativelanguage.googleapis.com/v1beta/models"))
+	require.Equal(t, "https://gateway.example.com/api/v1beta/models", buildGeminiModelsURL("https://gateway.example.com/api/v1/models/gemini:generateContent"))
 }
 
 func TestExtractUpstreamModelIDs(t *testing.T) {
@@ -59,6 +62,16 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			name: "top level array",
 			body: `[{"id":"z-model"},{"name":"models/a-model"}]`,
 			want: []string{"a-model", "z-model"},
+		},
+		{
+			name: "nested and string model lists",
+			body: `{"result":{"models":["gpt-5",{"model_id":"claude-sonnet"}]}}`,
+			want: []string{"claude-sonnet", "gpt-5"},
+		},
+		{
+			name: "model keyed object",
+			body: `{"models":{"gpt-5":{"owned_by":"openai"},"o3":{}}}`,
+			want: []string{"gpt-5", "o3"},
 		},
 	}
 
@@ -130,6 +143,66 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, "antigravity-key", antigravityReq.Header.Get("x-api-key"))
 }
 
+func TestBuildCustomUpstreamModelsRequestUsesSelectedProtocol(t *testing.T) {
+	t.Parallel()
+
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
+	tests := []struct {
+		name       string
+		protocol   string
+		baseURL    string
+		wantURL    string
+		wantHeader string
+		wantValue  string
+	}{
+		{"openai responses", CustomProtocolOpenAIResponses, "https://custom.example.com", "https://custom.example.com/v1/models", "Authorization", "Bearer custom-key"},
+		{"openai chat full endpoint", CustomProtocolOpenAIChatCompletions, "https://custom.example.com/v1/chat/completions", "https://custom.example.com/v1/models", "Authorization", "Bearer custom-key"},
+		{"anthropic messages", CustomProtocolAnthropicMessages, "https://custom.example.com/v1/messages", "https://custom.example.com/v1/models", "x-api-key", "custom-key"},
+		{"gemini", CustomProtocolGemini, "https://custom.example.com/v1", "https://custom.example.com/v1beta/models", "x-goog-api-key", "custom-key"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			account := &Account{
+				Platform: PlatformCustom,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":  "custom-key",
+					"base_url": tt.baseURL,
+				},
+				Extra: map[string]any{"protocol": tt.protocol},
+			}
+			req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantURL, req.URL.String())
+			require.Equal(t, tt.wantValue, req.Header.Get(tt.wantHeader))
+		})
+	}
+}
+
+func TestBuildCustomUpstreamModelsRequestUsesConfiguredModelsURL(t *testing.T) {
+	t.Parallel()
+
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
+	account := &Account{
+		Platform: PlatformCustom,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":    "custom-key",
+			"base_url":   "https://custom.example.com/v1/chat/completions",
+			"models_url": "https://catalog.example.com/provider/models/list",
+		},
+		Extra: map[string]any{"protocol": CustomProtocolOpenAIChatCompletions},
+	}
+
+	req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, "https://catalog.example.com/provider/models/list", req.URL.String())
+	require.Equal(t, "Bearer custom-key", req.Header.Get("Authorization"))
+}
+
 func TestBuildAntigravityAPIKeyModelsRequestRejectsOfficialCloudCodeBase(t *testing.T) {
 	t.Parallel()
 
@@ -193,13 +266,13 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIResponse(t *testing.T) {
 	require.Equal(t, "Bearer openai-key", upstream.lastReq.Header.Get("Authorization"))
 }
 
-func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
+func TestFetchUpstreamSupportedModelsExposesSanitizedUpstreamBody(t *testing.T) {
 	t.Parallel()
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusBadGateway,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":"SECRET_TOKEN should not be exposed"}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"error":"permission denied","access_token":"secret-token"}`)),
 	}}
 	svc := &AccountTestService{
 		httpUpstream: upstream,
@@ -216,11 +289,11 @@ func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "SECRET_TOKEN")
-
 	var syncErr *UpstreamModelSyncError
 	require.True(t, errors.As(err, &syncErr))
 	require.Equal(t, UpstreamModelSyncErrorUpstream, syncErr.Kind)
-	require.NotContains(t, syncErr.SafeMessage(), "SECRET_TOKEN")
+	require.Contains(t, syncErr.SafeMessage(), "permission denied")
+	require.NotContains(t, syncErr.SafeMessage(), "secret-token")
+	require.Contains(t, syncErr.SafeMessage(), `"access_token":"***"`)
 	require.Contains(t, syncErr.SafeMessage(), "HTTP 502")
 }

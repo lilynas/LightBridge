@@ -45,9 +45,11 @@ type OpsErrorLog struct {
 	ResolvedByUserName string     `json:"resolved_by_user_name"`
 	ResolvedStatusRaw  string     `json:"-"`
 
-	ClientRequestID string `json:"client_request_id"`
-	RequestID       string `json:"request_id"`
-	Message         string `json:"message"`
+	ClientRequestID   string `json:"client_request_id"`
+	RequestID         string `json:"request_id"`
+	Message           string `json:"message"`
+	ProviderErrorCode string `json:"provider_error_code"`
+	ProviderErrorType string `json:"provider_error_type"`
 
 	UserID      *int64 `json:"user_id"`
 	UserEmail   string `json:"user_email"`

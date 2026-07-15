@@ -16,6 +16,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { getApiErrorMessage } from '@/api/errors'
 import {
   aistudioProxyImportCookies,
   aistudioProxyRuntimeStatus,
@@ -55,7 +56,6 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
-import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -637,6 +637,7 @@ const applyPreset = () => {
 
   // Auto-fill Base URL and Protocol
   form.customBaseUrl = preset.baseUrl
+  form.customModelsUrl = ''
   form.customProtocol = protocolMapping[preset.protocol] || ''
 
   // Auto-fill account name if empty
@@ -666,6 +667,7 @@ const form = reactive({
   // Custom provider fields
   customProtocol: '',
   customBaseUrl: '',
+  customModelsUrl: '',
   customApiKey: '',
   // LightBridge Connect
   lightBridgeConnect: null as any
@@ -673,6 +675,9 @@ const form = reactive({
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+	if (form.platform === 'custom') {
+		return false
+	}
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -754,6 +759,7 @@ const customModelDiscoveryFingerprint = computed(() => {
   return JSON.stringify([
     form.customProtocol.trim(),
     form.customBaseUrl.trim(),
+    form.customModelsUrl.trim(),
     form.customApiKey.trim(),
     form.proxy_id ?? null
   ])
@@ -767,8 +773,25 @@ const canDiscoverCustomModels = computed(() =>
 )
 
 const extractCustomModelDiscoveryError = (error: unknown): string => {
-  const response = (error as { response?: { data?: { message?: string; detail?: string } } })?.response
-  return response?.data?.message || response?.data?.detail || t('admin.accounts.customModelDiscoveryFailed')
+  return getApiErrorMessage(error, t('admin.accounts.customModelDiscoveryFailed'))
+}
+
+const fetchCustomModelIDs = async (): Promise<string[]> => {
+  const result = await adminAPI.accounts.discoverUpstreamModels({
+    platform: 'custom',
+    type: 'apikey',
+    credentials: {
+      protocol: form.customProtocol.trim(),
+      base_url: form.customBaseUrl.trim(),
+      api_key: form.customApiKey.trim(),
+      ...(form.customModelsUrl.trim() ? { models_url: form.customModelsUrl.trim() } : {})
+    },
+    extra: {
+      protocol: form.customProtocol.trim()
+    },
+    proxy_id: form.proxy_id
+  })
+  return Array.from(new Set((result.models || []).map((model) => model.trim()).filter(Boolean))).sort()
 }
 
 const setCustomAllowedModelsFromSystem = (models: string[]) => {
@@ -783,41 +806,35 @@ const setCustomAllowedModelsFromSystem = (models: string[]) => {
 const runCustomModelDiscovery = async (
   expectedFingerprint: string,
   expectedRevision: number,
-  expectedManualEditRevision: number
+  expectedManualEditRevision: number,
+  force = false
 ): Promise<void> => {
   if (!canDiscoverCustomModels.value || expectedFingerprint !== customModelDiscoveryFingerprint.value) {
     return
   }
-  if (customModelDiscoveryUserEdited.value) {
+  if (customModelDiscoveryUserEdited.value && !force) {
     return
   }
 
   customModelDiscoveryLoading.value = true
   customModelDiscoveryError.value = ''
   try {
-    const result = await adminAPI.accounts.discoverUpstreamModels({
-      platform: 'custom',
-      type: 'apikey',
-      credentials: {
-        protocol: form.customProtocol.trim(),
-        base_url: form.customBaseUrl.trim(),
-        api_key: form.customApiKey.trim()
-      },
-      extra: {
-        protocol: form.customProtocol.trim()
-      },
-      proxy_id: form.proxy_id
-    })
+    const models = await fetchCustomModelIDs()
 
     const isCurrent =
       expectedRevision === customModelDiscoveryRevision &&
       expectedFingerprint === customModelDiscoveryFingerprint.value &&
-      expectedManualEditRevision === customModelManualEditRevision &&
-      !customModelDiscoveryUserEdited.value
+      (force || (
+        expectedManualEditRevision === customModelManualEditRevision &&
+        !customModelDiscoveryUserEdited.value
+      ))
     if (!isCurrent) return
 
-    const models = Array.from(new Set((result.models || []).map((model) => model.trim()).filter(Boolean))).sort()
-    setCustomAllowedModelsFromSystem(models)
+    if (force && customModelDiscoveryUserEdited.value) {
+      setCustomAllowedModelsFromSystem(Array.from(new Set([...allowedModels.value, ...models])).sort())
+    } else {
+      setCustomAllowedModelsFromSystem(models)
+    }
     customModelDiscoveryLastFingerprint.value = expectedFingerprint
     customModelDiscoveryLastCount.value = models.length
   } catch (error: unknown) {
@@ -861,8 +878,8 @@ const scheduleCustomModelDiscovery = () => {
   }, 650)
 }
 
-const ensureCustomModelsDiscovered = async (): Promise<void> => {
-  if (!canDiscoverCustomModels.value || customModelDiscoveryUserEdited.value) return
+const ensureCustomModelsDiscovered = async (force = false): Promise<void> => {
+  if (!canDiscoverCustomModels.value || (customModelDiscoveryUserEdited.value && !force)) return
   const fingerprint = customModelDiscoveryFingerprint.value
   if (customModelDiscoveryLastFingerprint.value === fingerprint) return
 
@@ -874,8 +891,29 @@ const ensureCustomModelsDiscovered = async (): Promise<void> => {
   await runCustomModelDiscovery(
     fingerprint,
     customModelDiscoveryRevision,
-    customModelManualEditRevision
+    customModelManualEditRevision,
+    force
   )
+}
+
+const discoverCustomModelsFromSelector = async (): Promise<string[]> => {
+  if (!canDiscoverCustomModels.value) {
+    throw new Error(t('admin.accounts.customModelDiscoveryMissingConfig'))
+  }
+  customModelDiscoveryLoading.value = true
+  customModelDiscoveryError.value = ''
+  try {
+    const models = await fetchCustomModelIDs()
+    customModelDiscoveryLastFingerprint.value = customModelDiscoveryFingerprint.value
+    customModelDiscoveryLastCount.value = models.length
+    return models
+  } catch (error) {
+    customModelDiscoveryError.value = extractCustomModelDiscoveryError(error)
+    customModelDiscoveryLastCount.value = null
+    throw error
+  } finally {
+    customModelDiscoveryLoading.value = false
+  }
 }
 
 watch(
@@ -894,6 +932,7 @@ watch(
     () => form.platform,
     () => form.customProtocol,
     () => form.customBaseUrl,
+    () => form.customModelsUrl,
     () => form.customApiKey,
     () => form.proxy_id
   ],
@@ -990,6 +1029,8 @@ watch(
     // it is not mistaken for a user edit while a model request is in flight.
     if (newPlatform === 'custom') {
       setCustomAllowedModelsFromSystem([])
+		accountCategory.value = 'apikey'
+		form.type = 'apikey'
     } else {
       allowedModels.value = []
     }
@@ -1462,6 +1503,10 @@ const resetForm = () => {
   form.platform = 'anthropic'
   form.type = 'oauth'
   form.credentials = {}
+  form.customProtocol = ''
+  form.customBaseUrl = ''
+  form.customModelsUrl = ''
+  form.customApiKey = ''
   form.proxy_id = null
   form.concurrency = 10
   form.load_factor = null
@@ -1771,11 +1816,14 @@ const handleSubmit = async () => {
 
     // Do one immediate, non-blocking discovery attempt when the debounced
     // request has not completed yet. Failure never prevents account creation.
-    await ensureCustomModelsDiscovered()
+    await ensureCustomModelsDiscovered(true)
 
     const credentials: Record<string, unknown> = {
       base_url: form.customBaseUrl.trim(),
       api_key: form.customApiKey.trim()
+    }
+    if (form.customModelsUrl.trim()) {
+      credentials.models_url = form.customModelsUrl.trim()
     }
 
     const extra: Record<string, unknown> = {
@@ -2994,7 +3042,6 @@ const useCreateAccountExternalTemplateBindings = () => ({
   Select,
   Icon,
   ProxySelector,
-  ProxyAdBanner,
   GroupSelector,
   ModelWhitelistSelector,
   QuotaLimitCard,
@@ -3043,6 +3090,7 @@ const useCreateAccountExternalTemplateBindings = () => ({
   showStepIndicator,
   shouldShowLightBridgeConnect,
   handleLightBridgeConnectVerified,
+  discoverCustomModelsFromSelector,
   isManualInputMethod,
   expiresAtInput,
   canExchangeCode,

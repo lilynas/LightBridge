@@ -102,13 +102,33 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 	}
 
 	// APIKeyAuth-style: { code:"INSUFFICIENT_BALANCE", message:"..." }
-	code, _ := m["code"].(string)
+	code := stringValue(m["reason"])
+	if code == "" {
+		code = stringValue(m["code"])
+	}
 	msg, _ := m["message"].(string)
+	errorType := stringValue(m["type"])
+	if errorType == "" {
+		errorType = "api_error"
+	}
 	if code != "" || msg != "" {
-		return parsedOpsError{ErrorType: "api_error", Message: msg, Code: code}
+		return parsedOpsError{ErrorType: errorType, Message: msg, Code: code}
 	}
 
 	return parsedOpsError{Message: truncateString(string(body), 1024)}
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case float64:
+		return strconvItoa(int(typed))
+	case int:
+		return strconvItoa(typed)
+	default:
+		return ""
+	}
 }
 
 func resolveOpsPlatform(ctx context.Context, apiKey *service.APIKey, fallback string) string {

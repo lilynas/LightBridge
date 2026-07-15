@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { getApiErrorMessage } from '@/api/errors'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -21,7 +22,6 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
-import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ProxyPolicyPanel from '@/components/admin/proxy/ProxyPolicyPanel.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -67,7 +67,6 @@ const externalTemplateBindings = {
   Select,
   Icon,
   ProxySelector,
-  ProxyAdBanner,
   GroupSelector,
   ModelWhitelistSelector,
   commonErrorCodes,
@@ -249,6 +248,7 @@ const geminiRelayMode = ref<RelayMode>(RELAY_MODE_ROUTER)
 const customRelayMode = ref<RelayMode>(RELAY_MODE_ROUTER)
 const editCustomProtocol = ref('')
 const editCustomBaseUrl = ref('')
+const editCustomModelsUrl = ref('')
 const editCustomApiKey = ref('')
 const openaiPassthroughEnabled = computed({
   get: () => openaiRelayMode.value === RELAY_MODE_FULL_PASSTHROUGH,
@@ -690,6 +690,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   customRelayMode.value = RELAY_MODE_ROUTER
   editCustomProtocol.value = ''
   editCustomBaseUrl.value = ''
+  editCustomModelsUrl.value = ''
   editCustomApiKey.value = ''
   if (newAccount.platform === 'custom') {
     customRelayMode.value = normalizeRelayMode(extra)
@@ -700,6 +701,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       (customCredentials?.protocol as string) ||
       ''
     editCustomBaseUrl.value = (customCredentials?.base_url as string) || ''
+    editCustomModelsUrl.value = (customCredentials?.models_url as string) || ''
   }
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiRelayMode.value = normalizeRelayMode(extra)
@@ -1040,11 +1042,41 @@ const syncAntigravityUpstreamModels = async () => {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    const message = getApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {
     isSyncingAntigravityUpstream.value = false
   }
+}
+
+const discoverCustomModelsFromSelector = async (): Promise<string[]> => {
+  if (!props.account?.id || props.account.platform !== 'custom') {
+    throw new Error(t('admin.accounts.customModelDiscoveryMissingConfig'))
+  }
+  const protocol = editCustomProtocol.value.trim()
+  const baseURL = editCustomBaseUrl.value.trim()
+  if (!protocol || !baseURL) {
+    throw new Error(t('admin.accounts.customModelDiscoveryMissingConfig'))
+  }
+
+  const credentials: Record<string, unknown> = {
+    protocol,
+    base_url: baseURL
+  }
+  if (editCustomApiKey.value.trim()) {
+    credentials.api_key = editCustomApiKey.value.trim()
+  }
+  credentials.models_url = editCustomModelsUrl.value.trim() || null
+
+  const result = await adminAPI.accounts.discoverUpstreamModels({
+    account_id: props.account.id,
+    platform: 'custom',
+    type: 'apikey',
+    credentials,
+    extra: { protocol },
+    proxy_id: form.proxy_id ?? 0
+  })
+  return Array.from(new Set((result.models || []).map((model) => model.trim()).filter(Boolean))).sort()
 }
 
 // Error code toggle helper
@@ -1945,6 +1977,12 @@ const handleSubmit = async () => {
         newCredentials.base_url = editCustomBaseUrl.value.trim()
       }
 
+      if (editCustomModelsUrl.value.trim()) {
+        newCredentials.models_url = editCustomModelsUrl.value.trim()
+      } else {
+        delete newCredentials.models_url
+      }
+
       // Update API key (only if provided, otherwise keep existing)
       if (editCustomApiKey.value.trim()) {
         newCredentials.api_key = editCustomApiKey.value.trim()
@@ -2097,6 +2135,7 @@ const useEditAccountExternalTemplateBindings = () => ({
   removeAntigravityModelMapping,
   addAntigravityPresetMapping,
   syncAntigravityUpstreamModels,
+  discoverCustomModelsFromSelector,
   toggleErrorCode,
   addCustomErrorCode,
   removeErrorCode,

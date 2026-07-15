@@ -643,6 +643,7 @@ export default {
       customModelDiscoveryLoading: '正在从 Custom 上游自动拉取模型…',
       customModelDiscoverySuccess: '已自动发现并填充 {count} 个上游模型',
       customModelDiscoveryFailed: '自动发现上游模型失败',
+      customModelDiscoveryMissingConfig: '请先填写 Custom 协议、Base URL 和 API Key',
       customModelDiscoveryError: '自动发现模型失败：{message}。你仍可手动填写模型列表。',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
@@ -1207,6 +1208,7 @@ export default {
         }
       },
       custom: {
+        apiKeyPlaceholder: '请输入上游 API Key',
         title: 'Custom Provider',
         accountAddTitle: 'Custom 账号添加',
         preset: 'Provider 预设',
@@ -1230,6 +1232,9 @@ export default {
         protocolHint: '选择与上游兼容的协议类型',
         baseUrl: 'Base URL',
         baseUrlHint: '自定义上游端点地址，例如 https://api.example.com/v1',
+        modelListUrl: '模型列表 URL（可选）',
+        modelListUrlPlaceholder: '例如 https://api.example.com/v1/models',
+        modelListUrlHint: '留空时根据协议和 Base URL 自动推导；仅当上游使用非标准模型列表地址时填写。',
         pleaseSelectProtocol: '请选择协议类型',
         pleaseEnterBaseUrl: '请输入 Base URL',
         pleaseEnterApiKey: '请输入 API Key',

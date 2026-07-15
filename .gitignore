@@ -152,3 +152,29 @@ frontend/node_modules/
 frontend/package-lock.json
 frontend/dist/
 backend/internal/web/dist/
+
+# ===================
+# 构建产物 / 打包文件
+# ===================
+*.zip
+
+# ===================
+# AI agent / MCP 工具产物
+# ===================
+.playwright-mcp/
+.pnpm-store/
+.tmp/
+.claude-summary-*.md
+# 一次性报告 / 旧版本 release notes（根目录）
+CODE_REVIEW_CHANGES.md
+LIGHTBRIDGE_*_REPORT.md
+LIGHTBRIDGE_*_TEST_PLAN.md
+LIGHTBRIDGE_*_VALIDATION_REPORT.md
+LIGHTBRIDGE_*_UPGRADE.md
+TEST_REPORT.md
+CHANGELOG_local.md
+CHANGELOG_v*.md
+RELEASE_NOTES_v0.1.*.md
+RELEASE_NOTES_v0.2.2*.md
+RELEASE_NOTES_v0.2.24-preview.md
+README_JA.md

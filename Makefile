@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan audit-codebase
+.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd test-model-sync-smoke model-sync-smoke secret-scan audit-codebase
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -42,6 +42,12 @@ test-frontend-critical:
 
 test-datamanagementd:
 	@cd datamanagement && go test ./...
+
+test-model-sync-smoke:
+	@cd backend && go test ./cmd/model-sync-smoke
+
+model-sync-smoke:
+	@cd backend && go run ./cmd/model-sync-smoke $(ARGS)
 
 secret-scan:
 	@python3 tools/secret_scan.py

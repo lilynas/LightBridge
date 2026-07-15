@@ -1,5 +1,33 @@
 <template>
   <div>
+    <!-- Model actions -->
+    <div class="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+      <button
+        type="button"
+        @click="fillRelated"
+        class="inline-flex min-h-9 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+      >
+        {{ t('admin.accounts.fillRelatedModels') }}
+      </button>
+      <button
+        v-if="canSyncUpstream"
+        type="button"
+        @click="syncUpstreamModels"
+        :disabled="isSyncingUpstream"
+        class="inline-flex min-h-9 items-center justify-center rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') }}
+      </button>
+      <button
+        type="button"
+        @click="clearAll"
+        class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/60 dark:bg-dark-800 dark:text-red-400 dark:hover:bg-red-900/20"
+      >
+        <Icon name="trash" size="xs" />
+        {{ t('admin.accounts.clearAllModels') }}
+      </button>
+    </div>
+
     <!-- Multi-select Dropdown -->
     <div class="relative mb-3">
       <div
@@ -76,33 +104,6 @@
       </div>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="mb-4 flex flex-wrap gap-2">
-      <button
-        type="button"
-        @click="fillRelated"
-        class="rounded-lg border border-blue-200 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30"
-      >
-        {{ t('admin.accounts.fillRelatedModels') }}
-      </button>
-      <button
-        v-if="canSyncUpstream"
-        type="button"
-        @click="syncUpstreamModels"
-        :disabled="isSyncingUpstream"
-        class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
-      >
-        {{ isSyncingUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') }}
-      </button>
-      <button
-        type="button"
-        @click="clearAll"
-        class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
-      >
-        {{ t('admin.accounts.clearAllModels') }}
-      </button>
-    </div>
-
     <!-- Custom Model Input -->
     <div class="mb-3">
       <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.customModelName') }}</label>
@@ -133,6 +134,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
+import { getApiErrorMessage } from '@/api/errors'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
@@ -144,6 +146,7 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
+  discoverModels?: () => Promise<string[]>
 }>()
 
 const emit = defineEmits<{
@@ -176,7 +179,7 @@ const normalizedPlatforms = computed(() => {
 
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'grok', 'antigravity', 'custom'])
 const canSyncUpstream = computed(() => {
-  if (!props.accountId) return false
+	if (!props.accountId && !props.discoverModels) return false
   if (normalizedPlatforms.value.length === 0) return true
   return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
 })
@@ -249,12 +252,15 @@ const fillRelated = () => {
 }
 
 const syncUpstreamModels = async () => {
-  if (!props.accountId || isSyncingUpstream.value) return
+  if ((!props.accountId && !props.discoverModels) || isSyncingUpstream.value) return
 
   isSyncingUpstream.value = true
   try {
-    const result = await accountsAPI.syncUpstreamModels(props.accountId)
-    const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
+    const upstreamModels = (
+      props.discoverModels
+        ? await props.discoverModels()
+        : (await accountsAPI.syncUpstreamModels(props.accountId as number)).models
+    ).map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
@@ -276,7 +282,7 @@ const syncUpstreamModels = async () => {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length }))
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    const message = getApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {
     isSyncingUpstream.value = false

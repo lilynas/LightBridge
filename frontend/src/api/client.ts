@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
 import { getLocale } from '@/i18n'
+import { ApiError } from './errors'
 
 // ==================== Axios Instance Configuration ====================
 
@@ -94,13 +95,18 @@ apiClient.interceptors.response.use(
       } else {
         // API error
         const resp = apiResponse as unknown as Record<string, unknown>
-        return Promise.reject({
+        return Promise.reject(new ApiError({
           status: response.status,
           code: apiResponse.code,
           message: apiResponse.message || 'Unknown error',
           reason: resp.reason,
           metadata: resp.metadata,
-        })
+          detail: resp.detail,
+          data: apiResponse,
+          response,
+          url: response.config?.url,
+          method: response.config?.method
+        }))
       }
     }
     return response
@@ -140,12 +146,16 @@ apiClient.interceptors.response.use(
           window.location.href = '/admin/settings'
         }
 
-        return Promise.reject({
+        return Promise.reject(new ApiError({
           status,
           code: 'OPS_DISABLED',
           message: apiData.message || error.message,
-          url
-        })
+          data: apiData,
+          response: error.response,
+          url,
+          method: error.config?.method,
+          cause: error
+        }))
       }
 
       // 401: Try to refresh the token if we have a refresh token
@@ -170,11 +180,19 @@ apiClient.interceptors.response.use(
                   resolve(apiClient(originalRequest))
                 } else {
                   // Refresh failed, reject with original error
-                  reject({
+                  reject(new ApiError({
                     status,
                     code: apiData.code,
-                    message: apiData.message || apiData.detail || error.message
-                  })
+                    reason: apiData.reason,
+                    detail: apiData.detail,
+                    metadata: apiData.metadata,
+                    message: apiData.message || apiData.detail || error.message,
+                    data: apiData,
+                    response: error.response,
+                    url,
+                    method: error.config?.method,
+                    cause: error
+                  }))
                 }
               })
             })
@@ -235,11 +253,14 @@ apiClient.interceptors.response.use(
               window.location.href = '/login'
             }
 
-            return Promise.reject({
+            return Promise.reject(new ApiError({
               status: 401,
               code: 'TOKEN_REFRESH_FAILED',
-              message: 'Session expired. Please log in again.'
-            })
+              message: 'Session expired. Please log in again.',
+              url,
+              method: error.config?.method,
+              cause: refreshError
+            }))
           }
         }
 
@@ -268,21 +289,30 @@ apiClient.interceptors.response.use(
       }
 
       // Return structured error
-      return Promise.reject({
+      return Promise.reject(new ApiError({
         status,
         code: apiData.code,
         reason: apiData.reason,
-        error: apiData.error,
+        detail: apiData.detail ?? apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
-      })
+        data: apiData,
+        response: error.response,
+        url,
+        method: error.config?.method,
+        cause: error
+      }))
     }
 
     // Network error
-    return Promise.reject({
+    return Promise.reject(new ApiError({
       status: 0,
-      message: 'Network error. Please check your connection.'
-    })
+      code: error.code,
+      message: error.message || 'Network error. Please check your connection.',
+      url: error.config?.url,
+      method: error.config?.method,
+      cause: error
+    }))
   }
 )
 

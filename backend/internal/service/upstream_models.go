@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/claude"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/geminicli"
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/xai"
+	"github.com/WilliamWang1721/LightBridge/internal/util/logredact"
 )
 
 const upstreamModelsBodyLimit int64 = 8 << 20
@@ -31,9 +33,12 @@ const (
 
 // UpstreamModelSyncError keeps internal failure details wrapped while exposing a safe client message.
 type UpstreamModelSyncError struct {
-	Kind    UpstreamModelSyncErrorKind
-	Message string
-	Err     error
+	Kind           UpstreamModelSyncErrorKind
+	Message        string
+	Detail         string
+	UpstreamURL    string
+	UpstreamStatus int
+	Err            error
 }
 
 func (e *UpstreamModelSyncError) Error() string {
@@ -58,7 +63,25 @@ func (e *UpstreamModelSyncError) SafeMessage() string {
 	if e == nil || strings.TrimSpace(e.Message) == "" {
 		return "Failed to sync upstream models"
 	}
-	return e.Message
+	message := strings.TrimSpace(e.Message)
+	detail := strings.TrimSpace(e.Detail)
+	if detail == "" && e.Err != nil {
+		detail = logredact.RedactText(e.Err.Error(), "api_key", "x-api-key", "authorization", "token", "key")
+	}
+	if detail == "" || strings.Contains(message, detail) {
+		return message
+	}
+	return message + ": " + detail
+}
+
+func (e *UpstreamModelSyncError) withUpstreamResponse(rawURL string, status int, detail string) error {
+	if e == nil {
+		return e
+	}
+	e.UpstreamURL = sanitizeUpstreamModelURL(rawURL)
+	e.UpstreamStatus = status
+	e.Detail = detail
+	return e
 }
 
 func newUpstreamModelSyncConfigError(message string, err error) error {
@@ -111,10 +134,14 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, newUpstreamModelSyncUpstreamError(
+		syncErr := newUpstreamModelSyncUpstreamError(
 			fmt.Sprintf("Upstream model list request failed with HTTP %d", resp.StatusCode),
 			fmt.Errorf("upstream model list returned HTTP %d", resp.StatusCode),
 		)
+		if typed, ok := syncErr.(*UpstreamModelSyncError); ok {
+			return nil, typed.withUpstreamResponse(req.URL.String(), resp.StatusCode, sanitizeUpstreamModelErrorDetail(body))
+		}
+		return nil, syncErr
 	}
 
 	models, err := extractUpstreamModelIDs(body)
@@ -126,6 +153,24 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	}
 
 	return models, nil
+}
+
+func sanitizeUpstreamModelErrorDetail(body []byte) string {
+	const maxDetailBytes = 16 << 10
+	if len(body) > maxDetailBytes {
+		body = body[:maxDetailBytes]
+	}
+	return logredact.RedactText(string(body), "api_key", "x-api-key", "authorization", "token", "key")
+}
+
+func sanitizeUpstreamModelURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return logredact.RedactText(raw, "api_key", "key", "token")
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
@@ -199,7 +244,11 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid Anthropic base URL", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildV1ModelsURL(normalizedBaseURL), nil)
+	modelsURL, err := s.resolveUpstreamModelsURL(account, buildV1ModelsURL(normalizedBaseURL))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid Anthropic model list URL", err)
 	}
@@ -276,7 +325,11 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI base URL", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	modelsURL, err := s.resolveUpstreamModelsURL(account, buildOpenAIModelsURL(normalizedBaseURL))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI model list URL", err)
 	}
@@ -329,7 +382,11 @@ func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Contex
 		return nil, newUpstreamModelSyncConfigError("Invalid Gemini base URL", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildGeminiModelsURL(normalizedBaseURL), nil)
+	modelsURL, err := s.resolveUpstreamModelsURL(account, buildGeminiModelsURL(normalizedBaseURL))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid Gemini model list URL", err)
 	}
@@ -414,86 +471,142 @@ func upstreamModelsProxyURL(account *Account) string {
 	return ""
 }
 
+// resolveUpstreamModelsURL lets Custom providers override the conventional
+// /v1/models or /v1beta/models endpoint while retaining the same URL security
+// validation used by normal upstream requests.
+func (s *AccountTestService) resolveUpstreamModelsURL(account *Account, fallback string) (string, error) {
+	if account == nil || !account.IsCustom() {
+		return fallback, nil
+	}
+	configured := strings.TrimSpace(account.GetCredential("models_url"))
+	if configured == "" {
+		return fallback, nil
+	}
+	normalized, err := s.validateUpstreamBaseURL(configured)
+	if err != nil {
+		return "", newUpstreamModelSyncConfigError("Invalid Custom model list URL", err)
+	}
+	return normalized, nil
+}
+
 func buildV1ModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildModelsURLForProtocol(base, CustomProtocolAnthropicMessages)
 }
 
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildModelsURLForProtocol(base, CustomProtocolOpenAIResponses)
 }
 
 func buildGeminiModelsURL(base string) string {
+	return buildModelsURLForProtocol(base, CustomProtocolGemini)
+}
+
+// buildModelsURLForProtocol accepts a provider root URL, a versioned API root,
+// or a full generation endpoint. It preserves any path prefix while replacing
+// the protocol endpoint suffix with the matching model-list endpoint.
+func buildModelsURLForProtocol(base, protocol string) string {
 	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1beta/models") {
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return normalized
 	}
-	if strings.HasSuffix(normalized, "/v1beta") {
-		return normalized + "/models"
+
+	targetVersion := "v1"
+	if protocol == CustomProtocolGemini {
+		targetVersion = "v1beta"
 	}
-	return normalized + "/v1beta/models"
+
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) == 1 && segments[0] == "" {
+		segments = nil
+	}
+	versionIndex := -1
+	for i, segment := range segments {
+		switch strings.ToLower(strings.TrimSpace(segment)) {
+		case "v1", "v1beta":
+			versionIndex = i
+		}
+	}
+
+	var modelPath []string
+	if versionIndex >= 0 {
+		modelPath = append(modelPath, segments[:versionIndex]...)
+		modelPath = append(modelPath, targetVersion, "models")
+	} else if len(segments) > 0 && strings.EqualFold(segments[len(segments)-1], "models") {
+		modelPath = segments
+	} else {
+		modelPath = append(modelPath, segments...)
+		modelPath = append(modelPath, targetVersion, "models")
+	}
+
+	parsed.Path = "/" + strings.Join(modelPath, "/")
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/")
 }
 
 type upstreamModelEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Model   string `json:"model"`
+	ModelID string `json:"model_id"`
 }
 
 func extractUpstreamModelIDs(body []byte) ([]string, error) {
-	var response struct {
-		Data   []upstreamModelEntry `json:"data"`
-		Models []upstreamModelEntry `json:"models"`
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse upstream model list: %w", err)
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
-		var arrayResponse []upstreamModelEntry
-		if arrayErr := json.Unmarshal(body, &arrayResponse); arrayErr != nil {
-			return nil, fmt.Errorf("parse upstream model list: %w", err)
+	models := make([]string, 0)
+	collectUpstreamModelIDs(payload, &models, 0)
+	return dedupeAndSortModelIDs(models), nil
+}
+
+func collectUpstreamModelIDs(value any, models *[]string, depth int) {
+	if depth > 8 || value == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case string:
+		*models = append(*models, typed)
+	case []any:
+		for _, item := range typed {
+			collectUpstreamModelIDs(item, models, depth+1)
 		}
-
-		models := make([]string, 0, len(arrayResponse))
-		for _, entry := range arrayResponse {
-			models = append(models, upstreamModelEntryID(entry))
-		}
-		return dedupeAndSortModelIDs(models), nil
-	}
-
-	models := make([]string, 0, len(response.Data)+len(response.Models))
-	for _, entry := range response.Data {
-		models = append(models, upstreamModelEntryID(entry))
-	}
-	for _, entry := range response.Models {
-		models = append(models, upstreamModelEntryID(entry))
-	}
-
-	if len(models) == 0 {
-		var arrayResponse []upstreamModelEntry
-		if err := json.Unmarshal(body, &arrayResponse); err == nil {
-			for _, entry := range arrayResponse {
-				models = append(models, upstreamModelEntryID(entry))
+	case map[string]any:
+		for _, key := range []string{"id", "name", "model", "model_id"} {
+			if raw, ok := typed[key].(string); ok && strings.TrimSpace(raw) != "" {
+				*models = append(*models, raw)
+				return
 			}
 		}
+		for _, key := range []string{"data", "models", "items", "result"} {
+			nested, ok := typed[key]
+			if !ok {
+				continue
+			}
+			if modelMap, ok := nested.(map[string]any); ok && key == "models" {
+				for modelID := range modelMap {
+					*models = append(*models, modelID)
+				}
+				continue
+			}
+			collectUpstreamModelIDs(nested, models, depth+1)
+		}
 	}
-
-	return dedupeAndSortModelIDs(models), nil
 }
 
 func upstreamModelEntryID(entry upstreamModelEntry) string {
 	modelID := strings.TrimSpace(entry.ID)
 	if modelID == "" {
 		modelID = strings.TrimSpace(entry.Name)
+	}
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.Model)
+	}
+	if modelID == "" {
+		modelID = strings.TrimSpace(entry.ModelID)
 	}
 	return strings.TrimPrefix(modelID, "models/")
 }
@@ -502,7 +615,7 @@ func dedupeAndSortModelIDs(models []string) []string {
 	seen := make(map[string]struct{}, len(models))
 	result := make([]string, 0, len(models))
 	for _, model := range models {
-		model = strings.TrimSpace(model)
+		model = strings.TrimPrefix(strings.TrimSpace(model), "models/")
 		if model == "" {
 			continue
 		}

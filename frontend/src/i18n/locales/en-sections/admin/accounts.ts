@@ -560,6 +560,7 @@ export default {
       customModelDiscoveryLoading: 'Discovering models from the Custom upstream...',
       customModelDiscoverySuccess: 'Discovered and filled {count} upstream model(s)',
       customModelDiscoveryFailed: 'Failed to discover upstream models',
+      customModelDiscoveryMissingConfig: 'Enter the Custom protocol, Base URL, and API key first',
       customModelDiscoveryError: 'Automatic model discovery failed: {message}. You can still enter the list manually.',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
@@ -1139,6 +1140,7 @@ export default {
         }
       },
       custom: {
+        apiKeyPlaceholder: 'Enter the upstream API key',
         title: 'Custom Provider',
         accountAddTitle: 'Add Custom Account',
         preset: 'Provider Preset',
@@ -1162,6 +1164,9 @@ export default {
         protocolHint: 'Select the protocol compatible with your upstream',
         baseUrl: 'Base URL',
         baseUrlHint: 'Custom upstream endpoint, e.g., https://api.example.com/v1',
+        modelListUrl: 'Model list URL (optional)',
+        modelListUrlPlaceholder: 'e.g., https://api.example.com/v1/models',
+        modelListUrlHint: 'Leave blank to derive it from the protocol and Base URL. Set it only when the upstream uses a non-standard model-list endpoint.',
         pleaseSelectProtocol: 'Please select a protocol',
         pleaseEnterBaseUrl: 'Please enter Base URL',
         pleaseEnterApiKey: 'Please enter API Key',

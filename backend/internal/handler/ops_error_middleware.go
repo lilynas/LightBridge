@@ -123,6 +123,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 					accountID = &v
 				}
 			}
+			if accountID == nil && c.Request != nil {
+				if v, ok := c.Request.Context().Value(ctxkey.AccountID).(int64); ok && v > 0 {
+					accountID = &v
+				}
+			}
 
 			fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
 			platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
@@ -349,6 +354,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		if v, ok := accountIDV.(int64); ok && v > 0 {
 			accountID = &v
 		}
+		if accountID == nil && c.Request != nil {
+			if v, ok := c.Request.Context().Value(ctxkey.AccountID).(int64); ok && v > 0 {
+				accountID = &v
+			}
+		}
 
 		fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
 		platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
@@ -411,9 +421,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorMessage: parsed.Message,
 			// Keep the full captured error body (capture is already capped at 64KB) so the
 			// service layer can sanitize JSON before truncating for storage.
-			ErrorBody:   string(body),
-			ErrorSource: errorSource,
-			ErrorOwner:  errorOwner,
+			ErrorBody:         string(body),
+			ProviderErrorCode: parsed.Code,
+			ProviderErrorType: parsed.ErrorType,
+			ErrorSource:       errorSource,
+			ErrorOwner:        errorOwner,
 
 			CreatedAt: time.Now(),
 		}

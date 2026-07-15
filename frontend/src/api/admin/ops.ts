@@ -903,6 +903,8 @@ export interface OpsErrorLog {
   client_request_id: string
   request_id: string
   message: string
+  provider_error_code: string
+  provider_error_type: string
 
   user_id?: number | null
   user_email: string

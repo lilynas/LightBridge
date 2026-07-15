@@ -133,7 +133,7 @@ func (s *AccountTestService) probeClaudeAuthenticity(ctx context.Context, c *gin
 				CheckedAt: time.Now(), Detail: fmt.Sprintf("invalid base url: %s", err.Error()),
 			}, nil
 		}
-		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/v1/messages?beta=true"
+		apiURL = buildAnthropicMessagesURL(normalizedBaseURL, false)
 	} else {
 		return &ClaudeAuthenticityResult{
 			Verdict: AuthenticityVerdictUnknown, Method: AuthenticityMethodProbe,
