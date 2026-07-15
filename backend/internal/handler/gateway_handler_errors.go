@@ -163,6 +163,14 @@ func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarte
 		return false
 	}
 	if c.Writer.Written() {
+		// Forwarders may already have written a complete JSON error response.
+		// Appending an SSE/JSON error in that case corrupts the body into two
+		// concatenated documents. Only a successful status can represent a
+		// flushed keepalive or a partially-started stream that still needs a
+		// protocol terminal event.
+		if c.Writer.Status() >= http.StatusBadRequest {
+			return false
+		}
 		streamStarted = true
 	}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)

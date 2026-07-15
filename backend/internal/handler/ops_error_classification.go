@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -42,6 +43,19 @@ func normalizeOpsErrorType(errType string, code string) string {
 	default:
 		return "api_error"
 	}
+}
+
+// normalizeOpsErrorTypeForStatus preserves protocol-specific error types while
+// classifying a generic HTTP 400 envelope as request validation. Admin APIs use
+// {code:400,message:...} rather than an OpenAI error.type, and treating that as
+// api_error incorrectly attributes a user filter validation failure to the
+// LightBridge platform at P2 severity.
+func normalizeOpsErrorTypeForStatus(errType string, code string, status int) string {
+	normalized := normalizeOpsErrorType(errType, code)
+	if status == http.StatusBadRequest && normalized == "api_error" {
+		return "invalid_request_error"
+	}
+	return normalized
 }
 
 func classifyOpsPhase(errType, message, code string) string {

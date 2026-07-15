@@ -36,10 +36,9 @@ type Options struct {
 	EnableOpenAIModule        bool
 	// SameDatabase indicates that the source and target point at the same
 	// database (the in-place upgrade auto-migration). When true, legacy OpenAI
-	// accounts are converted in place instead of being copied into a new
-	// `platform='module'` row — otherwise the original `platform='openai'` row
-	// would be left behind as a duplicate and would re-trigger the migration on
-	// every startup.
+	// accounts are enriched with provider-module metadata in place instead of
+	// being copied. The canonical account platform always remains `openai`;
+	// module routing is selected by extra.provider_id.
 	SameDatabase bool
 }
 
@@ -133,7 +132,7 @@ func normalizeOptions(opts Options) Options {
 		opts.ModuleDataDir = "data"
 	}
 	// Treat identical source/target as the same database so OpenAI accounts are
-	// converted in place rather than duplicated into a parallel module account.
+	// enriched in place rather than duplicated.
 	if !opts.SameDatabase && opts.SourceDriver == opts.TargetDriver &&
 		opts.SourceDSN != "" && opts.SourceDSN == opts.TargetDSN {
 		opts.SameDatabase = true
@@ -397,7 +396,7 @@ ORDER BY id ASC LIMIT 1`, openAIProviderID, m.opts.SourceKind, legacyID).Scan(&e
 	if err == nil {
 		_, err = m.target.ExecContext(ctx, `
 UPDATE accounts
-SET name = $1, notes = NULLIF($2, ''), platform = 'module', type = $3,
+SET name = $1, notes = NULLIF($2, ''), platform = 'openai', type = $3,
     credentials = $4, extra = $5, proxy_id = $6, concurrency = $7, load_factor = $8,
     priority = $9, status = $10, schedulable = $11, updated_at = NOW()
 WHERE id = $12`,
@@ -406,18 +405,16 @@ WHERE id = $12`,
 		return err
 	}
 
-	// Same-database (in-place upgrade) migration: convert the legacy
-	// `platform='openai'` account in place instead of inserting a second
-	// `platform='module'` row. Inserting a copy would (a) leave the original
-	// openai account behind as a duplicate, and (b) keep hasLegacyOpenAIAccounts
-	// true, re-running this migration — and re-adding the copy — on every boot.
-	// Converting in place also preserves the account id so API keys, groups and
-	// usage records keep pointing at the same account.
+	// Same-database (in-place upgrade) migration: enrich the legacy OpenAI row
+	// with provider-module metadata without changing its canonical platform.
+	// This preserves the account id and keeps every native OpenAI feature
+	// (scheduler, token refresh, privacy and UI) attached to the account while
+	// extra.provider_id opts it into the module adapter.
 	if m.opts.SameDatabase {
 		if sourceID, ok := numericLegacyID(record.LegacyID); ok {
 			_, err := m.target.ExecContext(ctx, `
 UPDATE accounts
-SET name = $1, notes = NULLIF($2, ''), platform = 'module', type = $3,
+SET name = $1, notes = NULLIF($2, ''), platform = 'openai', type = $3,
     credentials = $4, extra = $5, proxy_id = COALESCE($6, proxy_id), concurrency = $7, load_factor = $8,
     priority = $9, status = $10, schedulable = $11, updated_at = NOW()
 WHERE id = $12 AND platform = 'openai' AND deleted_at IS NULL`,
@@ -442,7 +439,7 @@ INSERT INTO accounts (
   concurrency, load_factor, priority, rate_multiplier, status, schedulable,
   created_at, updated_at
 ) VALUES (
-  $1, NULLIF($2, ''), 'module', $3, $4, $5, $6,
+  $1, NULLIF($2, ''), 'openai', $3, $4, $5, $6,
   $7, $8, $9, 1.0, $10, $11, NOW(), NOW()
 )`,
 		record.Name, record.Notes, record.Type, string(credentials), string(extra), record.ProxyID,
@@ -629,7 +626,7 @@ func accountFromRow(sourceKind string, row sourceRow) accountRecord {
 }
 
 func normalizeOpenAIAccount(record *accountRecord, row sourceRow) {
-	record.Platform = "module"
+	record.Platform = openAIProviderID
 	record.ProviderID = openAIProviderID
 	record.Type = normalizeAccountTypeString(record.Type)
 	if record.Type == "" {

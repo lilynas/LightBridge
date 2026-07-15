@@ -33,22 +33,42 @@ func TestGatewayEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testi
 	assert.Equal(t, "Upstream request failed", errorObj["message"])
 }
 
-// Writer 已写后 ensureForwardErrorResponse 必须把错误以 SSE 形式追加，
-// 而不是 silent EOF。非 /responses 路径走 legacy data:{"type":"error"} 分支。
+// 2xx Writer 已写后代表 keepalive/stream 已开始，ensureForwardErrorResponse
+// 必须把错误以 SSE 形式追加，而不是 silent EOF。
 func TestGatewayEnsureForwardErrorResponse_AppendsSSEAfterWritten(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.String(http.StatusTeapot, "already written")
+	c.Header("Content-Type", "text/event-stream")
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.WriteString(":\n\n")
 
 	h := &GatewayHandler{}
 	wrote := h.ensureForwardErrorResponse(c, false)
 
 	require.True(t, wrote)
-	require.Equal(t, http.StatusTeapot, w.Code)
-	assert.Contains(t, w.Body.String(), "already written")
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), ":\n\n")
 	assert.Contains(t, w.Body.String(), `data: {"type":"error"`)
+}
+
+func TestGatewayEnsureForwardErrorResponse_DoesNotAppendAfterCompleteHTTPError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "upstream_error", "message": "first"}})
+	original := w.Body.String()
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Equal(t, original, w.Body.String())
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &parsed), "response must remain one valid JSON document")
 }
 
 // case B 回归：Anthropic-backed /responses，Writer 已被写过时

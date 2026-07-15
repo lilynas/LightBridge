@@ -190,26 +190,44 @@ func TestOpenAIEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testin
 	assert.Equal(t, "Upstream request failed", errorObj["message"])
 }
 
-// Writer 已写后 ensureForwardErrorResponse 必须仍然把错误信息以 SSE
-// 形式追加给客户端（streamStarted 强制 true）。
-// 这是 case B 修复：旧实现遇到 Writer.Written 直接 return false，
-// 客户端只能拿到 silent EOF；Codex CLI 报 "stream closed before response.completed"。
+// 2xx Writer 已写后代表 keepalive/stream 已开始，必须继续追加 SSE
+// 终止错误，避免客户端只拿到 silent EOF。
 func TestOpenAIEnsureForwardErrorResponse_AppendsSSEAfterWritten(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.String(http.StatusTeapot, "already written")
+	c.Header("Content-Type", "text/event-stream")
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.WriteString(":\n\n")
 
 	h := &OpenAIGatewayHandler{}
 	wrote := h.ensureForwardErrorResponse(c, false)
 
 	require.True(t, wrote, "must attempt to communicate the failure to the client via SSE")
 	// 状态码改不了（headers 已 flush），但 body 应该追加 SSE 错误事件。
-	require.Equal(t, http.StatusTeapot, w.Code)
-	assert.Contains(t, w.Body.String(), "already written")
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), ":\n\n")
 	// 非 /responses 路径走 legacy event: error 分支。
 	assert.Contains(t, w.Body.String(), "event: error\n")
+}
+
+func TestOpenAIEnsureForwardErrorResponse_DoesNotAppendAfterCompleteHTTPError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "upstream_error", "message": "first"}})
+	original := w.Body.String()
+
+	h := &OpenAIGatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Equal(t, original, w.Body.String())
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &parsed), "response must remain one valid JSON document")
 }
 
 // case B 回归测试：/responses 路径，Writer 已被写过（模拟 ping flushed），
@@ -319,7 +337,9 @@ func TestOpenAIRecoverResponsesPanic_AppendsResponseFailedAfterWritten(t *testin
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	c.String(http.StatusTeapot, "already written")
+	c.Header("Content-Type", "text/event-stream")
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.WriteString(":\n\n")
 
 	h := &OpenAIGatewayHandler{}
 	streamStarted := false
@@ -330,9 +350,9 @@ func TestOpenAIRecoverResponsesPanic_AppendsResponseFailedAfterWritten(t *testin
 		}()
 	})
 
-	require.Equal(t, http.StatusTeapot, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
-	assert.Contains(t, body, "already written")
+	assert.Contains(t, body, ":\n\n")
 	assert.Contains(t, body, "event: response.failed\n")
 }
 

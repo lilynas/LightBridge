@@ -378,7 +378,8 @@ type BulkUpdateAccountsResult struct {
 }
 
 // RepairOpenAIOAuthPlatformResult is the aggregated response for repairing
-// OpenAI OAuth accounts that were incorrectly persisted as Gemini OAuth.
+// OpenAI accounts that were incorrectly persisted as a generic module account,
+// plus OpenAI OAuth accounts incorrectly persisted as Gemini OAuth.
 type RepairOpenAIOAuthPlatformResult struct {
 	Scanned     int                             `json:"scanned"`
 	Candidates  int                             `json:"candidates"`

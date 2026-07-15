@@ -41,6 +41,31 @@ func TestAdminService_RepairMisclassifiedOpenAIOAuthAccounts(t *testing.T) {
 	repo := &repairOpenAIOAuthAccountRepo{
 		accounts: []Account{
 			{
+				ID:          7,
+				Name:        "module migration corrupted openai api key",
+				Platform:    moduleAccountPlatform,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-module"},
+				Extra:       map[string]any{"provider_id": PlatformOpenAI},
+			},
+			{
+				ID:       6,
+				Name:     "module migration corrupted openai oauth",
+				Platform: moduleAccountPlatform,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"refresh_token":      "openai-module-rt",
+					"chatgpt_account_id": "chatgpt-module-account",
+				},
+				Extra: map[string]any{
+					"provider_id": PlatformOpenAI,
+					"module_migration": map[string]any{
+						"provider_id": PlatformOpenAI,
+						"source":      "lightbridge",
+					},
+				},
+			},
+			{
 				ID:          1,
 				Name:        "corrupted openai oauth",
 				Platform:    PlatformGemini,
@@ -107,14 +132,14 @@ func TestAdminService_RepairMisclassifiedOpenAIOAuthAccounts(t *testing.T) {
 		t.Fatalf("RepairMisclassifiedOpenAIOAuthAccounts returned error: %v", err)
 	}
 
-	if result.Scanned != 4 || result.Candidates != 2 || result.Repaired != 2 || result.Skipped != 2 || result.Failed != 0 {
+	if result.Scanned != 6 || result.Candidates != 4 || result.Repaired != 4 || result.Skipped != 2 || result.Failed != 0 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if len(result.RepairedIDs) != 2 || result.RepairedIDs[0] != 1 || result.RepairedIDs[1] != 5 {
+	if len(result.RepairedIDs) != 4 || result.RepairedIDs[0] != 1 || result.RepairedIDs[1] != 5 || result.RepairedIDs[2] != 7 || result.RepairedIDs[3] != 6 {
 		t.Fatalf("unexpected repaired ids: %#v", result.RepairedIDs)
 	}
-	if len(repo.updated) != 2 {
-		t.Fatalf("expected two updated accounts, got %d", len(repo.updated))
+	if len(repo.updated) != 4 {
+		t.Fatalf("expected four updated accounts, got %d", len(repo.updated))
 	}
 
 	updated := repo.updated[0]
@@ -135,6 +160,16 @@ func TestAdminService_RepairMisclassifiedOpenAIOAuthAccounts(t *testing.T) {
 	splitMetadataUpdated := repo.updated[1]
 	if splitMetadataUpdated.Platform != PlatformOpenAI || splitMetadataUpdated.Extra["plan_type"] != "K12" {
 		t.Fatalf("split metadata account was not repaired correctly: %+v", splitMetadataUpdated)
+	}
+
+	apiKeyModuleUpdated := repo.updated[2]
+	if apiKeyModuleUpdated.ID != 7 || apiKeyModuleUpdated.Platform != PlatformOpenAI || apiKeyModuleUpdated.Type != AccountTypeAPIKey {
+		t.Fatalf("module-migrated API key account was not repaired correctly: %+v", apiKeyModuleUpdated)
+	}
+
+	moduleUpdated := repo.updated[3]
+	if moduleUpdated.ID != 6 || moduleUpdated.Platform != PlatformOpenAI || moduleUpdated.Extra["provider_id"] != PlatformOpenAI {
+		t.Fatalf("module-migrated account was not repaired correctly: %+v", moduleUpdated)
 	}
 }
 

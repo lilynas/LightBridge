@@ -151,3 +151,40 @@ func TestResolveModuleProviderAdapterErrorsWhenRegistryMissingProvider(t *testin
 		t.Fatalf("expected missing provider error, got %v", err)
 	}
 }
+
+func TestCanonicalOpenAIAccountStillUsesModuleProvider(t *testing.T) {
+	adapter := &fakeProviderAdapter{}
+	registry := modules.NewProviderRegistry()
+	registry.Register("openai", adapter)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"provider_id": "openai",
+			"module_migration": map[string]any{
+				"provider_id": "openai",
+			},
+		},
+	}
+
+	got, providerID, handled, err := resolveModuleProviderAdapter(registry, account)
+	if err != nil {
+		t.Fatalf("resolveModuleProviderAdapter returned error: %v", err)
+	}
+	if !handled || got != adapter || providerID != "openai" {
+		t.Fatalf("adapter=%T providerID=%q handled=%v, want registered OpenAI adapter", got, providerID, handled)
+	}
+	if account.EffectivePlatform() != PlatformOpenAI {
+		t.Fatalf("EffectivePlatform() = %q, want openai", account.EffectivePlatform())
+	}
+}
+
+func TestEffectivePlatformRepairsLegacyModuleOpenAIIdentity(t *testing.T) {
+	account := &Account{
+		Platform: moduleAccountPlatform,
+		Extra:    map[string]any{"provider_id": "openai"},
+	}
+	if got := account.EffectivePlatform(); got != PlatformOpenAI {
+		t.Fatalf("EffectivePlatform() = %q, want openai", got)
+	}
+}

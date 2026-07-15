@@ -235,7 +235,9 @@ type ResponsesInputItem struct {
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 	ID        string `json:"id,omitempty"`
 
 	// type=function_call_output
@@ -256,6 +258,8 @@ type ResponsesTool struct {
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
 	Strict      *bool           `json:"strict,omitempty"`
+	Format      json.RawMessage `json:"format,omitempty"`
+	Tools       []ResponsesTool `json:"tools,omitempty"`
 }
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
@@ -303,7 +307,9 @@ type ResponsesOutput struct {
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`
@@ -320,6 +326,7 @@ func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 		Content   *[]ResponsesContentPart `json:"content,omitempty"`
 		Summary   *[]ResponsesSummary     `json:"summary,omitempty"`
 		Arguments *string                 `json:"arguments,omitempty"`
+		Input     *string                 `json:"input,omitempty"`
 	}
 	payload := responsesOutputJSON{responsesOutputAlias: responsesOutputAlias(o)}
 	if o.Type == "message" || len(o.Content) > 0 {
@@ -339,6 +346,10 @@ func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 	if o.Type == "function_call" || o.Arguments != "" {
 		arguments := o.Arguments
 		payload.Arguments = &arguments
+	}
+	if o.Type == "custom_tool_call" || o.Input != "" {
+		input := o.Input
+		payload.Input = &input
 	}
 	return json.Marshal(payload)
 }
@@ -438,7 +449,9 @@ type ResponsesStreamEvent struct {
 	// response.function_call_arguments.delta / done
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 
 	// response.reasoning_summary_text.delta / done
 	// Reuses Text/Delta fields above, SummaryIndex identifies which summary part
@@ -459,10 +472,11 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 	type responsesStreamEventAlias ResponsesStreamEvent
 	type responsesStreamEventJSON struct {
 		responsesStreamEventAlias
-		OutputIndex    *int `json:"output_index,omitempty"`
-		ContentIndex   *int `json:"content_index,omitempty"`
-		SummaryIndex   *int `json:"summary_index,omitempty"`
-		SequenceNumber *int `json:"sequence_number,omitempty"`
+		OutputIndex    *int    `json:"output_index,omitempty"`
+		ContentIndex   *int    `json:"content_index,omitempty"`
+		SummaryIndex   *int    `json:"summary_index,omitempty"`
+		SequenceNumber *int    `json:"sequence_number,omitempty"`
+		Input          *string `json:"input,omitempty"`
 	}
 	payload := responsesStreamEventJSON{responsesStreamEventAlias: responsesStreamEventAlias(e)}
 	if e.OutputIndex != 0 || responsesEventRequiresOutputIndex(e.Type) {
@@ -481,6 +495,10 @@ func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 		sequenceNumber := e.SequenceNumber
 		payload.SequenceNumber = &sequenceNumber
 	}
+	if e.Type == "response.custom_tool_call_input.done" || e.Input != "" {
+		input := e.Input
+		payload.Input = &input
+	}
 	return json.Marshal(payload)
 }
 
@@ -491,6 +509,7 @@ func responsesEventRequiresOutputIndex(eventType string) bool {
 		"response.output_text.delta", "response.output_text.done",
 		"response.refusal.delta", "response.refusal.done",
 		"response.function_call_arguments.delta", "response.function_call_arguments.done",
+		"response.custom_tool_call_input.delta", "response.custom_tool_call_input.done",
 		"response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
 		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
 		return true

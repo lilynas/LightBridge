@@ -207,6 +207,92 @@ func TestForwardResponses_GrokBuildUsesStrictChatBridgeForLiteLLMToolCalls(t *te
 	require.Equal(t, 5, result.Usage.OutputTokens)
 }
 
+func TestForwardResponses_GrokBuildRestoresNamespaceAndCustomToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"grok-4-fast",
+		"input":"listen and run",
+		"stream":true,
+		"tools":[
+			{"type":"namespace","name":"dictionary","tools":[{"type":"function","name":"listen_dictionary","parameters":{"type":"object","properties":{"word":{"type":"string"}}}}]},
+			{"type":"custom","name":"shell","description":"Run a shell command"}
+		]
+	}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "grok-shell/0.2.101 (linux; x86_64)")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_tools","object":"chat.completion.chunk","model":"grok-4-fast","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_dict","type":"function","function":{"name":"dictionary__listen_","arguments":"{\"word\":"}},{"index":1,"id":"call_shell","type":"function","function":{"name":"shell","arguments":"{\"input\":\"pw"}}]},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_tools","object":"chat.completion.chunk","model":"grok-4-fast","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"dictionary","arguments":"\"test\"}"}},{"index":1,"function":{"arguments":"d\"}"}}]},"finish_reason":"tool_calls"}]}`,
+		"",
+		`data: {"id":"chatcmpl_tools","object":"chat.completion.chunk","model":"grok-4-fast","choices":[],"usage":{"prompt_tokens":30,"completion_tokens":8,"total_tokens":38}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_grok_strict_tools"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Credentials["base_url"] = "http://litellm.example/v1"
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+		openai_compat.ExtraKeyResponsesSupported: true,
+	}
+	ctx := WithRouterClientProfile(context.Background(), DetectRouterClientProfile(c.Request))
+
+	result, err := svc.Forward(ctx, c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "dictionary__listen_dictionary", gjson.GetBytes(upstream.lastBody, "tools.0.function.name").String())
+	require.Equal(t, "shell", gjson.GetBytes(upstream.lastBody, "tools.1.function.name").String())
+	require.Equal(t, "string", gjson.GetBytes(upstream.lastBody, "tools.1.function.parameters.properties.input.type").String())
+
+	var payloads []gjson.Result
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		payload, ok := strings.CutPrefix(line, "data: ")
+		if ok && payload != "[DONE]" && gjson.Valid(payload) {
+			payloads = append(payloads, gjson.Parse(payload))
+		}
+	}
+	var dictionaryAdded, customAdded, customDone, completed gjson.Result
+	for _, payload := range payloads {
+		switch payload.Get("type").String() {
+		case "response.output_item.added":
+			switch payload.Get("item.call_id").String() {
+			case "call_dict":
+				dictionaryAdded = payload
+			case "call_shell":
+				customAdded = payload
+			}
+		case "response.custom_tool_call_input.done":
+			customDone = payload
+		case "response.completed":
+			completed = payload
+		}
+	}
+	require.Equal(t, "function_call", dictionaryAdded.Get("item.type").String())
+	require.Equal(t, "listen_dictionary", dictionaryAdded.Get("item.name").String())
+	require.Equal(t, "dictionary", dictionaryAdded.Get("item.namespace").String())
+	require.Equal(t, "custom_tool_call", customAdded.Get("item.type").String())
+	require.Equal(t, "shell", customAdded.Get("item.name").String())
+	require.Equal(t, "pwd", customDone.Get("input").String())
+	require.Equal(t, "listen_dictionary", completed.Get("response.output.0.name").String())
+	require.Equal(t, "dictionary", completed.Get("response.output.0.namespace").String())
+	require.Equal(t, "custom_tool_call", completed.Get("response.output.1.type").String())
+	require.Equal(t, "pwd", completed.Get("response.output.1.input").String())
+	require.Equal(t, 30, result.Usage.InputTokens)
+	require.Equal(t, 8, result.Usage.OutputTokens)
+}
+
 func TestShouldBridgeResponsesThroughChatCompletions_HonorsRouteAndManualOverride(t *testing.T) {
 	autoSupported := rawChatCompletionsTestAccount()
 	autoSupported.Extra = map[string]any{

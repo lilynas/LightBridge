@@ -368,7 +368,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			requestID = c.Writer.Header().Get("x-request-id")
 		}
 
-		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
+		normalizedType := normalizeOpsErrorTypeForStatus(parsed.ErrorType, parsed.Code, status)
 
 		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, status)
 

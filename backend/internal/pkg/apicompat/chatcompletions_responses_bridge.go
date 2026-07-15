@@ -11,13 +11,27 @@ import (
 // Chat Completions request for upstreams that only implement
 // /v1/chat/completions.
 func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsRequest, error) {
+	out, _, err := ResponsesToChatCompletionsRequestWithToolMapping(req)
+	return out, err
+}
+
+// ResponsesToChatCompletionsRequestWithToolMapping converts the request and
+// returns the request-scoped tool identity mapping needed to restore custom and
+// namespaced calls in the response.
+func ResponsesToChatCompletionsRequestWithToolMapping(req *ResponsesRequest) (*ChatCompletionsRequest, *ResponsesChatToolMapping, error) {
 	if req == nil {
-		return nil, fmt.Errorf("responses request is nil")
+		return nil, nil, fmt.Errorf("responses request is nil")
 	}
 
-	messages, err := responsesInputToChatMessages(req.Instructions, req.Input)
+	mapping := newResponsesChatToolMapping()
+	allTools := append([]ResponsesTool(nil), req.Tools...)
+	allTools = append(allTools, responsesAdditionalTools(req.Input)...)
+	// Register every declaration before replaying history so namespaced and
+	// custom calls use the exact same aliases as the Chat tool definitions.
+	chatTools := responsesToolsToChatTools(allTools, mapping)
+	messages, err := responsesInputToChatMessagesWithToolMapping(req.Instructions, req.Input, mapping)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	out := &ChatCompletionsRequest{
@@ -33,17 +47,25 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 	}
-	if len(req.Tools) > 0 {
-		out.Tools = responsesToolsToChatTools(req.Tools)
+	if len(chatTools) > 0 {
+		out.Tools = chatTools
 	}
 	if len(req.ToolChoice) > 0 {
-		out.ToolChoice = responsesToolChoiceToChatToolChoice(req.ToolChoice)
+		out.ToolChoice = responsesToolChoiceToChatToolChoice(req.ToolChoice, mapping)
 	}
 
-	return out, nil
+	return out, mapping, nil
 }
 
 func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
+	return responsesInputToChatMessagesWithToolMapping(instructions, inputRaw, newResponsesChatToolMapping())
+}
+
+func responsesInputToChatMessagesWithToolMapping(
+	instructions string,
+	inputRaw json.RawMessage,
+	mapping *ResponsesChatToolMapping,
+) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := json.Marshal(instructions)
@@ -106,6 +128,11 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			if name == "" {
 				return nil, fmt.Errorf("responses function_call name is empty")
 			}
+			name = mapping.alias(ResponsesChatToolIdentity{
+				Type:      "function",
+				Namespace: strings.TrimSpace(rawString(item["namespace"])),
+				Name:      name,
+			})
 			appendResponsesFunctionCallToChatMessages(&messages, ChatToolCall{
 				ID:   callID,
 				Type: "function",
@@ -115,7 +142,30 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 				},
 			})
 			continue
-		case "function_call_output":
+		case "custom_tool_call":
+			callID := rawString(item["call_id"])
+			if callID == "" {
+				callID = rawString(item["id"])
+			}
+			name := strings.TrimSpace(rawString(item["name"]))
+			if name == "" {
+				return nil, fmt.Errorf("responses custom_tool_call name is empty")
+			}
+			name = mapping.alias(ResponsesChatToolIdentity{
+				Type:      "custom",
+				Namespace: strings.TrimSpace(rawString(item["namespace"])),
+				Name:      name,
+			})
+			appendResponsesFunctionCallToChatMessages(&messages, ChatToolCall{
+				ID:   callID,
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      name,
+					Arguments: customToolInputToArguments(item["input"]),
+				},
+			})
+			continue
+		case "function_call_output", "custom_tool_call_output":
 			content, err := responsesFunctionOutputToChatContent(item["output"])
 			if err != nil {
 				return nil, err
@@ -125,6 +175,10 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 				ToolCallID: rawString(item["call_id"]),
 				Content:    content,
 			})
+			continue
+		case "additional_tools":
+			// These declarations were merged into the Chat request above. They
+			// are not conversation messages and must not become an empty user turn.
 			continue
 		case "input_text", "text":
 			content, _ := json.Marshal(rawString(item["text"]))
@@ -144,6 +198,11 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			if text := rawString(item["text"]); text != "" {
 				content, _ = json.Marshal(text)
 			}
+		}
+		if len(bytesTrimSpace(content)) == 0 && role == "user" {
+			// Reasoning and provider-private history items carry no chat
+			// content. Dropping them is safer than injecting a blank user turn.
+			continue
 		}
 		chatContent, err := responsesContentToChatContent(content, role)
 		if err != nil {
@@ -289,31 +348,13 @@ func chatContentFromSingleResponsesPart(partType string, part map[string]json.Ra
 	}
 }
 
-func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {
-	out := make([]ChatTool, 0, len(tools))
-	for _, tool := range tools {
-		if tool.Type != "function" {
-			continue
-		}
-		out = append(out, ChatTool{
-			Type: "function",
-			Function: &ChatFunction{
-				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters:  tool.Parameters,
-				Strict:      tool.Strict,
-			},
-		})
-	}
-	return out
-}
-
-func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
+func responsesToolChoiceToChatToolChoice(raw json.RawMessage, mapping *ResponsesChatToolMapping) json.RawMessage {
 	var choice map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &choice); err != nil {
 		return raw
 	}
-	if rawString(choice["type"]) != "function" {
+	kind := rawString(choice["type"])
+	if kind != "function" && kind != "custom" {
 		return raw
 	}
 	name := rawString(choice["name"])
@@ -323,6 +364,11 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
 	if name == "" {
 		return raw
 	}
+	name = mapping.alias(ResponsesChatToolIdentity{
+		Type:      kind,
+		Namespace: strings.TrimSpace(rawString(choice["namespace"])),
+		Name:      name,
+	})
 	out, err := json.Marshal(map[string]any{
 		"type": "function",
 		"function": map[string]string{
@@ -338,6 +384,16 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage) json.RawMessage {
 // ChatCompletionsResponseToResponses converts a non-streaming Chat Completions
 // response into a Responses API response.
 func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model string) *ResponsesResponse {
+	return ChatCompletionsResponseToResponsesWithToolMapping(resp, model, nil)
+}
+
+// ChatCompletionsResponseToResponsesWithToolMapping restores the original
+// Responses tool identity after a Chat Completions fallback request.
+func ChatCompletionsResponseToResponsesWithToolMapping(
+	resp *ChatCompletionsResponse,
+	model string,
+	mapping *ResponsesChatToolMapping,
+) *ResponsesResponse {
 	id := ""
 	if resp != nil {
 		id = resp.ID
@@ -367,7 +423,7 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		out.Output = chatMessageToResponsesOutput(choice.Message)
+		out.Output = chatMessageToResponsesOutput(choice.Message, mapping)
 		if choice.FinishReason == "length" {
 			out.Status = "incomplete"
 			out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
@@ -383,7 +439,7 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	return out
 }
 
-func chatMessageToResponsesOutput(message ChatMessage) []ResponsesOutput {
+func chatMessageToResponsesOutput(message ChatMessage, mapping *ResponsesChatToolMapping) []ResponsesOutput {
 	var outputs []ResponsesOutput
 	if message.ReasoningContent != "" {
 		outputs = append(outputs, ResponsesOutput{
@@ -415,11 +471,31 @@ func chatMessageToResponsesOutput(message ChatMessage) []ResponsesOutput {
 		if strings.TrimSpace(arguments) == "" {
 			arguments = "{}"
 		}
+		identity, restored := mapping.resolve(toolCall.Function.Name)
+		if restored && identity.Type == "custom" {
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "custom_tool_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      identity.Name,
+				Namespace: identity.Namespace,
+				Input:     customToolArgumentsToInput(arguments),
+				Status:    "completed",
+			})
+			continue
+		}
+		name := toolCall.Function.Name
+		namespace := ""
+		if restored {
+			name = identity.Name
+			namespace = identity.Namespace
+		}
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",
 			ID:        generateItemID(),
 			CallID:    toolCall.ID,
-			Name:      toolCall.Function.Name,
+			Name:      name,
+			Namespace: namespace,
 			Arguments: arguments,
 			Status:    "completed",
 		})
@@ -506,6 +582,7 @@ type ChatCompletionsToResponsesStreamState struct {
 	unindexedTools     map[int]int
 	nextSyntheticIndex int
 	outputOrder        []chatToResponsesOutputRef
+	toolMapping        *ResponsesChatToolMapping
 
 	FinishReason string
 	Usage        *ResponsesUsage
@@ -519,6 +596,8 @@ type chatToResponsesStreamTool struct {
 	SyntheticID bool
 	Name        string
 	Arguments   string
+	Identity    ResponsesChatToolIdentity
+	Restored    bool
 	Done        bool
 }
 
@@ -529,6 +608,15 @@ type chatToResponsesOutputRef struct {
 
 // NewChatCompletionsToResponsesStreamState returns an initialized stream state.
 func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToResponsesStreamState {
+	return NewChatCompletionsToResponsesStreamStateWithToolMapping(model, nil)
+}
+
+// NewChatCompletionsToResponsesStreamStateWithToolMapping initializes a stream
+// converter that can restore custom and namespaced tool calls.
+func NewChatCompletionsToResponsesStreamStateWithToolMapping(
+	model string,
+	mapping *ResponsesChatToolMapping,
+) *ChatCompletionsToResponsesStreamState {
 	return &ChatCompletionsToResponsesStreamState{
 		ResponseID:         generateResponsesID(),
 		Model:              model,
@@ -538,6 +626,7 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 		toolCalls:          make(map[int]*chatToResponsesStreamTool),
 		toolCallIDs:        make(map[string]int),
 		unindexedTools:     make(map[int]int),
+		toolMapping:        mapping,
 		Usage:              &ResponsesUsage{},
 	}
 }
@@ -772,8 +861,39 @@ func mergeChatToResponsesToolDelta(
 			stored.SyntheticID = false
 		}
 	}
-	stored.Name = mergeChatStreamFragment(stored.Name, strings.TrimSpace(toolCall.Function.Name))
+	stored.Name = mergeChatToolNameFragment(state.toolMapping, stored.Name, strings.TrimSpace(toolCall.Function.Name))
 	stored.Arguments = mergeChatStreamFragment(stored.Arguments, toolCall.Function.Arguments)
+	if identity, ok := state.toolMapping.resolve(stored.Name); ok {
+		stored.Identity = identity
+		stored.Restored = true
+	}
+}
+
+func mergeChatToolNameFragment(mapping *ResponsesChatToolMapping, current string, incoming string) string {
+	if incoming == "" {
+		return current
+	}
+	if current == "" {
+		return incoming
+	}
+	if incoming == current {
+		return current
+	}
+	// Prefer a candidate that exactly matches a tool declared for this request.
+	// This disambiguates split names such as
+	// "dictionary__listen_" + "dictionary": the second fragment happens to
+	// equal the namespace prefix and must not be mistaken for a cumulative
+	// snapshot.
+	if _, ok := mapping.resolve(current + incoming); ok {
+		return current + incoming
+	}
+	if _, ok := mapping.resolve(incoming); ok && strings.HasPrefix(incoming, current) {
+		return incoming
+	}
+	if _, ok := mapping.resolve(current); ok && strings.HasPrefix(current, incoming) {
+		return current
+	}
+	return mergeChatStreamFragment(current, incoming)
 }
 
 func mergeChatStreamFragment(current string, incoming string) string {
@@ -796,13 +916,34 @@ func addChatToResponsesToolItem(
 	state *ChatCompletionsToResponsesStreamState,
 	stored *chatToResponsesStreamTool,
 ) []ResponsesStreamEvent {
+	if stored.Restored && stored.Identity.Type == "custom" {
+		return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+			OutputIndex: stored.OutputIndex,
+			Item: &ResponsesOutput{
+				Type:      "custom_tool_call",
+				ID:        stored.ItemID,
+				CallID:    stored.CallID,
+				Name:      stored.Identity.Name,
+				Namespace: stored.Identity.Namespace,
+				Input:     "",
+				Status:    "in_progress",
+			},
+		})}
+	}
+	name := stored.Name
+	namespace := ""
+	if stored.Restored {
+		name = stored.Identity.Name
+		namespace = stored.Identity.Namespace
+	}
 	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 		OutputIndex: stored.OutputIndex,
 		Item: &ResponsesOutput{
 			Type:      "function_call",
 			ID:        stored.ItemID,
 			CallID:    stored.CallID,
-			Name:      stored.Name,
+			Name:      name,
+			Namespace: namespace,
 			Arguments: "",
 			Status:    "in_progress",
 		},
@@ -855,6 +996,26 @@ func finalizeChatToResponsesOutputItems(state *ChatCompletionsToResponsesStreamS
 			tool.Done = true
 			arguments := normalizedToolArguments(tool.Arguments)
 			events = append(events, addChatToResponsesToolItem(state, tool)...)
+			if tool.Restored && tool.Identity.Type == "custom" {
+				input := customToolArgumentsToInput(arguments)
+				if input != "" {
+					events = append(events, chatToResponsesEvent(state, "response.custom_tool_call_input.delta", &ResponsesStreamEvent{
+						OutputIndex: tool.OutputIndex,
+						Delta:       input,
+						ItemID:      tool.ItemID,
+					}))
+				}
+				events = append(events, chatToResponsesEvent(state, "response.custom_tool_call_input.done", &ResponsesStreamEvent{
+					OutputIndex: tool.OutputIndex,
+					ItemID:      tool.ItemID,
+					Input:       input,
+				}))
+				events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+					OutputIndex: tool.OutputIndex,
+					Item:        state.toolOutput(tool, outputStatus),
+				}))
+				continue
+			}
 			if tool.Arguments != "" {
 				events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 					OutputIndex: tool.OutputIndex,
@@ -862,10 +1023,17 @@ func finalizeChatToResponsesOutputItems(state *ChatCompletionsToResponsesStreamS
 					ItemID:      tool.ItemID,
 				}))
 			}
+			name := tool.Name
+			namespace := ""
+			if tool.Restored {
+				name = tool.Identity.Name
+				namespace = tool.Identity.Namespace
+			}
 			events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: tool.OutputIndex,
 				ItemID:      tool.ItemID,
-				Name:        tool.Name,
+				Name:        name,
+				Namespace:   namespace,
 				Arguments:   arguments,
 			}))
 			events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
@@ -921,11 +1089,29 @@ func (state *ChatCompletionsToResponsesStreamState) reasoningOutput(status strin
 }
 
 func (state *ChatCompletionsToResponsesStreamState) toolOutput(tool *chatToResponsesStreamTool, status string) *ResponsesOutput {
+	if tool.Restored && tool.Identity.Type == "custom" {
+		return &ResponsesOutput{
+			Type:      "custom_tool_call",
+			ID:        tool.ItemID,
+			CallID:    tool.CallID,
+			Name:      tool.Identity.Name,
+			Namespace: tool.Identity.Namespace,
+			Input:     customToolArgumentsToInput(normalizedToolArguments(tool.Arguments)),
+			Status:    status,
+		}
+	}
+	name := tool.Name
+	namespace := ""
+	if tool.Restored {
+		name = tool.Identity.Name
+		namespace = tool.Identity.Namespace
+	}
 	return &ResponsesOutput{
 		Type:      "function_call",
 		ID:        tool.ItemID,
 		CallID:    tool.CallID,
-		Name:      tool.Name,
+		Name:      name,
+		Namespace: namespace,
 		Arguments: normalizedToolArguments(tool.Arguments),
 		Status:    status,
 	}

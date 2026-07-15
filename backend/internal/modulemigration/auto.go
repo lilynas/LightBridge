@@ -47,10 +47,16 @@ func RunAutoOpenAIModuleMigration(ctx context.Context, cfg *config.Config) (*Rep
 	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	if !hasLegacyOpenAIAccounts(ctx, db) {
+	needsAccountMigration := hasLegacyOpenAIAccounts(ctx, db)
+	moduleAlreadyInstalled := isOpenAIModuleInstalled(ctx, db)
+	// A previous run could have persisted provider-module metadata and then
+	// stopped before the package installation completed. Do not strand those
+	// accounts: reinstall the provider module even though the account rows are
+	// already marked as migrated.
+	needsModuleRecovery := !moduleAlreadyInstalled && hasOpenAIProviderModuleAccounts(ctx, db)
+	if !needsAccountMigration && !needsModuleRecovery {
 		return &Report{SourceKind: SourceLightBridge, OpenAIModuleStatus: "not_required"}, nil
 	}
-	moduleAlreadyInstalled := isOpenAIModuleInstalled(ctx, db)
 
 	var packagePath string
 	var publicKeyPath string
@@ -75,8 +81,8 @@ func RunAutoOpenAIModuleMigration(ctx context.Context, cfg *config.Config) (*Rep
 		ModuleDataDir:             cfg.Modules.DataDir,
 		InstallOpenAIModule:       !moduleAlreadyInstalled,
 		EnableOpenAIModule:        true,
-		// Source and target are the same database: convert legacy OpenAI
-		// accounts in place rather than duplicating them into module copies.
+		// Source and target are the same database: enrich legacy OpenAI
+		// accounts in place while preserving platform='openai'.
 		SameDatabase: true,
 	}
 	return Run(ctx, opts)
@@ -88,16 +94,22 @@ func hasLegacyOpenAIAccounts(ctx context.Context, db *sql.DB) bool {
 SELECT COUNT(*)
 FROM accounts
 WHERE deleted_at IS NULL
-  AND platform = 'openai'`).Scan(&count)
-	if err == nil && count > 0 {
-		return true
-	}
-	err = db.QueryRowContext(ctx, `
+  AND platform = 'openai'
+  AND COALESCE(extra->>'provider_id', '') <> 'openai'
+  AND COALESCE(extra->'module_migration'->>'provider_id', '') <> 'openai'`).Scan(&count)
+	return err == nil && count > 0
+}
+
+func hasOpenAIProviderModuleAccounts(ctx context.Context, db *sql.DB) bool {
+	var count int
+	err := db.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM accounts
 WHERE deleted_at IS NULL
-  AND platform = 'openai'
-  AND COALESCE(provider_id, '') = 'openai'`).Scan(&count)
+  AND (
+    LOWER(BTRIM(COALESCE(extra->>'provider_id', ''))) = 'openai'
+    OR LOWER(BTRIM(COALESCE(extra->'module_migration'->>'provider_id', ''))) = 'openai'
+  )`).Scan(&count)
 	return err == nil && count > 0
 }
 

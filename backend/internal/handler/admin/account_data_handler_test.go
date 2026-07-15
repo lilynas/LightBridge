@@ -134,6 +134,33 @@ func TestExportDataIncludesSecrets(t *testing.T) {
 	require.Equal(t, "secret", resp.Data.Accounts[0].Credentials["token"])
 }
 
+func TestExportDataCanonicalizesLegacyModuleOpenAIPlatform(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.accounts = []service.Account{
+		{
+			ID:          22,
+			Name:        "legacy module openai",
+			Platform:    "module",
+			Type:        service.AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "secret"},
+			Extra:       map[string]any{"provider_id": service.PlatformOpenAI},
+			Concurrency: 3,
+			Priority:    50,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/data", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dataResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data.Accounts, 1)
+	require.Equal(t, service.PlatformOpenAI, resp.Data.Accounts[0].Platform)
+	require.Equal(t, service.PlatformOpenAI, resp.Data.Accounts[0].Extra["provider_id"])
+}
+
 func TestExportDataWithoutProxies(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 
@@ -279,6 +306,57 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataRepairsLegacyModuleOpenAIPlatform(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	payload := map[string]any{
+		"data": map[string]any{
+			"exported_at": "2026-07-15T08:39:28Z",
+			"proxies":     []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":     "legacy-openai-oauth",
+					"platform": "module",
+					"type":     service.AccountTypeOAuth,
+					"credentials": map[string]any{
+						"access_token":       "redacted-access-token",
+						"refresh_token":      "redacted-refresh-token",
+						"id_token":           "redacted-id-token",
+						"chatgpt_account_id": "chatgpt-account",
+					},
+					"extra": map[string]any{
+						"provider_id": service.PlatformOpenAI,
+						"module_migration": map[string]any{
+							"source":            "lightbridge",
+							"legacy_account_id": "42",
+							"provider_id":       service.PlatformOpenAI,
+							"migrated_at":       "2026-07-15T08:39:28Z",
+						},
+					},
+					"concurrency": 3,
+					"priority":    50,
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, service.PlatformOpenAI, created.Platform)
+	require.Equal(t, service.AccountTypeOAuth, created.Type)
+	require.Equal(t, "chatgpt-account", created.Credentials["chatgpt_account_id"])
+	require.Equal(t, service.PlatformOpenAI, created.Extra["provider_id"])
+	require.Equal(t, service.PlatformOpenAI, created.Extra["module_migration"].(map[string]any)["provider_id"])
 }
 
 func TestImportDataAcceptsCLIProxyAPICodexJSON(t *testing.T) {

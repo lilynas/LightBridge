@@ -251,6 +251,28 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 	}
 }
 
+func TestNormalizeOpsErrorTypeForStatus_ClassifiesGeneric400AsClientValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	errType := normalizeOpsErrorTypeForStatus("", "400", http.StatusBadRequest)
+	phase, isBusinessLimited, owner, source := classifyOpsErrorLog(
+		c,
+		errType,
+		"invalid time range: start_time must be <= end_time",
+		"400",
+		http.StatusBadRequest,
+	)
+
+	require.Equal(t, "invalid_request_error", errType)
+	require.Equal(t, "request", phase)
+	require.False(t, isBusinessLimited)
+	require.Equal(t, "client", owner)
+	require.Equal(t, "client_request", source)
+	require.Equal(t, "P3", classifyOpsSeverity(errType, http.StatusBadRequest))
+}
+
 func TestClassifyOpsNoAvailableAccountsExcludedFromSLA(t *testing.T) {
 	const message = "No available accounts"
 	gin.SetMode(gin.TestMode)

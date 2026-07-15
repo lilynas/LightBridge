@@ -564,6 +564,7 @@ import {
 import { resolvePrimaryResponseBody, resolveUpstreamPayload } from './utils/errorDetailResponse'
 import { exportBatchErrorsTXT, exportSingleErrorTXT } from './utils/errorExport'
 import type { ErrorExportData } from './utils/errorExport'
+import { buildOpsISOTimeRange, createOpsLocalTimeRange } from './utils/opsTimeRange'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -574,18 +575,9 @@ const requestErrors = ref<OpsErrorLog[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
-function formatDatetimeLocal(date: Date): string {
-  return date.toISOString().slice(0, 16)
-}
-
-function getDefaultStartTime(): string {
-  const d = new Date()
-  d.setHours(d.getHours() - 24)
-  return formatDatetimeLocal(d)
-}
-
-const startTime = ref(getDefaultStartTime())
-const endTime = ref(formatDatetimeLocal(new Date()))
+const initialTimeRange = createOpsLocalTimeRange(24 * 60 * 60 * 1000)
+const startTime = ref(initialTimeRange.start)
+const endTime = ref(initialTimeRange.end)
 const statusCodeFilter = ref('')
 const readStatusFilter = ref('')
 const searchQuery = ref('')
@@ -605,8 +597,9 @@ let detailFetchSeq = 0
 let schedulerAccountFetchSeq = 0
 
 function resetTimeRange() {
-  startTime.value = getDefaultStartTime()
-  endTime.value = formatDatetimeLocal(new Date())
+  const range = createOpsLocalTimeRange(24 * 60 * 60 * 1000)
+  startTime.value = range.start
+  endTime.value = range.end
 }
 
 const statusOptions = computed(() => [
@@ -680,14 +673,15 @@ const compactVisiblePages = computed<(number | string)[]>(() => {
 })
 
 async function fetchRequestErrors(options: { keepSelection?: boolean } = {}) {
+  const timeParams = buildOpsISOTimeRange(startTime.value, endTime.value)
+  if (!timeParams) return
   const fetchSeq = ++listFetchSeq
   loadingList.value = true
   try {
     const params: OpsErrorListQueryParams = {
       page: page.value,
       page_size: pageSize.value,
-      start_time: new Date(startTime.value).toISOString(),
-      end_time: new Date(endTime.value).toISOString(),
+      ...timeParams,
       view: 'all'
     }
     if (statusCodeFilter.value) params.status_codes = statusCodeFilter.value
@@ -749,13 +743,12 @@ async function selectError(id: number) {
     // Mark as read if unread
     if (detail && !detail.is_read) {
       try {
-        await markRequestErrorsRead({
-          start_time: new Date(startTime.value).toISOString(),
-          end_time: new Date(endTime.value).toISOString(),
-          view: 'all'
-        }, true)
-        const item = requestErrors.value.find(e => e.id === id)
-        if (item) item.is_read = true
+        const timeParams = buildOpsISOTimeRange(startTime.value, endTime.value)
+        if (timeParams) {
+          await markRequestErrorsRead({ ...timeParams, view: 'all' }, true)
+          const item = requestErrors.value.find(e => e.id === id)
+          if (item) item.is_read = true
+        }
       } catch {
         // Silent fail — not critical
       }
@@ -822,10 +815,13 @@ const debouncedSearch = useDebounceFn(() => {
 watch(searchQuery, () => debouncedSearch())
 watch(userFilter, () => debouncedSearch())
 
-watch([startTime, endTime, statusCodeFilter], () => {
+const debouncedFilterRefresh = useDebounceFn(() => {
+  if (!buildOpsISOTimeRange(startTime.value, endTime.value)) return
   page.value = 1
   fetchRequestErrors({ keepSelection: false })
-})
+}, 250)
+
+watch([startTime, endTime, statusCodeFilter], () => debouncedFilterRefresh())
 
 watch(readStatusFilter, () => {
   page.value = 1
@@ -938,9 +934,13 @@ async function confirmDeleteAll() {
   if (!confirmed) return
 
   try {
+    const timeParams = buildOpsISOTimeRange(startTime.value, endTime.value)
+    if (!timeParams) {
+      appStore.showError(t('admin.ops.errorAnalysis.clearErrorsFailed'))
+      return
+    }
     const params: OpsErrorListQueryParams = {
-      start_time: new Date(startTime.value).toISOString(),
-      end_time: new Date(endTime.value).toISOString(),
+      ...timeParams,
       view: 'all'
     }
     if (statusCodeFilter.value) params.status_codes = statusCodeFilter.value

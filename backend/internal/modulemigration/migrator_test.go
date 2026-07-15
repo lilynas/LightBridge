@@ -241,7 +241,7 @@ func TestSub2APIProviderSpecificOAuthTypeDoesNotCollapseToGemini(t *testing.T) {
 			wantType:     "oauth",
 		},
 		{
-			name: "openai oauth type goes to openai module",
+			name: "openai oauth type keeps canonical platform for module routing",
 			row: sourceRow{
 				"__source_kind": SourceSub2API,
 				"id":            "openai-oauth",
@@ -251,7 +251,7 @@ func TestSub2APIProviderSpecificOAuthTypeDoesNotCollapseToGemini(t *testing.T) {
 			wantOpenAI: true,
 		},
 		{
-			name: "mislabeled gemini oauth with chatgpt metadata goes to openai module",
+			name: "mislabeled gemini oauth with chatgpt metadata keeps canonical openai platform",
 			row: sourceRow{
 				"__source_kind": SourceSub2API,
 				"id":            "gemini-labeled-openai-oauth",
@@ -285,8 +285,8 @@ func TestSub2APIProviderSpecificOAuthTypeDoesNotCollapseToGemini(t *testing.T) {
 			}
 			if tc.wantOpenAI {
 				normalizeOpenAIAccount(&record, tc.row)
-				if record.Platform != "module" {
-					t.Fatalf("Platform = %q, want module", record.Platform)
+				if record.Platform != openAIProviderID {
+					t.Fatalf("Platform = %q, want openai", record.Platform)
 				}
 				if record.Type != "oauth" {
 					t.Fatalf("Type = %q, want oauth", record.Type)
@@ -344,8 +344,8 @@ func TestNormalizeOpenAIAccountCopiesOAuthMetadata(t *testing.T) {
 
 	normalizeOpenAIAccount(&record, row)
 
-	if record.Platform != "module" {
-		t.Fatalf("Platform = %q, want module", record.Platform)
+	if record.Platform != openAIProviderID {
+		t.Fatalf("Platform = %q, want openai", record.Platform)
 	}
 	for key, want := range map[string]any{
 		"chatgpt_account_id":      "chatgpt-acc",
@@ -477,12 +477,10 @@ WHERE extra->>'provider_id' = $1
 	}
 }
 
-// TestUpsertOpenAIAccountConvertsInPlaceForSameDatabase verifies that the
-// in-place upgrade auto-migration converts a legacy openai account in place
-// (UPDATE the same row) instead of inserting a duplicate module account. This
-// is the regression guard for upgrades producing an extra OpenAI-form copy of
-// every account and re-adding accounts on each boot.
-func TestUpsertOpenAIAccountConvertsInPlaceForSameDatabase(t *testing.T) {
+// TestUpsertOpenAIAccountEnrichesInPlaceForSameDatabase verifies that the
+// in-place upgrade migration adds provider-module metadata without changing
+// the canonical OpenAI platform or inserting a duplicate account.
+func TestUpsertOpenAIAccountEnrichesInPlaceForSameDatabase(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New(): %v", err)
@@ -505,7 +503,7 @@ func TestUpsertOpenAIAccountConvertsInPlaceForSameDatabase(t *testing.T) {
 		Schedulable: true,
 	}
 
-	// No already-migrated module account exists yet.
+	// No already-migrated provider account exists yet.
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT id FROM accounts
 WHERE extra->>'provider_id' = $1
@@ -519,7 +517,7 @@ ORDER BY id ASC LIMIT 1`)).
 	// Expect an in-place UPDATE targeting the source row id (42), NOT an INSERT.
 	mock.ExpectExec(regexp.QuoteMeta(`
 UPDATE accounts
-SET name = $1, notes = NULLIF($2, ''), platform = 'module', type = $3,
+SET name = $1, notes = NULLIF($2, ''), platform = 'openai', type = $3,
     credentials = $4, extra = $5, proxy_id = COALESCE($6, proxy_id), concurrency = $7, load_factor = $8,
     priority = $9, status = $10, schedulable = $11, updated_at = NOW()
 WHERE id = $12 AND platform = 'openai' AND deleted_at IS NULL`)).

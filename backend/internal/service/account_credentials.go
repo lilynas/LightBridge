@@ -87,6 +87,15 @@ func (a *Account) EffectivePlatform() string {
 	if a.IsAntigravity() {
 		return PlatformAntigravity
 	}
+	// Compatibility for accounts corrupted by the first provider-module
+	// migration. Provider modules select an execution adapter through
+	// extra.provider_id; they must not replace the account's canonical platform.
+	// The database migration repairs persisted rows, while this guard keeps old
+	// rows correctly identified during rolling upgrades and before restart.
+	if strings.EqualFold(a.Platform, moduleAccountPlatform) &&
+		strings.EqualFold(effectiveServiceProviderID(a), PlatformOpenAI) {
+		return PlatformOpenAI
+	}
 	return a.Platform
 }
 

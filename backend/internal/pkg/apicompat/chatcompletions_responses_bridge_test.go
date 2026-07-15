@@ -358,6 +358,125 @@ func TestResponsesToChatCompletionsRequest_GroupsParallelCallsAndPreservesOutput
 	assert.JSONEq(t, `"{\"entries\":[\"README.md\"]}"`, string(out.Messages[3].Content))
 }
 
+func TestResponsesChatBridgePreservesNamespaceCustomAndAdditionalTools(t *testing.T) {
+	parallel := true
+	req := &ResponsesRequest{
+		Model:             "grok-test",
+		ParallelToolCalls: &parallel,
+		Tools: []ResponsesTool{
+			{
+				Type: "namespace",
+				Name: "mcp__calendar",
+				Tools: []ResponsesTool{{
+					Type:       "function",
+					Name:       "lookup",
+					Parameters: json.RawMessage(`{"type":"object","properties":{"date":{"type":"string"}}}`),
+				}},
+			},
+			{Type: "custom", Name: "code", Description: "Run code"},
+		},
+		Input: json.RawMessage(`[
+			{"type":"additional_tools","tools":[{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"send_message","parameters":{"type":"object"}}]}]},
+			{"role":"user","content":"run and notify"},
+			{"type":"custom_tool_call","call_id":"call_code","name":"code","input":"print(1)"},
+			{"type":"custom_tool_call_output","call_id":"call_code","output":"1"},
+			{"type":"function_call","call_id":"call_lookup","namespace":"mcp__calendar","name":"lookup","arguments":"{\"date\":\"today\"}"},
+			{"type":"function_call_output","call_id":"call_lookup","output":"free"}
+		]`),
+	}
+
+	chat, mapping, err := ResponsesToChatCompletionsRequestWithToolMapping(req)
+	require.NoError(t, err)
+	require.NotNil(t, mapping)
+	require.Len(t, chat.Tools, 3)
+	assert.Equal(t, "mcp__calendar__lookup", chat.Tools[0].Function.Name)
+	assert.Equal(t, "code", chat.Tools[1].Function.Name)
+	assert.JSONEq(t, `{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}`, string(chat.Tools[1].Function.Parameters))
+	assert.Equal(t, "collaboration__send_message", chat.Tools[2].Function.Name)
+	require.Len(t, chat.Messages, 5)
+	assert.Equal(t, "user", chat.Messages[0].Role)
+	assert.Equal(t, "assistant", chat.Messages[1].Role)
+	assert.Equal(t, "code", chat.Messages[1].ToolCalls[0].Function.Name)
+	assert.JSONEq(t, `{"input":"print(1)"}`, chat.Messages[1].ToolCalls[0].Function.Arguments)
+	assert.Equal(t, "mcp__calendar__lookup", chat.Messages[3].ToolCalls[0].Function.Name)
+
+	response := ChatCompletionsResponseToResponsesWithToolMapping(&ChatCompletionsResponse{
+		ID:    "chatcmpl_tools",
+		Model: "grok-test",
+		Choices: []ChatChoice{{
+			Message: ChatMessage{Role: "assistant", ToolCalls: []ChatToolCall{
+				{ID: "call_code_2", Type: "function", Function: ChatFunctionCall{Name: "code", Arguments: `{"input":"print(2)"}`}},
+				{ID: "call_lookup_2", Type: "function", Function: ChatFunctionCall{Name: "mcp__calendar__lookup", Arguments: `{"date":"tomorrow"}`}},
+			}},
+			FinishReason: "tool_calls",
+		}},
+	}, "grok-test", mapping)
+
+	require.Len(t, response.Output, 2)
+	assert.Equal(t, "custom_tool_call", response.Output[0].Type)
+	assert.Equal(t, "code", response.Output[0].Name)
+	assert.Equal(t, "print(2)", response.Output[0].Input)
+	assert.Empty(t, response.Output[0].Arguments)
+	assert.Equal(t, "function_call", response.Output[1].Type)
+	assert.Equal(t, "lookup", response.Output[1].Name)
+	assert.Equal(t, "mcp__calendar", response.Output[1].Namespace)
+	encoded, err := json.Marshal(response.Output[0])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"custom_tool_call","id":"`+response.Output[0].ID+`","call_id":"call_code_2","name":"code","input":"print(2)","status":"completed"}`, string(encoded))
+}
+
+func TestResponsesChatBridgeStreamingRestoresStrictToolEventShapes(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "grok-test",
+		Input: json.RawMessage(`"use tools"`),
+		Tools: []ResponsesTool{
+			{Type: "namespace", Name: "dictionary", Tools: []ResponsesTool{{Type: "function", Name: "listen_dictionary", Parameters: json.RawMessage(`{"type":"object"}`)}}},
+			{Type: "custom", Name: "shell"},
+		},
+	}
+	_, mapping, err := ResponsesToChatCompletionsRequestWithToolMapping(req)
+	require.NoError(t, err)
+	state := NewChatCompletionsToResponsesStreamStateWithToolMapping("grok-test", mapping)
+	index0, index1 := 0, 1
+	finishReason := "tool_calls"
+
+	var events []ResponsesStreamEvent
+	events = append(events, ChatCompletionsChunkToResponsesEvents(&ChatCompletionsChunk{Choices: []ChatChunkChoice{{
+		Delta: ChatDelta{ToolCalls: []ChatToolCall{
+			{Index: &index0, ID: "call_dict", Function: ChatFunctionCall{Name: "dictionary__listen_", Arguments: `{"word":`}},
+			{Index: &index1, ID: "call_shell", Function: ChatFunctionCall{Name: "shell", Arguments: `{"input":"pw`}},
+		}},
+	}}}, state)...)
+	events = append(events, ChatCompletionsChunkToResponsesEvents(&ChatCompletionsChunk{Choices: []ChatChunkChoice{{
+		Delta: ChatDelta{ToolCalls: []ChatToolCall{
+			{Index: &index0, Function: ChatFunctionCall{Name: "dictionary", Arguments: `"test"}`}},
+			{Index: &index1, Function: ChatFunctionCall{Arguments: `d"}`}},
+		}},
+		FinishReason: &finishReason,
+	}}}, state)...)
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
+
+	added := filterResponsesEvents(events, "response.output_item.added")
+	require.Len(t, added, 2)
+	assert.Equal(t, "function_call", added[0].Item.Type)
+	assert.Equal(t, "listen_dictionary", added[0].Item.Name)
+	assert.Equal(t, "dictionary", added[0].Item.Namespace)
+	assert.Equal(t, "custom_tool_call", added[1].Item.Type)
+	assert.Equal(t, "shell", added[1].Item.Name)
+	customDone := filterResponsesEvents(events, "response.custom_tool_call_input.done")
+	require.Len(t, customDone, 1)
+	assert.Equal(t, "pwd", customDone[0].Input)
+	require.Len(t, filterResponsesEvents(events, "response.function_call_arguments.done"), 1)
+
+	completed := events[len(events)-1].Response
+	require.NotNil(t, completed)
+	require.Len(t, completed.Output, 2)
+	assert.Equal(t, "listen_dictionary", completed.Output[0].Name)
+	assert.Equal(t, "dictionary", completed.Output[0].Namespace)
+	assert.Equal(t, "custom_tool_call", completed.Output[1].Type)
+	assert.Equal(t, "pwd", completed.Output[1].Input)
+}
+
 func chatMessageRoles(messages []ChatMessage) []string {
 	roles := make([]string, 0, len(messages))
 	for _, message := range messages {

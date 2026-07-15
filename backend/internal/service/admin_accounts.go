@@ -26,9 +26,13 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 const accountExtraKeyOpenAIOAuthPlatformRepair = "openai_oauth_platform_repair"
 
 func (s *adminServiceImpl) RepairMisclassifiedOpenAIOAuthAccounts(ctx context.Context) (*RepairOpenAIOAuthPlatformResult, error) {
-	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformGemini)
-	if err != nil {
-		return nil, err
+	accounts := make([]Account, 0)
+	for _, platform := range []string{PlatformGemini, moduleAccountPlatform} {
+		platformAccounts, err := s.accountRepo.ListByPlatform(ctx, platform)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, platformAccounts...)
 	}
 
 	result := &RepairOpenAIOAuthPlatformResult{
@@ -37,7 +41,9 @@ func (s *adminServiceImpl) RepairMisclassifiedOpenAIOAuthAccounts(ctx context.Co
 	}
 
 	for _, account := range accounts {
-		if account.Type != AccountTypeOAuth {
+		// Gemini false positives are OAuth-specific. The broken provider-module
+		// migration affected every OpenAI account type, including API keys.
+		if strings.EqualFold(account.Platform, PlatformGemini) && account.Type != AccountTypeOAuth {
 			continue
 		}
 		result.Scanned++
@@ -61,7 +67,7 @@ func (s *adminServiceImpl) RepairMisclassifiedOpenAIOAuthAccounts(ctx context.Co
 
 		account.Platform = PlatformOpenAI
 		account.SubPlatform = ""
-		account.Type = AccountTypeOAuth
+		account.Type = previousType
 		account.Extra = cloneStringAnyMap(account.Extra)
 		account.Extra[accountExtraKeyOpenAIOAuthPlatformRepair] = map[string]any{
 			"repaired_at":           time.Now().UTC().Format(time.RFC3339),
@@ -97,11 +103,17 @@ func (s *adminServiceImpl) RepairMisclassifiedOpenAIOAuthAccounts(ctx context.Co
 }
 
 func isMisclassifiedOpenAIOAuthAccount(account Account) (bool, string) {
+	if strings.EqualFold(account.Platform, moduleAccountPlatform) {
+		if strings.EqualFold(effectiveServiceProviderID(&account), PlatformOpenAI) {
+			return true, "provider-module metadata identifies a canonical OpenAI account"
+		}
+		return false, "module account is not explicitly bound to the OpenAI provider"
+	}
 	if account.Platform != PlatformGemini {
-		return false, "account is not a Gemini account"
+		return false, "account is neither a migrated module account nor a Gemini account"
 	}
 	if account.Type != AccountTypeOAuth {
-		return false, "account is not an OAuth account"
+		return false, "Gemini account is not an OAuth account"
 	}
 	if hasOpenAIOAuthCredentialIndicators(account.Credentials) {
 		return true, "credentials contain OpenAI OAuth markers"

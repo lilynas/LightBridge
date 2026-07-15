@@ -740,6 +740,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
+	httpInputNamespaceRetryTried := false
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -792,6 +793,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
+			if !httpInputNamespaceRetryTried && shouldRetryOpenAIResponsesWithoutInputNamespaces(resp.StatusCode, respBody) {
+				if stripOpenAIResponsesInputNamespaces(reqBody) {
+					body, err = json.Marshal(reqBody)
+					if err != nil {
+						return nil, fmt.Errorf("serialize input namespace compatibility retry body: %w", err)
+					}
+					httpInputNamespaceRetryTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying request once without unsupported input namespace fields (account: %s)", account.Name)
+					continue
+				}
+			}
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				if trimOpenAIEncryptedReasoningItems(reqBody) {
 					body, err = json.Marshal(reqBody)

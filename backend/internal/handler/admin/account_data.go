@@ -241,7 +241,49 @@ func normalizeSingleImportDataPayload(raw json.RawMessage, compatibilityMode boo
 	if err != nil && compatibilityMode {
 		dataPayload, err = normalizeCompatibilityImportPayload(raw)
 	}
+	if err == nil {
+		normalizeImportedAccountPlatforms(&dataPayload)
+	}
 	return dataPayload, err
+}
+
+// normalizeImportedAccountPlatforms repairs backups produced while the first
+// OpenAI provider-module migration incorrectly persisted platform="module".
+// The explicit provider marker is authoritative and is retained: it selects
+// the module adapter, while platform remains the canonical account identity.
+func normalizeImportedAccountPlatforms(payload *DataPayload) {
+	if payload == nil {
+		return
+	}
+	for i := range payload.Accounts {
+		account := &payload.Accounts[i]
+		platform := strings.ToLower(strings.TrimSpace(account.Platform))
+		if platform != moduleAccountPlatform && platform != service.PlatformGemini && platform != service.PlatformAntigravity {
+			continue
+		}
+		if importedAccountProviderID(account.Extra) == service.PlatformOpenAI {
+			account.Platform = service.PlatformOpenAI
+		}
+	}
+}
+
+const moduleAccountPlatform = "module"
+
+func importedAccountProviderID(extra map[string]any) string {
+	if len(extra) == 0 {
+		return ""
+	}
+	if providerID, ok := extra["provider_id"].(string); ok {
+		if normalized := strings.ToLower(strings.TrimSpace(providerID)); normalized != "" {
+			return normalized
+		}
+	}
+	migration, ok := extra["module_migration"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	providerID, _ := migration["provider_id"].(string)
+	return strings.ToLower(strings.TrimSpace(providerID))
 }
 
 func (h *AccountHandler) importDataPayloads(ctx context.Context, dataPayloads []DataPayload, skipDefaultGroupBindRaw *bool, groupIDs []int64, accountDefaults *DataAccountDefaults) (DataImportResult, error) {

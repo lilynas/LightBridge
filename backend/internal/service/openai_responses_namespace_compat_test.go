@@ -1,0 +1,147 @@
+//go:build unit
+
+package service
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai_compat"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+func TestShouldRetryOpenAIResponsesWithoutInputNamespaces(t *testing.T) {
+	t.Parallel()
+
+	reported := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[18].namespace'.","param":"input[18].namespace","type":"invalid_request_error"}}`)
+	require.True(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, reported))
+	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusUnprocessableEntity, reported))
+	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, []byte(`{"error":{"code":"unknown_parameter","param":"tools[0].namespace"}}`)))
+	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, []byte(`{"error":{"code":"missing_parameter","param":"input[18].namespace"}}`)))
+}
+
+func TestStripOpenAIResponsesInputNamespacesPreservesTools(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`)
+
+	normalized, changed, err := stripOpenAIResponsesInputNamespacesFromBody(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "input.0.namespace").Exists())
+	require.Equal(t, "lookup", gjson.GetBytes(normalized, "input.0.name").String())
+	require.Equal(t, "call_1", gjson.GetBytes(normalized, "input.0.call_id").String())
+	require.Equal(t, "namespace", gjson.GetBytes(normalized, "tools.0.type").String())
+	require.Equal(t, "mcp__docs", gjson.GetBytes(normalized, "tools.0.name").String())
+}
+
+func TestOpenAIGatewayForwardRetriesRejectedInputNamespaceOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := namespaceCompatibilityRequestBody()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{responses: namespaceCompatibilityResponses()}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := namespaceCompatibilityAccount(false)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "mcp__docs", gjson.GetBytes(upstream.bodies[0], "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.namespace").Exists())
+	require.Equal(t, "lookup", gjson.GetBytes(upstream.bodies[1], "input.0.name").String())
+	require.Equal(t, "namespace", gjson.GetBytes(upstream.bodies[1], "tools.0.type").String())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "ok", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
+}
+
+func TestOpenAIGatewayPassthroughRetriesRejectedInputNamespaceOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := namespaceCompatibilityRequestBody()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{responses: namespaceCompatibilityResponses()}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := namespaceCompatibilityAccount(true)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "mcp__docs", gjson.GetBytes(upstream.bodies[0], "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.namespace").Exists())
+	require.Equal(t, "namespace", gjson.GetBytes(upstream.bodies[1], "tools.0.type").String())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "ok", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
+}
+
+func namespaceCompatibilityRequestBody() []byte {
+	return []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":false,
+		"instructions":"continue the tool session",
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`)
+}
+
+func namespaceCompatibilityResponses() []*http.Response {
+	return []*http.Response{
+		{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[18].namespace'.","param":"input[18].namespace","type":"invalid_request_error"}}`,
+			)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_namespace_retry_ok"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"resp_namespace_retry_ok","object":"response","model":"gpt-5.6-sol","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}],"status":"completed"}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}`,
+			)),
+		},
+	}
+}
+
+func namespaceCompatibilityAccount(passthrough bool) *Account {
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+		openai_compat.ExtraKeyResponsesSupported: true,
+	}
+	if passthrough {
+		account.Extra["openai_passthrough"] = true
+	}
+	return account
+}

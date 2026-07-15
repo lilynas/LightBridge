@@ -159,13 +159,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
-	}
-
 	proxyURL := ""
 	if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
 		proxyURL, err = s.resolveAccountProxyURL(ctx, account, account.Platform, apiKeyGroupID(apiKey))
@@ -179,28 +172,63 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.EffectivePlatform(),
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			Passthrough:        true,
-			Kind:               "request_error",
-			Message:            safeErr,
-		})
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream request failed",
-			},
-		})
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	inputNamespaceRetryTried := false
+	var resp *http.Response
+	for {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, buildErr
+		}
+
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if err != nil {
+			SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.EffectivePlatform(),
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: 0,
+				Passthrough:        true,
+				Kind:               "request_error",
+				Message:            safeErr,
+			})
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream request failed",
+				},
+			})
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		}
+
+		if !inputNamespaceRetryTried && resp.StatusCode == http.StatusBadRequest {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			if readErr == nil {
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+				if shouldRetryOpenAIResponsesWithoutInputNamespaces(resp.StatusCode, respBody) {
+					normalizedBody, changed, normalizeErr := stripOpenAIResponsesInputNamespacesFromBody(body)
+					if normalizeErr != nil {
+						return nil, normalizeErr
+					}
+					if changed {
+						body = normalizedBody
+						inputNamespaceRetryTried = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Retrying request once without unsupported input namespace fields (account: %s)", account.Name)
+						continue
+					}
+				}
+			} else {
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			}
+		}
+		break
 	}
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
