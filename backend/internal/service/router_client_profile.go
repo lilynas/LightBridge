@@ -19,6 +19,7 @@ const (
 	RouterClientCodexCLI   RouterClientKind = "codex_cli"
 	RouterClientCodexApp   RouterClientKind = "codex_app"
 	RouterClientOpenCode   RouterClientKind = "opencode"
+	RouterClientGrokBuild  RouterClientKind = "grok_build"
 )
 
 // RouterClientProfile describes request/response compatibility requirements.
@@ -32,7 +33,7 @@ type RouterClientProfile struct {
 	StrictResponsesTerminal bool
 }
 
-var routerClientVersionPattern = regexp.MustCompile(`(?i)(?:claude-cli|claude-code|codex_cli_rs|codex|opencode)[/ _-]v?(\d+\.\d+(?:\.\d+)?)`)
+var routerClientVersionPattern = regexp.MustCompile(`(?i)(?:claude-cli|claude-code|codex_cli_rs|codex|opencode|grok-pager|grok-shell)[/ _-]v?(\d+\.\d+(?:\.\d+)?)`)
 
 // DetectRouterClientProfile uses only stable request metadata. Body-dependent
 // Claude Code verification remains in ClaudeCodeValidator; this early profile
@@ -58,6 +59,11 @@ func DetectRouterClientProfile(r *http.Request) RouterClientProfile {
 
 	case strings.Contains(uaLower, "opencode") || strings.Contains(xApp, "opencode") || strings.Contains(originator, "opencode"):
 		profile.Kind = RouterClientOpenCode
+		profile.StrictResponsesTerminal = true
+
+	case strings.Contains(uaLower, "grok-pager/") || strings.Contains(uaLower, "grok-shell/") ||
+		strings.Contains(xApp, "grok-build") || strings.Contains(originator, "grok-build"):
+		profile.Kind = RouterClientGrokBuild
 		profile.StrictResponsesTerminal = true
 
 	case strings.Contains(uaLower, "codex_cli_rs") || strings.Contains(uaLower, "codex-cli"):

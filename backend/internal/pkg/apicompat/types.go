@@ -4,7 +4,10 @@
 // formats can be served through a unified gateway.
 package apicompat
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // ---------------------------------------------------------------------------
 // Anthropic Messages API types
@@ -257,12 +260,13 @@ type ResponsesTool struct {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID     string            `json:"id"`
-	Object string            `json:"object"` // "response"
-	Model  string            `json:"model"`
-	Status string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output []ResponsesOutput `json:"output"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	ID        string            `json:"id"`
+	Object    string            `json:"object"` // "response"
+	CreatedAt int64             `json:"created_at,omitempty"`
+	Model     string            `json:"model"`
+	Status    string            `json:"status"` // "completed" | "incomplete" | "failed"
+	Output    []ResponsesOutput `json:"output"`
+	Usage     *ResponsesUsage   `json:"usage,omitempty"`
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
@@ -303,6 +307,40 @@ type ResponsesOutput struct {
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`
+}
+
+// MarshalJSON preserves empty-but-required fields for strict Responses API
+// clients. In particular, a function_call item starts with arguments="" and a
+// message item starts with content=[], both of which ordinary omitempty tags
+// would otherwise discard.
+func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
+	type responsesOutputAlias ResponsesOutput
+	type responsesOutputJSON struct {
+		responsesOutputAlias
+		Content   *[]ResponsesContentPart `json:"content,omitempty"`
+		Summary   *[]ResponsesSummary     `json:"summary,omitempty"`
+		Arguments *string                 `json:"arguments,omitempty"`
+	}
+	payload := responsesOutputJSON{responsesOutputAlias: responsesOutputAlias(o)}
+	if o.Type == "message" || len(o.Content) > 0 {
+		content := o.Content
+		if content == nil {
+			content = []ResponsesContentPart{}
+		}
+		payload.Content = &content
+	}
+	if o.Type == "reasoning" || len(o.Summary) > 0 {
+		summary := o.Summary
+		if summary == nil {
+			summary = []ResponsesSummary{}
+		}
+		payload.Summary = &summary
+	}
+	if o.Type == "function_call" || o.Arguments != "" {
+		arguments := o.Arguments
+		payload.Arguments = &arguments
+	}
+	return json.Marshal(payload)
 }
 
 // WebSearchAction describes the search action in a web_search_call output item.
@@ -412,6 +450,69 @@ type ResponsesStreamEvent struct {
 
 	// Sequence number for ordering events
 	SequenceNumber int `json:"sequence_number,omitempty"`
+}
+
+// MarshalJSON keeps required zero-valued indexes and the initial
+// sequence_number. These values are meaningful protocol fields, but Go's
+// omitempty would remove them from the first output item/event.
+func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
+	type responsesStreamEventAlias ResponsesStreamEvent
+	type responsesStreamEventJSON struct {
+		responsesStreamEventAlias
+		OutputIndex    *int `json:"output_index,omitempty"`
+		ContentIndex   *int `json:"content_index,omitempty"`
+		SummaryIndex   *int `json:"summary_index,omitempty"`
+		SequenceNumber *int `json:"sequence_number,omitempty"`
+	}
+	payload := responsesStreamEventJSON{responsesStreamEventAlias: responsesStreamEventAlias(e)}
+	if e.OutputIndex != 0 || responsesEventRequiresOutputIndex(e.Type) {
+		outputIndex := e.OutputIndex
+		payload.OutputIndex = &outputIndex
+	}
+	if e.ContentIndex != 0 || responsesEventRequiresContentIndex(e.Type) {
+		contentIndex := e.ContentIndex
+		payload.ContentIndex = &contentIndex
+	}
+	if e.SummaryIndex != 0 || responsesEventRequiresSummaryIndex(e.Type) {
+		summaryIndex := e.SummaryIndex
+		payload.SummaryIndex = &summaryIndex
+	}
+	if e.SequenceNumber != 0 || e.Type == "error" || strings.HasPrefix(e.Type, "response.") {
+		sequenceNumber := e.SequenceNumber
+		payload.SequenceNumber = &sequenceNumber
+	}
+	return json.Marshal(payload)
+}
+
+func responsesEventRequiresOutputIndex(eventType string) bool {
+	switch eventType {
+	case "response.output_item.added", "response.output_item.done",
+		"response.content_part.added", "response.content_part.done",
+		"response.output_text.delta", "response.output_text.done",
+		"response.refusal.delta", "response.refusal.done",
+		"response.function_call_arguments.delta", "response.function_call_arguments.done",
+		"response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
+		"response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesEventRequiresContentIndex(eventType string) bool {
+	switch eventType {
+	case "response.content_part.added", "response.content_part.done",
+		"response.output_text.delta", "response.output_text.done",
+		"response.refusal.delta", "response.refusal.done":
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesEventRequiresSummaryIndex(eventType string) bool {
+	return eventType == "response.reasoning_summary_text.delta" ||
+		eventType == "response.reasoning_summary_text.done"
 }
 
 // NormalizeResponsesUsage returns a non-nil canonical usage object. Compatible

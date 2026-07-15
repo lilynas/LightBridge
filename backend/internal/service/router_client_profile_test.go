@@ -22,6 +22,7 @@ func TestDetectRouterClientProfile(t *testing.T) {
 		{name: "codex cli", userAgent: "codex_cli_rs/0.125.0", wantKind: RouterClientCodexCLI, wantStrict: true, version: "0.125.0"},
 		{name: "codex app by originator", userAgent: "Mozilla/5.0", headers: map[string]string{"Originator": "Codex Desktop"}, wantKind: RouterClientCodexApp, wantStrict: true},
 		{name: "opencode", userAgent: "opencode/1.2.3", wantKind: RouterClientOpenCode, wantStrict: true, version: "1.2.3"},
+		{name: "grok build", userAgent: "grok-pager/0.2.99 grok-shell/0.2.99 (linux; x86_64)", wantKind: RouterClientGrokBuild, wantStrict: true, version: "0.2.99"},
 		{name: "generic", userAgent: "curl/8.0", wantKind: RouterClientUnknown},
 	}
 
