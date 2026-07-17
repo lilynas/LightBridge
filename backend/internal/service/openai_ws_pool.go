@@ -147,6 +147,20 @@ func (l *openAIWSConnLease) MarkPrewarmed() {
 	l.conn.markPrewarmed()
 }
 
+func (l *openAIWSConnLease) InputNamespacesUnsupported() bool {
+	if l == nil || l.conn == nil {
+		return false
+	}
+	return l.conn.inputNamespacesUnsupported.Load()
+}
+
+func (l *openAIWSConnLease) MarkInputNamespacesUnsupported() {
+	if l == nil || l.conn == nil {
+		return
+	}
+	l.conn.inputNamespacesUnsupported.Store(true)
+}
+
 func (l *openAIWSConnLease) WriteJSON(value any, timeout time.Duration) error {
 	conn, err := l.activeConn()
 	if err != nil {
@@ -237,6 +251,11 @@ type openAIWSConn struct {
 	createdAtNano atomic.Int64
 	lastUsedNano  atomic.Int64
 	prewarmed     atomic.Bool
+	// Learned after an explicit upstream unknown_parameter rejection. Scoped to
+	// the physical socket so official/Azure connections that require namespace
+	// retain native behavior, while an incompatible socket avoids repeated
+	// failed tool-continuation attempts.
+	inputNamespacesUnsupported atomic.Bool
 }
 
 func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders http.Header) *openAIWSConn {

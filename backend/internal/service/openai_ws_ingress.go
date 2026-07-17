@@ -234,6 +234,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			normalized = next
 		}
+		if account.Type == AccountTypeOAuth {
+			withInstructions, instructionsChanged, instructionsErr := ensureOpenAIResponsesInstructionsInBody(normalized)
+			if instructionsErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", instructionsErr)
+			}
+			if instructionsChanged {
+				normalized = withInstructions
+			}
+		}
 		imageIntent := IsImageGenerationIntent(openAIResponsesEndpoint, originalModel, normalized)
 		if imageIntent && !GroupAllowsImageGeneration(apiKeyGroup(getAPIKeyFromContext(c))) {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
@@ -637,6 +646,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 		}
+		if lease.InputNamespacesUnsupported() {
+			normalizedPayload, changed, normalizeErr := stripOpenAIResponsesInputNamespacesFromBody(payload)
+			if normalizeErr != nil {
+				return nil, wrapOpenAIWSIngressTurnError("input_namespace_normalize", normalizeErr, false)
+			}
+			if changed {
+				payload = normalizedPayload
+				payloadBytes = len(normalizedPayload)
+				logOpenAIWSModeInfo(
+					"ingress_ws_input_namespace_compat_apply account_id=%d turn=%d conn_id=%s action=strip_input_namespaces source=connection_capability payload_bytes=%d",
+					account.ID,
+					turn,
+					truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
+					payloadBytes,
+				)
+			}
+		}
 		turnStart := time.Now()
 		wroteDownstream := false
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
@@ -671,6 +697,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		terminalEventCount := 0
 		firstEventType := ""
 		lastEventType := ""
+		inputNamespaceRetryTried := false
 		needModelReplace := false
 		clientDisconnected := false
 		mappedModel := ""
@@ -707,6 +734,42 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if eventType == "error" {
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw)
+				if !wroteDownstream && !inputNamespaceRetryTried && shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces(upstreamMessage) {
+					normalizedPayload, changed, normalizeErr := stripOpenAIResponsesInputNamespacesFromBody(payload)
+					if normalizeErr != nil {
+						return nil, wrapOpenAIWSIngressTurnError("input_namespace_normalize", normalizeErr, false)
+					}
+					if changed {
+						lease.MarkInputNamespacesUnsupported()
+						inputNamespaceRetryTried = true
+						payload = normalizedPayload
+						payloadBytes = len(normalizedPayload)
+						responseID = ""
+						usage = OpenAIUsage{}
+						imageCounter = newOpenAIImageOutputCounter()
+						firstTokenMs = nil
+						eventCount = 0
+						tokenEventCount = 0
+						terminalEventCount = 0
+						firstEventType = ""
+						lastEventType = ""
+						if retryErr := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); retryErr != nil {
+							return nil, wrapOpenAIWSIngressTurnError(
+								"input_namespace_retry_write",
+								fmt.Errorf("retry upstream websocket request without input namespace: %w", retryErr),
+								false,
+							)
+						}
+						logOpenAIWSModeInfo(
+							"ingress_ws_input_namespace_compat_retry account_id=%d turn=%d conn_id=%s action=strip_input_namespaces retry=1 payload_bytes=%d",
+							account.ID,
+							turn,
+							truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
+							payloadBytes,
+						)
+						continue
+					}
+				}
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				errCode, errType, errMessage := summarizeOpenAIWSErrorEventFieldsFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				recoverablePrevNotFound := fallbackReason == openAIWSIngressStagePreviousResponseNotFound &&

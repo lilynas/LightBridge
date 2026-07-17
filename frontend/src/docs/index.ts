@@ -8,6 +8,7 @@ import release0240Preview from './content/release-0.2.40-preview.md?raw'
 import release0250 from './content/release-0.2.50.md?raw'
 import release0260 from './content/release-0.2.60.md?raw'
 import release030Preview from './content/release-0.3.0-preview.md?raw'
+import release034 from './content/release-0.3.4.md?raw'
 import opsPublicPages from './content/ops-public-pages.md?raw'
 import opsUserCenter from './content/ops-user-center.md?raw'
 import opsUserPayment from './content/ops-user-payment.md?raw'
@@ -119,6 +120,13 @@ export const lightBridgeDocs: LightBridgeDoc[] = [
     group: '操作文档',
     description: '订阅管理、公告管理、兑换码管理、优惠码管理、风控管理功能说明',
     content: opsAdminDistribution,
+  },
+  {
+    id: 'release-0.3.4',
+    title: '0.3.4 版本更新',
+    group: '版本更新',
+    description: 'OpenAI OAuth Tool Calling namespace 断流、instructions 403 与多传输模式兼容修复正式版',
+    content: release034,
   },
   {
     id: 'release-0.3.0-preview',

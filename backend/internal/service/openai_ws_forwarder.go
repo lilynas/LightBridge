@@ -280,6 +280,15 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			c.Header(http.CanonicalHeaderKey(openAIWSTurnStateHeader), handshakeTurnState)
 		}
 	}
+	if lease.InputNamespacesUnsupported() && stripOpenAIResponsesInputNamespaces(payload) {
+		payloadBytes = -1
+		logOpenAIWSModeInfo(
+			"input_namespace_compat_apply account_id=%d conn_id=%s transport=ws_v2 action=strip_input_namespaces source=connection_capability payload_bytes=%d",
+			account.ID,
+			truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
+			resolvePayloadBytes(),
+		)
+	}
 
 	if err := s.performOpenAIWSGeneratePrewarm(
 		ctx,
@@ -337,6 +346,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	flushedBufferedEventCount := 0
 	firstEventType := ""
 	lastEventType := ""
+	inputNamespaceRetryTried := false
 
 	var flusher http.Flusher
 	if reqStream {
@@ -512,6 +522,36 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			if !wroteDownstream && !inputNamespaceRetryTried && shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces(message) {
+				if stripOpenAIResponsesInputNamespaces(payload) {
+					lease.MarkInputNamespacesUnsupported()
+					inputNamespaceRetryTried = true
+					payloadBytes = -1
+					bufferedStreamEvents = bufferedStreamEvents[:0]
+					responseID = ""
+					finalResponse = nil
+					*usage = OpenAIUsage{}
+					imageCounter = newOpenAIImageOutputCounter()
+					firstTokenMs = nil
+					eventCount = 0
+					tokenEventCount = 0
+					terminalEventCount = 0
+					bufferedEventCount = 0
+					firstEventType = ""
+					lastEventType = ""
+					if retryErr := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); retryErr != nil {
+						lease.MarkBroken()
+						return nil, wrapOpenAIWSFallback("input_namespace_retry_write", retryErr)
+					}
+					logOpenAIWSModeInfo(
+						"input_namespace_compat_retry account_id=%d conn_id=%s transport=ws_v2 action=strip_input_namespaces retry=1 payload_bytes=%d",
+						account.ID,
+						truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
+						resolvePayloadBytes(),
+					)
+					continue
+				}
+			}
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "Upstream websocket error"

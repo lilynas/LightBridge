@@ -1029,6 +1029,111 @@ func TestOpenAIGatewayService_Forward_WSv2ConnectionLimitReachedRetryThenFallbac
 	require.Equal(t, int32(openAIWSReconnectRetryLimit+1), wsAttempts.Load())
 }
 
+func TestOpenAIGatewayService_Forward_WSv2RetriesRejectedInputNamespaceOnSameConnection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var wsConnections atomic.Int32
+	var requestMu sync.Mutex
+	var requests [][]byte
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wsConnections.Add(1)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket failed: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		for attempt := 0; attempt < 2; attempt++ {
+			var req map[string]any
+			if err := conn.ReadJSON(&req); err != nil {
+				t.Errorf("read ws request failed: %v", err)
+				return
+			}
+			raw, _ := json.Marshal(req)
+			requestMu.Lock()
+			requests = append(requests, raw)
+			requestMu.Unlock()
+			if attempt == 0 {
+				_ = conn.WriteJSON(map[string]any{
+					"type": "error",
+					"error": map[string]any{
+						"code":    "unknown_parameter",
+						"type":    "invalid_request_error",
+						"param":   "input[0].namespace",
+						"message": "Unknown parameter: 'input[0].namespace'.",
+					},
+				})
+				continue
+			}
+			_ = conn.WriteJSON(map[string]any{
+				"type": "response.completed",
+				"response": map[string]any{
+					"id":     "resp_ws_namespace_retry_ok",
+					"model":  "gpt-5.6-sol",
+					"status": "completed",
+					"output": []any{},
+					"usage":  map[string]any{"input_tokens": 4, "output_tokens": 1},
+				},
+			})
+		}
+	}))
+	defer wsServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.FallbackCooldownSeconds = 1
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID:          901,
+		Name:        "openai-apikey-namespace",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": wsServer.URL},
+		Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+	}
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":false,
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "resp_ws_namespace_retry_ok", result.RequestID)
+	require.Equal(t, int32(1), wsConnections.Load(), "namespace compatibility retry must stay on the same websocket")
+	requestMu.Lock()
+	captured := append([][]byte(nil), requests...)
+	requestMu.Unlock()
+	require.Len(t, captured, 2)
+	require.Equal(t, "mcp__docs", gjson.GetBytes(captured[0], "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(captured[1], "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.GetBytes(captured[1], "tools.0.name").String())
+}
+
 func TestOpenAIGatewayService_Forward_WSv2PreviousResponseNotFoundRecoversByDroppingPreviousResponseID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

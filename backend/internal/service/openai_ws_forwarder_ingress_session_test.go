@@ -164,6 +164,146 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 	require.Len(t, captureConn.writes, 2, "应向同一上游连接发送两轮 response.create")
 }
 
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_RetriesRejectedInputNamespaceOnSameOAuthConnection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	captureConn := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace","type":"invalid_request_error"}}`),
+		[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_namespace_ok","model":"gpt-5.6-sol","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":1}}}`),
+		[]byte(`{"type":"response.completed","response":{"id":"resp_ingress_namespace_second","model":"gpt-5.6-sol","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":1}}}`),
+	}}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          115,
+		Name:        "openai-oauth-ingress-namespace",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-test",
+			"chatgpt_account_id": "chatgpt-test",
+		},
+		Extra: map[string]any{"responses_websockets_v2_enabled": true},
+	}
+
+	serverErrCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, readErr := conn.Read(readCtx)
+		cancel()
+		if readErr != nil {
+			serverErrCh <- readErr
+			return
+		}
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "oauth-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	request := `{
+		"type":"response.create",
+		"model":"gpt-5.6-sol",
+		"store":false,
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(request)))
+	cancelWrite()
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, response, readErr := clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, readErr)
+	require.Equal(t, "response.completed", gjson.GetBytes(response, "type").String(), "namespace rejection must be swallowed after same-connection retry")
+	require.Equal(t, "resp_ingress_namespace_ok", gjson.GetBytes(response, "response.id").String())
+
+	secondRequest := `{
+		"type":"response.create",
+		"model":"gpt-5.6-sol",
+		"store":false,
+		"previous_response_id":"resp_ingress_namespace_ok",
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_2","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_2","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(secondRequest)))
+	cancelWrite()
+
+	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+	_, secondResponse, readErr := clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, readErr)
+	require.Equal(t, "resp_ingress_namespace_second", gjson.GetBytes(secondResponse, "response.id").String())
+
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case serverErr := <-serverErrCh:
+		require.NoError(t, serverErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待 namespace ingress websocket 结束超时")
+	}
+
+	require.Equal(t, 1, captureDialer.DialCount(), "namespace retry must preserve the OAuth continuation socket")
+	require.Len(t, captureConn.writes, 3, "learned OAuth socket capability must prevent another rejected namespace write")
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(captureConn.writes[0]), "input.0.namespace").String())
+	require.Equal(t, defaultOpenAIResponsesInstructions, gjson.Get(requestToJSONString(captureConn.writes[0]), "instructions").String())
+	require.False(t, gjson.Get(requestToJSONString(captureConn.writes[1]), "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(captureConn.writes[1]), "tools.0.name").String())
+	require.False(t, gjson.Get(requestToJSONString(captureConn.writes[2]), "input.0.namespace").Exists())
+	require.Equal(t, defaultOpenAIResponsesInstructions, gjson.Get(requestToJSONString(captureConn.writes[2]), "instructions").String())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(captureConn.writes[2]), "tools.0.name").String())
+}
+
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCanOmitModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -449,8 +589,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 
 	upstreamConn := &openAIWSCaptureConn{
+		readDelays: []time.Duration{0, 0, 100 * time.Millisecond},
 		events: [][]byte{
+			[]byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace","type":"invalid_request_error"}}`),
 			[]byte(`{"type":"response.completed","response":{"id":"resp_passthrough_turn_1","model":"gpt-5.1","usage":{"input_tokens":2,"output_tokens":3}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_passthrough_turn_2","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
 		},
 	}
 	captureDialer := &openAIWSCaptureDialer{conn: upstreamConn}
@@ -480,7 +623,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	}
 
 	serverErrCh := make(chan error, 1)
-	resultCh := make(chan *OpenAIForwardResult, 1)
+	resultCh := make(chan *OpenAIForwardResult, 2)
 	hooks := &OpenAIWSIngressHooks{
 		AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
 			if turnErr == nil && result != nil {
@@ -533,7 +676,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	}()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"service_tier":"fast","reasoning":{"effort":"HIGH"}}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"service_tier":"fast","reasoning":{"effort":"HIGH"},"input":[{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"}],"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]}`))
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -543,15 +686,29 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	require.NoError(t, readErr)
 	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
 	require.Equal(t, "resp_passthrough_turn_1", gjson.GetBytes(event, "response.id").String())
+
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_passthrough_turn_1","input":[{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_2","arguments":"{}"},{"type":"function_call_output","call_id":"call_2","output":"ok"}],"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+	_, event, readErr = clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, readErr)
+	require.Equal(t, "resp_passthrough_turn_2", gjson.GetBytes(event, "response.id").String())
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 
 	select {
 	case serverErr := <-serverErrCh:
 		// After normal client close, the server goroutine may receive the close frame
-		// as an error — this is expected behavior, not a test failure.
+		// or observe that the finite capture upstream already closed after its last
+		// event. Both are expected fixture shutdown behavior, not relay failures.
 		if serverErr != nil {
-			require.Contains(t, serverErr.Error(), "StatusNormalClosure",
-				"server error should only be a normal close frame, got: %v", serverErr)
+			require.True(t,
+				errors.Is(serverErr, errOpenAIWSConnClosed) || strings.Contains(serverErr.Error(), "StatusNormalClosure"),
+				"server error should only be normal fixture shutdown, got: %v", serverErr,
+			)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("等待 passthrough websocket 结束超时")
@@ -570,9 +727,21 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	case <-time.After(2 * time.Second):
 		t.Fatal("未收到 passthrough turn 结果回调")
 	}
+	select {
+	case result := <-resultCh:
+		require.Equal(t, "resp_passthrough_turn_2", result.RequestID)
+		require.True(t, result.OpenAIWSMode)
+	case <-time.After(2 * time.Second):
+		t.Fatal("未收到 passthrough 第二轮结果回调")
+	}
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
-	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+	require.Len(t, upstreamConn.writes, 3, "passthrough 模式应记住同一连接不支持 input namespace")
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(upstreamConn.writes[0]), "input.0.namespace").String())
+	require.False(t, gjson.Get(requestToJSONString(upstreamConn.writes[1]), "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(upstreamConn.writes[1]), "tools.0.name").String())
+	require.False(t, gjson.Get(requestToJSONString(upstreamConn.writes[2]), "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(upstreamConn.writes[2]), "tools.0.name").String())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeadersUsePromptCacheAndTurnState(t *testing.T) {

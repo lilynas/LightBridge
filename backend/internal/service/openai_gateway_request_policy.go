@@ -71,9 +71,33 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 	return model, stream, promptCacheKey
 }
 
+const defaultOpenAIResponsesInstructions = "You are a helpful coding assistant."
+
+// ensureOpenAIResponsesInstructionsInBody keeps OAuth passthrough and direct
+// WebSocket ingress aligned with the legacy transform. ChatGPT's internal
+// Responses endpoint requires a non-empty instructions string, while many
+// OpenAI-compatible clients omit it because the public Responses API treats it
+// as optional. Supplying the same neutral default used by the non-passthrough
+// path avoids turning a compatible request into a local 403.
+func ensureOpenAIResponsesInstructionsInBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+	instructions := gjson.GetBytes(body, "instructions")
+	if instructions.Exists() && instructions.Type == gjson.String && strings.TrimSpace(instructions.String()) != "" {
+		return body, false, nil
+	}
+	normalized, err := sjson.SetBytes(body, "instructions", defaultOpenAIResponsesInstructions)
+	if err != nil {
+		return body, false, fmt.Errorf("normalize responses instructions: %w", err)
+	}
+	return normalized, true, nil
+}
+
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
-// 1) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
-// 2) store=false 3) 非 compact 保持 stream=true；compact 强制 stream=false
+// 1) 补齐 ChatGPT internal API 必需的 instructions
+// 2) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
+// 3) store=false 4) 非 compact 保持 stream=true；compact 强制 stream=false
 func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
@@ -81,6 +105,14 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 
 	normalized := body
 	changed := false
+	withInstructions, instructionsChanged, err := ensureOpenAIResponsesInstructionsInBody(normalized)
+	if err != nil {
+		return body, false, err
+	}
+	if instructionsChanged {
+		normalized = withInstructions
+		changed = true
+	}
 
 	for _, field := range openAIChatGPTInternalUnsupportedFields {
 		if value := gjson.GetBytes(normalized, field); !value.Exists() {
@@ -131,25 +163,6 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
-}
-
-func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
-	model := strings.ToLower(strings.TrimSpace(reqModel))
-	if !strings.Contains(model, "codex") {
-		return ""
-	}
-
-	instructions := gjson.GetBytes(body, "instructions")
-	if !instructions.Exists() {
-		return "instructions_missing"
-	}
-	if instructions.Type != gjson.String {
-		return "instructions_not_string"
-	}
-	if strings.TrimSpace(instructions.String()) == "" {
-		return "instructions_empty"
-	}
-	return ""
 }
 
 func extractOpenAIReasoningEffortFromBody(body []byte, requestedModel string) *string {

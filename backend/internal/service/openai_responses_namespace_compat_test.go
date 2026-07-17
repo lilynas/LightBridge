@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/WilliamWang1721/LightBridge/internal/pkg/openai_compat"
+	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -22,9 +24,17 @@ func TestShouldRetryOpenAIResponsesWithoutInputNamespaces(t *testing.T) {
 
 	reported := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[18].namespace'.","param":"input[18].namespace","type":"invalid_request_error"}}`)
 	require.True(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, reported))
+	require.True(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: input.18.namespace.","param":"input.18.namespace","type":"invalid_request_error"}}`)))
 	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusUnprocessableEntity, reported))
 	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, []byte(`{"error":{"code":"unknown_parameter","param":"tools[0].namespace"}}`)))
 	require.False(t, shouldRetryOpenAIResponsesWithoutInputNamespaces(http.StatusBadRequest, []byte(`{"error":{"code":"missing_parameter","param":"input[18].namespace"}}`)))
+}
+
+func TestShouldRetryOpenAIResponsesWSEventWithoutInputNamespaces(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces([]byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[4].namespace'.","param":"input[4].namespace","type":"invalid_request_error"}}`)))
+	require.False(t, shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces([]byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'tools[0].namespace'.","param":"tools[0].namespace","type":"invalid_request_error"}}`)))
 }
 
 func TestStripOpenAIResponsesInputNamespacesPreservesTools(t *testing.T) {
@@ -47,6 +57,75 @@ func TestStripOpenAIResponsesInputNamespacesPreservesTools(t *testing.T) {
 	require.Equal(t, "call_1", gjson.GetBytes(normalized, "input.0.call_id").String())
 	require.Equal(t, "namespace", gjson.GetBytes(normalized, "tools.0.type").String())
 	require.Equal(t, "mcp__docs", gjson.GetBytes(normalized, "tools.0.name").String())
+}
+
+func TestStripOpenAIResponsesInputNamespacesSupportsSingleInputObject(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"input":{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`)
+
+	normalized, changed, err := stripOpenAIResponsesInputNamespacesFromBody(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "input.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.GetBytes(normalized, "tools.0.name").String())
+}
+
+func TestOpenAIWSInputNamespaceCompatFrameConnRetriesOnSameConnection(t *testing.T) {
+	t.Parallel()
+
+	inner := &openAIWSCaptureConn{events: [][]byte{
+		[]byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace","type":"invalid_request_error"}}`),
+		[]byte(`{"type":"response.completed","response":{"id":"resp_namespace_ws_ok","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1}}}`),
+		[]byte(`{"type":"response.completed","response":{"id":"resp_namespace_ws_second","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1}}}`),
+	}}
+	conn := newOpenAIWSInputNamespaceCompatFrameConn(inner, 77, time.Second)
+	request := []byte(`{
+		"type":"response.create",
+		"model":"gpt-5.6-sol",
+		"input":[
+			{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"}
+		],
+		"tools":[{"type":"namespace","name":"mcp__docs","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
+	}`)
+
+	require.NoError(t, conn.WriteFrame(context.Background(), coderws.MessageText, request))
+	msgType, response, err := conn.ReadFrame(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, coderws.MessageText, msgType)
+	require.Equal(t, "response.completed", gjson.GetBytes(response, "type").String())
+	require.Len(t, inner.writes, 2)
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(inner.writes[0]), "input.0.namespace").String())
+	require.False(t, gjson.Get(requestToJSONString(inner.writes[1]), "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(inner.writes[1]), "tools.0.name").String())
+
+	require.NoError(t, conn.WriteFrame(context.Background(), coderws.MessageText, request))
+	_, secondResponse, err := conn.ReadFrame(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "resp_namespace_ws_second", gjson.GetBytes(secondResponse, "response.id").String())
+	require.Len(t, inner.writes, 3, "learned connection capability must avoid another rejected write")
+	require.False(t, gjson.Get(requestToJSONString(inner.writes[2]), "input.0.namespace").Exists())
+	require.Equal(t, "mcp__docs", gjson.Get(requestToJSONString(inner.writes[2]), "tools.0.name").String())
+}
+
+func TestOpenAIWSInputNamespaceCompatFrameConnRetriesAtMostOnce(t *testing.T) {
+	t.Parallel()
+
+	rejection := []byte(`{"type":"error","error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace","type":"invalid_request_error"}}`)
+	inner := &openAIWSCaptureConn{events: [][]byte{rejection, rejection}}
+	conn := newOpenAIWSInputNamespaceCompatFrameConn(inner, 78, time.Second)
+	request := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[{"type":"function_call","namespace":"mcp__docs","name":"lookup","call_id":"call_1","arguments":"{}"}]}`)
+
+	require.NoError(t, conn.WriteFrame(context.Background(), coderws.MessageText, request))
+	_, response, err := conn.ReadFrame(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "error", gjson.GetBytes(response, "type").String(), "second rejection must be surfaced instead of looping")
+	require.Len(t, inner.writes, 2)
 }
 
 func TestOpenAIGatewayForwardRetriesRejectedInputNamespaceOnce(t *testing.T) {

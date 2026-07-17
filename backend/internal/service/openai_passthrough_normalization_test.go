@@ -18,6 +18,7 @@ func TestNormalizeOpenAIPassthroughOAuthBody_RemovesUnsupportedUser(t *testing.T
 	}
 	require.True(t, gjson.GetBytes(normalized, "stream").Bool())
 	require.False(t, gjson.GetBytes(normalized, "store").Bool())
+	require.Equal(t, defaultOpenAIResponsesInstructions, gjson.GetBytes(normalized, "instructions").String())
 }
 
 func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *testing.T) {
@@ -30,4 +31,14 @@ func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *te
 	require.False(t, gjson.GetBytes(normalized, "metadata").Exists())
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
+	require.Equal(t, defaultOpenAIResponsesInstructions, gjson.GetBytes(normalized, "instructions").String())
+}
+
+func TestEnsureOpenAIResponsesInstructionsInBody_PreservesNonEmptyValue(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","instructions":"custom instructions","input":"hello"}`)
+
+	normalized, changed, err := ensureOpenAIResponsesInstructionsInBody(body)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, "custom instructions", gjson.GetBytes(normalized, "instructions").String())
 }

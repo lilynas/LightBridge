@@ -28,30 +28,56 @@ func shouldRetryOpenAIResponsesWithoutInputNamespaces(statusCode int, responseBo
 		gjson.GetBytes(responseBody, "param").String(),
 	))
 
-	if isOpenAIResponsesInputNamespaceParam(param) &&
-		(code == "unknown_parameter" || strings.Contains(message, "unknown parameter")) {
+	if isOpenAIResponsesInputNamespaceCompatibilityError(code, message, param) {
 		return true
 	}
 
 	// Some OpenAI-compatible routers wrap the provider error as an encoded JSON
 	// string. Keep the fallback narrow: all three markers must be present.
 	raw := strings.ToLower(string(responseBody))
-	return strings.Contains(raw, "unknown parameter") &&
-		strings.Contains(raw, "input[") &&
-		strings.Contains(raw, "].namespace")
+	if !strings.Contains(raw, "unknown parameter") {
+		return false
+	}
+	return (strings.Contains(raw, "input[") && strings.Contains(raw, "].namespace")) ||
+		(strings.Contains(raw, "input.") && strings.Contains(raw, ".namespace"))
+}
+
+func isOpenAIResponsesInputNamespaceCompatibilityError(code, message, param string) bool {
+	code = strings.ToLower(strings.TrimSpace(code))
+	message = strings.ToLower(strings.TrimSpace(message))
+	return isOpenAIResponsesInputNamespaceParam(param) &&
+		(code == "unknown_parameter" || strings.Contains(message, "unknown parameter"))
+}
+
+// shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces applies the same
+// narrow compatibility gate to a Responses WebSocket error event. Keeping the
+// detector shared prevents HTTP, pooled WS, and passthrough WS from drifting
+// into different namespace behavior again.
+func shouldRetryOpenAIResponsesWSEventWithoutInputNamespaces(event []byte) bool {
+	if len(event) == 0 {
+		return false
+	}
+	return shouldRetryOpenAIResponsesWithoutInputNamespaces(openAIWSErrorHTTPStatus(event), event)
 }
 
 func isOpenAIResponsesInputNamespaceParam(raw string) bool {
 	value := strings.Trim(strings.TrimSpace(raw), "'\"")
-	if !strings.HasPrefix(value, "input[") || !strings.HasSuffix(value, "].namespace") {
-		return false
+	if strings.HasPrefix(value, "input[") && strings.HasSuffix(value, "].namespace") {
+		end := strings.IndexByte(value, ']')
+		if end <= len("input[") || value[end:] != "].namespace" {
+			return false
+		}
+		_, err := strconv.Atoi(value[len("input["):end])
+		return err == nil
 	}
-	end := strings.IndexByte(value, ']')
-	if end <= len("input[") || value[end:] != "].namespace" {
-		return false
+	// A few compatible routers report JSON paths using dot notation instead of
+	// the bracket notation used by OpenAI errors.
+	if strings.HasPrefix(value, "input.") && strings.HasSuffix(value, ".namespace") {
+		index := strings.TrimSuffix(strings.TrimPrefix(value, "input."), ".namespace")
+		_, err := strconv.Atoi(index)
+		return err == nil
 	}
-	_, err := strconv.Atoi(value[len("input["):end])
-	return err == nil
+	return false
 }
 
 // stripOpenAIResponsesInputNamespaces removes only the top-level namespace
@@ -62,19 +88,28 @@ func stripOpenAIResponsesInputNamespaces(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
 	}
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return false
+	stripItem := func(item map[string]any) bool {
+		if item == nil {
+			return false
+		}
+		if _, exists := item["namespace"]; !exists {
+			return false
+		}
+		delete(item, "namespace")
+		return true
 	}
 
 	changed := false
-	for _, rawItem := range input {
-		item, ok := rawItem.(map[string]any)
-		if !ok {
-			continue
+	switch input := reqBody["input"].(type) {
+	case []any:
+		for _, rawItem := range input {
+			item, ok := rawItem.(map[string]any)
+			if ok && stripItem(item) {
+				changed = true
+			}
 		}
-		if _, exists := item["namespace"]; exists {
-			delete(item, "namespace")
+	case map[string]any:
+		if stripItem(input) {
 			changed = true
 		}
 	}

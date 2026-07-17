@@ -228,7 +228,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 	turnStart := time.Now()
 	var resp *http.Response
-	for attempt := 0; attempt < 2; attempt++ {
+	inputNamespaceRetryTried := false
+	// One request plus one namespace compatibility retry and one Grok replay
+	// recovery. Keeping independent budgets prevents either compatibility path
+	// from silently disabling the other.
+	for attempt := 0; attempt < 3; attempt++ {
 		var upstreamReq *http.Request
 		if account.Platform == PlatformGrok {
 			upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token)
@@ -250,7 +254,29 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
 		_ = resp.Body.Close()
-		if account.Platform == PlatformGrok && attempt == 0 && grokReplayInjected && isGrokInvalidReplayError(resp.StatusCode, respBody) {
+		if !inputNamespaceRetryTried && shouldRetryOpenAIResponsesWithoutInputNamespaces(resp.StatusCode, respBody) {
+			normalizedBody, changed, normalizeErr := stripOpenAIResponsesInputNamespacesFromBody(body)
+			if normalizeErr != nil {
+				return nil, normalizeErr
+			}
+			if changed {
+				body = normalizedBody
+				if normalizedBase, baseChanged, baseErr := stripOpenAIResponsesInputNamespacesFromBody(baseBody); baseErr != nil {
+					return nil, baseErr
+				} else if baseChanged {
+					baseBody = normalizedBase
+				}
+				inputNamespaceRetryTried = true
+				logOpenAIWSModeInfo(
+					"ingress_ws_http_bridge_input_namespace_compat_retry account_id=%d turn=%d action=strip_input_namespaces retry=1 payload_bytes=%d",
+					account.ID,
+					turn,
+					len(body),
+				)
+				continue
+			}
+		}
+		if account.Platform == PlatformGrok && grokReplayInjected && isGrokInvalidReplayError(resp.StatusCode, respBody) {
 			s.clearGrokReasoningReplay(ctx, grokReplayScope)
 			body = append([]byte(nil), baseBody...)
 			body, grokReplayScope, _ = s.prepareGrokReasoningReplayRequest(ctx, c, body, grokUpstreamModel)
